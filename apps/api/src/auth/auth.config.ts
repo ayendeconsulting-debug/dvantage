@@ -3,11 +3,6 @@ import type { Redis }      from 'ioredis';
 import type { DatabaseClient } from '@vantage/database';
 import * as schema         from '@vantage/database';
 
-// ---------------------------------------------------------------------------
-// ESM bridge — loaded via require() so ts-node/SWC never sees the import()
-// calls inside it. Node.js handles .cjs natively; import() there is genuine.
-// ---------------------------------------------------------------------------
-
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { loadBetterAuth } = require('./better-auth-loader.cjs') as {
   loadBetterAuth: () => Promise<{
@@ -20,16 +15,8 @@ const { loadBetterAuth } = require('./better-auth-loader.cjs') as {
   }>;
 };
 
-// ---------------------------------------------------------------------------
-// Token for NestJS DI
-// ---------------------------------------------------------------------------
-
 export const AUTH_INSTANCE = Symbol('AUTH_INSTANCE');
 
-/**
- * Structural interface for the better-auth instance.
- * Defined explicitly to avoid TS2742 (zod/v4/core internal type leak).
- */
 export interface AuthInstance {
   handler: (request: Request) => Promise<Response>;
   api: {
@@ -42,10 +29,6 @@ export interface AuthInstance {
     } | null>;
   };
 }
-
-// ---------------------------------------------------------------------------
-// Factory dependencies
-// ---------------------------------------------------------------------------
 
 export interface AuthFactoryDeps {
   db:    DatabaseClient;
@@ -64,15 +47,13 @@ export interface AuthFactoryDeps {
   sendPasswordResetEmail: (email: string, url: string) => Promise<void>;
 }
 
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
 export async function createAuth(deps: AuthFactoryDeps): Promise<AuthInstance> {
-  // Load ESM-only better-auth through the CJS bridge
   const { betterAuth, drizzleAdapter, twoFactor } = await loadBetterAuth();
 
   const { db, redis, env } = deps;
+
+  // Derive www variant so both dvantage.ca and www.dvantage.ca are trusted.
+  const wwwAppUrl = env.appUrl.replace('https://', 'https://www.');
 
   return betterAuth({
     secret:   env.authSecret,
@@ -115,6 +96,7 @@ export async function createAuth(deps: AuthFactoryDeps): Promise<AuthInstance> {
 
     trustedOrigins: [
       env.appUrl,
+      wwwAppUrl,
       'http://localhost:3000',
       'http://localhost:3001',
     ],
@@ -131,7 +113,6 @@ export async function createAuth(deps: AuthFactoryDeps): Promise<AuthInstance> {
     emailVerification: {
       sendOnSignUp:                true,
       autoSignInAfterVerification: true,
-      // Redirect to the web app after verification — not the API (port 3001)
       callbackURL: `${env.appUrl}/dashboard`,
       sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
         await deps.sendVerificationEmail(user.email, url);

@@ -42,13 +42,19 @@ async function bootstrap(): Promise<void> {
   );
 
   // -- CORS ------------------------------------------------------------------
-  const appUrl = process.env['APP_URL'] ?? 'http://localhost:3000';
+  const appUrl    = process.env['APP_URL'] ?? 'http://localhost:3000';
+  // Derive the www variant — covers both dvantage.ca and www.dvantage.ca.
+  // In development appUrl is localhost so wwwUrl will be identical; that's fine.
+  const wwwAppUrl = appUrl.replace('https://', 'https://www.');
+
+  const productionOrigins = Array.from(new Set([appUrl, wwwAppUrl]));
+
   app.enableCors({
     origin: process.env['NODE_ENV'] === 'production'
-      ? [appUrl]
-      : [appUrl, 'http://localhost:3000', 'http://localhost:3001'],
-    credentials: true,
-    methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      ? productionOrigins
+      : [...productionOrigins, 'http://localhost:3000', 'http://localhost:3001'],
+    credentials:    true,
+    methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'Idempotency-Key'],
   });
 
@@ -56,8 +62,6 @@ async function bootstrap(): Promise<void> {
   app.enableVersioning({ type: VersioningType.URI });
 
   // -- Global prefix — /health and /stripe excluded -------------------------
-  // /health  → load balancer probes (no /v1 prefix)
-  // /stripe  → Stripe webhook (must not have /v1 prefix; also bypasses AuthGuard via @Public())
   app.setGlobalPrefix('v1', { exclude: ['health', 'stripe/webhook'] });
 
   // -- Global filters --------------------------------------------------------
@@ -86,20 +90,9 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   // -- Explicit init ---------------------------------------------------------
-  // Must be called before mutating Fastify's content type parsers.
-  // NestJS registers its own application/json parser during init().
-  // We remove it and replace it with our raw-body-preserving version below.
   await app.init();
 
   // -- Raw body parser -------------------------------------------------------
-  // Replaces Fastify's default JSON content type parser with one that stores
-  // the raw Buffer on `request.rawBody` before parsing. Required for Stripe
-  // webhook signature verification. Zero impact on all other routes — the
-  // parsed JSON output is identical to the default parser.
-  //
-  // IMPORTANT: registered AFTER app.init() so NestJS's own parser is already
-  // in place and can be cleanly removed first. Registering before init()
-  // causes FST_ERR_CTP_ALREADY_PRESENT when NestJS tries to add its own.
   const fastify = app.getHttpAdapter().getInstance() as FastifyInstance;
   fastify.removeContentTypeParser('application/json');
   fastify.addContentTypeParser(
