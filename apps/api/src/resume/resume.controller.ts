@@ -10,16 +10,29 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   Logger,
 } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/auth.service';
 import { ResumeService } from './resume.service';
 import { ResumePdfService } from './export/resume-pdf.service';
 import { ResumeDocxService } from './export/resume-docx.service';
+import { StorageService } from '../storage/storage.service';
 import { uploadUrlRequestSchema } from './dto/upload-url-request.dto';
+import { uuidv7 } from 'uuidv7';
+
+// Extend FastifyRequest to include multipart method
+type MultipartRequest = FastifyRequest & {
+  file: () => Promise<{
+    filename: string;
+    mimetype: string;
+    file:     NodeJS.ReadableStream & { bytesRead: number };
+    toBuffer: () => Promise<Buffer>;
+  } | undefined>;
+};
 
 @Controller('resumes')
 export class ResumeController {
@@ -29,7 +42,72 @@ export class ResumeController {
     private readonly resumeService: ResumeService,
     private readonly resumePdfService: ResumePdfService,
     private readonly resumeDocxService: ResumeDocxService,
+    private readonly storageService: StorageService,
   ) {}
+
+  // ---------------------------------------------------------------------------
+  // POST /v1/resumes/upload  — proxy upload (browser → API → R2)
+  //
+  // Replaces the two-step presign + confirm flow for browser clients.
+  // Accepts multipart/form-data with a single "file" field.
+  // Avoids the CORS restriction on direct browser→R2 presigned PUT URLs.
+  // ---------------------------------------------------------------------------
+
+  @Post('upload')
+  @HttpCode(HttpStatus.CREATED)
+  async proxyUpload(
+    @CurrentUser() user: AuthUser,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Req() req: MultipartRequest,
+  ) {
+    this.requireIdempotencyKey(idempotencyKey);
+
+    // Parse the multipart file
+    const part = await req.file();
+    if (!part) {
+      throw new BadRequestException('No file found in request. Use field name "file".');
+    }
+
+    const { filename, mimetype, toBuffer } = part;
+
+    // Validate mime type
+    if (!this.storageService.isAllowedMimeType(mimetype)) {
+      throw new BadRequestException(
+        `Unsupported file type: ${mimetype}. Allowed: PDF, DOCX, TXT.`,
+      );
+    }
+
+    // Buffer the file
+    const buffer = await toBuffer();
+    const sizeBytes = buffer.length;
+
+    // Validate file size
+    if (sizeBytes > this.storageService.maxFileSizeBytes) {
+      throw new BadRequestException(
+        `File too large: ${(sizeBytes / 1024 / 1024).toFixed(1)} MB. Maximum: 10 MB.`,
+      );
+    }
+
+    // Create resume version row + get storage key via service
+    const dto = { filename, mimeType: mimetype, sizeBytes };
+    const { resumeVersionId, uploadUrl } = await this.resumeService.createUploadUrl(user, dto);
+
+    // Upload directly to R2 from the API server (no CORS issues)
+    const uploadResponse = await fetch(uploadUrl, {
+      method:  'PUT',
+      headers: { 'Content-Type': mimetype },
+      body:    buffer,
+    });
+
+    if (!uploadResponse.ok) {
+      throw new BadRequestException(
+        `Storage upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`,
+      );
+    }
+
+    // Confirm upload and enqueue parse job
+    return this.resumeService.confirmUpload(user, resumeVersionId);
+  }
 
   // ---------------------------------------------------------------------------
   // POST /v1/resumes/upload-url
@@ -90,10 +168,6 @@ export class ResumeController {
   // GET /v1/resumes/:id/export/pdf
   // ---------------------------------------------------------------------------
 
-  /**
-   * Generate and download a PDF of the resume's AI-extracted structured data.
-   * Returns 422 if the resume has not completed parsing.
-   */
   @Get(':id/export/pdf')
   async exportPdf(
     @CurrentUser() user: AuthUser,
@@ -104,8 +178,6 @@ export class ResumeController {
       await this.resumeService.getVersionForExport(user, id);
 
     const buffer = await this.resumePdfService.generate(structuredData, fileName);
-
-    // Strip extension from filename — we append the correct one
     const baseName = encodeURIComponent(fileName.replace(/\.[^.]+$/, ''));
 
     void reply
@@ -119,10 +191,6 @@ export class ResumeController {
   // GET /v1/resumes/:id/export/docx
   // ---------------------------------------------------------------------------
 
-  /**
-   * Generate and download a Word document of the resume's AI-extracted structured data.
-   * Returns 422 if the resume has not completed parsing.
-   */
   @Get(':id/export/docx')
   async exportDocx(
     @CurrentUser() user: AuthUser,
@@ -133,10 +201,8 @@ export class ResumeController {
       await this.resumeService.getVersionForExport(user, id);
 
     const buffer = await this.resumeDocxService.generate(structuredData, fileName);
-
     const baseName = encodeURIComponent(fileName.replace(/\.[^.]+$/, ''));
-    const mime =
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
     void reply
       .header('Content-Type', mime)

@@ -43,8 +43,6 @@ async function bootstrap(): Promise<void> {
 
   // -- CORS ------------------------------------------------------------------
   const appUrl    = process.env['APP_URL'] ?? 'http://localhost:3000';
-  // Derive the www variant — covers both dvantage.ca and www.dvantage.ca.
-  // In development appUrl is localhost so wwwUrl will be identical; that's fine.
   const wwwAppUrl = appUrl.replace('https://', 'https://www.');
 
   const productionOrigins = Array.from(new Set([appUrl, wwwAppUrl]));
@@ -105,6 +103,20 @@ async function bootstrap(): Promise<void> {
       } catch (err) {
         done(err as Error);
       }
+    },
+  );
+
+  // -- Multipart plugin (for resume proxy upload) ----------------------------
+  // Registered AFTER app.init() so it doesn't conflict with NestJS content
+  // type parsers. Limit: 10 MB matching the frontend validation.
+  await fastify.register(
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('@fastify/multipart'),
+    {
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10 MB
+        files:    1,
+      },
     },
   );
 

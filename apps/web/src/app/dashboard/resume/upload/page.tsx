@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, FileText, X, AlertCircle } from 'lucide-react';
-import { createUploadUrl, uploadToStorage, confirmUpload } from '@/lib/api/resume';
+import { uploadResume } from '@/lib/api/resume';
 
 const ALLOWED_TYPES = [
   'application/pdf',
@@ -13,16 +13,7 @@ const ALLOWED_TYPES = [
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
-type UploadState = 'idle' | 'presigning' | 'uploading' | 'confirming' | 'done' | 'error';
-
-const STATUS_LABEL: Record<UploadState, string> = {
-  idle:       '',
-  presigning: 'Preparing upload…',
-  uploading:  '',           // replaced dynamically with progress %
-  confirming: 'Starting analysis…',
-  done:       'Done — redirecting…',
-  error:      '',
-};
+type UploadState = 'idle' | 'uploading' | 'done' | 'error';
 
 export default function UploadPage() {
   const router   = useRouter();
@@ -59,29 +50,23 @@ export default function UploadPage() {
 
   async function handleUpload() {
     if (!file) return;
-    setError(null); setProgress(0);
+    setError(null); setProgress(0); setState('uploading');
     try {
-      setState('presigning');
-      const { uploadUrl, resumeVersionId } = await createUploadUrl({
-        filename:  file.name,
-        mimeType:  file.type,
-        sizeBytes: file.size,
-      });
-      setState('uploading');
-      await uploadToStorage(uploadUrl, file, setProgress);
-      setState('confirming');
-      await confirmUpload(resumeVersionId);
+      // Single API call — browser → API → R2 (no direct browser-to-R2 CORS issue)
+      const { resumeVersionId } = await uploadResume(file, setProgress);
       setState('done');
       router.push(`/dashboard/resume/${resumeVersionId}`);
     } catch (err) {
-      setState('error'); setError((err as Error).message);
+      setState('error');
+      setError((err as Error).message);
     }
   }
 
-  const isLoading = (['presigning', 'uploading', 'confirming', 'done'] as UploadState[]).includes(state);
-  const statusLabel = state === 'uploading'
-    ? `Uploading… ${progress}%`
-    : STATUS_LABEL[state];
+  const isLoading = state === 'uploading' || state === 'done';
+
+  const statusLabel =
+    state === 'uploading' ? `Uploading… ${progress}%` :
+    state === 'done'      ? 'Done — redirecting…'     : '';
 
   return (
     <div style={{ maxWidth: '560px' }}>
@@ -139,7 +124,7 @@ export default function UploadPage() {
           </div>
         )}
 
-        {isLoading && state !== 'uploading' && statusLabel && (
+        {isLoading && statusLabel && (
           <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0, textAlign: 'center' }}>{statusLabel}</p>
         )}
 
