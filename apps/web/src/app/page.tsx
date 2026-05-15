@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { DVantageLogo } from '../components/logo/dvantage-logo';
 
 export default function HomePage() {
@@ -5,12 +6,23 @@ export default function HomePage() {
     <main style={styles.main}>
       <div style={styles.content}>
         <DVantageLogo width={200} />
+
         <p style={styles.tagline}>From applied to interview.</p>
-        <div style={styles.statusPill}>
-          <span style={styles.statusDot} />
-          <span style={styles.statusText}>Milestone 1 · Auth</span>
+
+        <p style={styles.sub}>
+          AI-powered resume scoring, optimization, and job application tracking — built for serious candidates.
+        </p>
+
+        <div style={styles.cta}>
+          <Link href="/auth/sign-up" style={styles.btnPrimary}>
+            Get started free
+          </Link>
+          <Link href="/auth/sign-in" style={styles.btnGhost}>
+            Sign in
+          </Link>
         </div>
       </div>
+
       <div style={styles.grid} aria-hidden="true" />
     </main>
   );
@@ -33,6 +45,9 @@ const styles = {
     flexDirection: 'column' as const,
     alignItems:    'center',
     gap:           'var(--vt-space-5)',
+    textAlign:     'center' as const,
+    maxWidth:      '520px',
+    padding:       '0 24px',
   },
   tagline: {
     fontFamily:    'var(--vt-font-body)',
@@ -41,28 +56,48 @@ const styles = {
     letterSpacing: '0.01em',
     margin:        0,
   },
-  statusPill: {
-    marginTop:       'var(--vt-space-7)',
+  sub: {
+    fontFamily:  'var(--vt-font-body)',
+    fontSize:    'var(--vt-text-base)',
+    color:       'var(--vt-text-muted)',
+    lineHeight:  1.6,
+    margin:      0,
+  },
+  cta: {
+    marginTop:      'var(--vt-space-3)',
+    display:        'flex',
+    alignItems:     'center',
+    gap:            '14px',
+    flexWrap:       'wrap' as const,
+    justifyContent: 'center',
+  },
+  btnPrimary: {
     display:         'inline-flex',
     alignItems:      'center',
-    gap:             'var(--vt-space-2)',
-    padding:         '6px 14px',
-    borderRadius:    'var(--vt-radius-full)',
-    border:          '1px solid var(--vt-surface-border)',
-    backgroundColor: 'var(--vt-surface-raised)',
+    padding:         '11px 28px',
+    backgroundColor: 'var(--vt-brand-500)',
+    color:           '#ffffff',
+    borderRadius:    '8px',
+    fontFamily:      'var(--vt-font-body)',
+    fontSize:        'var(--vt-text-base)',
+    fontWeight:      500,
+    textDecoration:  'none',
+    letterSpacing:   '0.01em',
+    transition:      'background 120ms',
   },
-  statusDot: {
-    width:           '6px',
-    height:          '6px',
-    borderRadius:    '50%',
-    backgroundColor: 'var(--vt-status-success)',
-    boxShadow:       '0 0 6px var(--vt-status-success)',
-  },
-  statusText: {
-    fontFamily:    'var(--vt-font-mono)',
-    fontSize:      'var(--vt-text-xs)',
-    color:         'var(--vt-text-muted)',
-    letterSpacing: '0.05em',
+  btnGhost: {
+    display:        'inline-flex',
+    alignItems:     'center',
+    padding:        '11px 24px',
+    backgroundColor:'transparent',
+    color:          'var(--vt-text-secondary)',
+    border:         '1px solid var(--vt-surface-border)',
+    borderRadius:   '8px',
+    fontFamily:     'var(--vt-font-body)',
+    fontSize:       'var(--vt-text-base)',
+    fontWeight:     500,
+    textDecoration: 'none',
+    transition:     'border-color 120ms',
   },
   grid: {
     position:   'absolute' as const,
