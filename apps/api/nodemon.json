@@ -1,0 +1,10 @@
+﻿{
+  "watch":  ["src", "../../packages"],
+  "ext":    "ts,json",
+  "ignore": ["src/**/*.spec.ts", "dist/**", "node_modules/**"],
+  "delay":  300,
+  "exec":   "ts-node -r dotenv/config src/main.ts",
+  "env": {
+    "DOTENV_CONFIG_PATH": "../../.env"
+  }
+}

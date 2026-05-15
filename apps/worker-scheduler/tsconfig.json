@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "paths": {
+      "@vantage/config": ["../../packages/config/src/index.ts"],
+      "@vantage/database": ["../../packages/database/src/index.ts"],
+      "@vantage/queue": ["../../packages/queue/src/index.ts"],
+      "@vantage/events": ["../../packages/events/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"]
+}

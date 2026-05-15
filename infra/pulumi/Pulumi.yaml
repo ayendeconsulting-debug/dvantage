@@ -1,0 +1,11 @@
+name: vantage-infra
+description: Vantage infrastructure — AWS KMS keys + Cloudflare R2
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+    packagemanager: pnpm
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: typescript

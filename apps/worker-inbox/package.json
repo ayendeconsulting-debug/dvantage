@@ -1,0 +1,27 @@
+{
+  "name": "@vantage/worker-inbox",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Vantage inbox worker process",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node --esm src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "bullmq": "^5.0.0",
+    "ioredis": "^5.3.0",
+    "@vantage/config": "workspace:*",
+    "@vantage/database": "workspace:*",
+    "@vantage/queue": "workspace:*",
+    "@vantage/events": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0"
+  }
+}

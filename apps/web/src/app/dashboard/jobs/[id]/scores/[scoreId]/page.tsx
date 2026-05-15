@@ -1,0 +1,504 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import {
+  ArrowLeft,
+  AlertCircle,
+  Loader,
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  FileType,
+} from 'lucide-react';
+import { getScore, requestOptimization, getOptimization } from '@/lib/api/job';
+import { getResume } from '@/lib/api/resume';
+import type { AtsScoreDetail, OptimizationResult, OptimizationChange, ResumeData } from '@/lib/api/job';
+import type { ResumeVersionDetail } from '@/lib/api/resume';
+
+const API_BASE =
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
+  'http://localhost:3001';
+
+// ---------------------------------------------------------------------------
+// Export helper
+// ---------------------------------------------------------------------------
+
+async function triggerOptimizedExport(
+  jobId: string,
+  scoreId: string,
+  format: 'pdf' | 'docx',
+  contactName: string,
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/v1/jobs/${jobId}/scores/${scoreId}/optimize/export/${format}`,
+    { credentials: 'include' },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string };
+    throw new Error(body.detail ?? `Export failed (HTTP ${res.status})`);
+  }
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${contactName.replace(/\s+/g, '-')}-optimized.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'var(--vt-status-success)';
+  if (score >= 60) return 'var(--vt-brand-400)';
+  if (score >= 40) return 'var(--vt-status-warning)';
+  return 'var(--vt-status-danger)';
+}
+
+function SectionBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+        <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', textTransform: 'capitalize' }}>{label}</span>
+        <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '12px', color: scoreColor(value), fontWeight: 500 }}>{value}</span>
+      </div>
+      <div style={{ height: '5px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '3px', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${value}%`, backgroundColor: scoreColor(value), borderRadius: '3px', transition: 'width 700ms cubic-bezier(0,0,0.2,1)' }} />
+      </div>
+    </div>
+  );
+}
+
+function Pill({ text, variant }: { text: string; variant: 'gap' | 'match' }) {
+  const styles = variant === 'gap'
+    ? { color: 'var(--vt-status-danger)', bg: '#2e0a0a' }
+    : { color: 'var(--vt-status-success)', bg: '#0a2e1e' };
+  return (
+    <span style={{ display: 'inline-block', padding: '3px 10px', backgroundColor: styles.bg, color: styles.color, borderRadius: '999px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', margin: '3px' }}>
+      {text}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Side-by-side diff view
+// ---------------------------------------------------------------------------
+
+function DiffView({ original, optimized, changeLog }: { original: ResumeData; optimized: ResumeData; changeLog: OptimizationChange[] }) {
+  const changedSections = new Set(changeLog.map(c => c.section));
+
+  function isChanged(section: string): boolean {
+    return changeLog.some(c => c.section === section || c.section.startsWith(section));
+  }
+
+  const highlightStyle: React.CSSProperties = {
+    backgroundColor: '#1e3a1a',
+    borderLeft: '2px solid var(--vt-status-success)',
+    paddingLeft: '8px',
+    borderRadius: '0 4px 4px 0',
+  };
+
+  return (
+    <div>
+      {(original.summary || optimized.summary) && (
+        <div style={{ marginBottom: '24px' }}>
+          <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Summary</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ padding: '12px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '6px' }}>
+              <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-body)', lineHeight: 1.7, margin: 0 }}>{original.summary || '—'}</p>
+            </div>
+            <div style={{ padding: '12px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '6px', ...(isChanged('summary') ? highlightStyle : {}) }}>
+              <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-body)', lineHeight: 1.7, margin: 0 }}>{optimized.summary || '—'}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {original.experience.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Experience</h3>
+          {original.experience.map((exp, ei) => {
+            const optExp = optimized.experience[ei];
+            if (!optExp) return null;
+            return (
+              <div key={ei} style={{ marginBottom: '16px' }}>
+                <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 8px' }}>{exp.title} · {exp.company}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {exp.highlights.map((h, hi) => (
+                      <li key={hi} style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12.5px', color: 'var(--vt-text-body)', lineHeight: 1.6, padding: '6px 8px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '4px' }}>• {h}</li>
+                    ))}
+                  </ul>
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {(optExp.highlights ?? []).map((h, hi) => {
+                      const changed = changedSections.has(`experience[${ei}].highlights[${hi}]`);
+                      return (
+                        <li key={hi} style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12.5px', color: 'var(--vt-text-body)', lineHeight: 1.6, padding: '6px 8px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '4px', ...(changed ? highlightStyle : {}) }}>• {h}</li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ marginBottom: '24px' }}>
+        <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Skills</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ padding: '12px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '6px' }}>
+            {original.skills.map(s => <span key={s.name} style={{ display: 'inline-block', margin: '2px', padding: '2px 8px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '4px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-secondary)' }}>{s.name}</span>)}
+          </div>
+          <div style={{ padding: '12px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '6px', ...(isChanged('skills') ? highlightStyle : {}) }}>
+            {optimized.skills.map(s => <span key={s.name} style={{ display: 'inline-block', margin: '2px', padding: '2px 8px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '4px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-secondary)' }}>{s.name}</span>)}
+          </div>
+        </div>
+      </div>
+
+      {changeLog.length > 0 && (
+        <div>
+          <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Change log <span style={{ color: 'var(--vt-text-disabled)', fontFamily: 'var(--vt-font-mono)', fontSize: '12px', textTransform: 'none', letterSpacing: 0 }}>{changeLog.length} change{changeLog.length !== 1 ? 's' : ''}</span></h3>
+          <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Section', 'Was', 'Now', 'Reason'].map(h => (
+                    <th key={h} style={{ fontFamily: 'var(--vt-font-body)', fontSize: '11px', fontWeight: 500, color: 'var(--vt-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 12px', textAlign: 'left', backgroundColor: 'var(--vt-surface-raised)', borderBottom: '1px solid var(--vt-surface-border)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {changeLog.map((c, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--vt-surface-border)' }}>
+                    <td style={{ padding: '10px 12px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-disabled)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{c.section}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'var(--vt-font-body)', fontSize: '12px', color: 'var(--vt-text-secondary)', lineHeight: 1.5, verticalAlign: 'top', maxWidth: '200px' }}>{c.original}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'var(--vt-font-body)', fontSize: '12px', color: 'var(--vt-status-success)', lineHeight: 1.5, verticalAlign: 'top', maxWidth: '200px' }}>{c.optimized}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'var(--vt-font-body)', fontSize: '12px', color: 'var(--vt-text-muted)', lineHeight: 1.5, verticalAlign: 'top' }}>{c.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+export default function ScoreDetailPage() {
+  const params  = useParams<{ id: string; scoreId: string }>();
+  const jobId   = params.id;
+  const scoreId = params.scoreId;
+
+  const [score,        setScore]        = useState<AtsScoreDetail | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState<string | null>(null);
+  const [origResume,   setOrigResume]   = useState<ResumeVersionDetail | null>(null);
+  const [optimization, setOptimization] = useState<OptimizationResult | null>(null);
+  const [optLoading,   setOptLoading]   = useState(false);
+  const [optError,     setOptError]     = useState<string | null>(null);
+  const [exportingPdf,  setExportingPdf]  = useState(false);
+  const [exportingDocx, setExportingDocx] = useState(false);
+  const [exportError,   setExportError]   = useState<string | null>(null);
+
+  const scoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pollScore = useCallback(async () => {
+    try {
+      const data = await getScore(jobId, scoreId);
+      setScore(data);
+      setLoading(false);
+
+      if (data.scoringStatus === 'pending' || data.scoringStatus === 'scoring') {
+        scoreTimerRef.current = setTimeout(() => { void pollScore(); }, 3000);
+      } else if (data.scoringStatus === 'complete') {
+        const resume = await getResume(data.resumeVersionId).catch(() => null);
+        setOrigResume(resume);
+        if (data.optimizationStatus === 'complete' || data.optimizationStatus === 'failed') {
+          const opt = await getOptimization(jobId, scoreId).catch(() => null);
+          setOptimization(opt);
+        } else if (data.optimizationStatus === 'pending' || data.optimizationStatus === 'optimizing') {
+          void pollOptimization();
+        }
+      }
+    } catch (err) {
+      setError((err as Error).message);
+      setLoading(false);
+    }
+  }, [jobId, scoreId]);
+
+  const pollOptimization = useCallback(async () => {
+    try {
+      const data = await getOptimization(jobId, scoreId);
+      setOptimization(data);
+
+      if (data.optimizationStatus === 'pending' || data.optimizationStatus === 'optimizing') {
+        optTimerRef.current = setTimeout(() => { void pollOptimization(); }, 5000);
+      } else {
+        setOptLoading(false);
+      }
+    } catch (err) {
+      setOptError((err as Error).message);
+      setOptLoading(false);
+    }
+  }, [jobId, scoreId]);
+
+  useEffect(() => {
+    void pollScore();
+    return () => {
+      if (scoreTimerRef.current) clearTimeout(scoreTimerRef.current);
+      if (optTimerRef.current)   clearTimeout(optTimerRef.current);
+    };
+  }, [pollScore]);
+
+  async function handleOptimize() {
+    setOptLoading(true); setOptError(null);
+    try {
+      await requestOptimization(jobId, scoreId);
+      void pollOptimization();
+    } catch (err) {
+      setOptError((err as Error).message);
+      setOptLoading(false);
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!optimization?.optimizedData) return;
+    setExportingPdf(true); setExportError(null);
+    try {
+      await triggerOptimizedExport(jobId, scoreId, 'pdf', optimization.optimizedData.contact?.name ?? 'resume');
+    } catch (err) {
+      setExportError((err as Error).message);
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  async function handleExportDocx() {
+    if (!optimization?.optimizedData) return;
+    setExportingDocx(true); setExportError(null);
+    try {
+      await triggerOptimizedExport(jobId, scoreId, 'docx', optimization.optimizedData.contact?.name ?? 'resume');
+    } catch (err) {
+      setExportError((err as Error).message);
+    } finally {
+      setExportingDocx(false);
+    }
+  }
+
+  const btnBase: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: '6px',
+    padding: '6px 12px', border: '1px solid var(--vt-surface-border)',
+    borderRadius: '6px', color: 'var(--vt-text-secondary)',
+    fontFamily: 'var(--vt-font-body)', fontSize: '12px',
+    background: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap',
+  };
+
+  const btnDisabled: React.CSSProperties = { ...btnBase, opacity: 0.45, cursor: 'not-allowed' };
+
+  return (
+    <div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      <Link href={`/dashboard/jobs/${jobId}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--vt-text-muted)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '24px', textDecoration: 'none' }}>
+        <ArrowLeft size={14} strokeWidth={1.5} />Back to job
+      </Link>
+
+      <h1 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '22px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 24px' }}>ATS Score</h1>
+
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '20px' }}>
+          <AlertCircle size={15} strokeWidth={1.5} />{error}
+        </div>
+      )}
+
+      {(loading || score?.scoringStatus === 'pending' || score?.scoringStatus === 'scoring') && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', paddingTop: '60px' }}>
+          <Loader size={28} strokeWidth={1.5} style={{ color: 'var(--vt-brand-400)', animation: 'spin 1s linear infinite' }} />
+          <p style={{ fontFamily: 'var(--vt-font-display)', fontSize: '16px', color: 'var(--vt-text-secondary)', margin: 0 }}>Analyzing your resume…</p>
+          <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>This usually takes 20–45 seconds.</p>
+        </div>
+      )}
+
+      {score?.scoringStatus === 'failed' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
+          <XCircle size={15} strokeWidth={1.5} />Scoring failed: {score.scoreError ?? 'Unknown error.'}
+        </div>
+      )}
+
+      {score?.scoringStatus === 'complete' && score.overallScore !== null && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '20px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '24px 16px', backgroundColor: 'var(--vt-surface-raised)' }}>
+              <span style={{ fontFamily: 'var(--vt-font-display)', fontSize: '52px', fontWeight: 700, color: scoreColor(score.overallScore), lineHeight: 1 }}>{score.overallScore}</span>
+              <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-disabled)', marginTop: '4px' }}>out of 100</span>
+              <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', color: 'var(--vt-text-muted)', marginTop: '8px' }}>Overall match</span>
+            </div>
+            <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--vt-surface-raised)' }}>
+              {score.sectionScores && (
+                <>
+                  <SectionBar label="Skills"     value={score.sectionScores.skills}     />
+                  <SectionBar label="Experience"  value={score.sectionScores.experience}  />
+                  <SectionBar label="Education"   value={score.sectionScores.education}   />
+                  <SectionBar label="Keywords"    value={score.sectionScores.keywords}    />
+                </>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '16px', backgroundColor: 'var(--vt-surface-raised)' }}>
+              <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 10px' }}>
+                Keyword gaps <span style={{ color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-mono)' }}>{score.keywordGaps?.length ?? 0}</span>
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                {score.keywordGaps?.length
+                  ? score.keywordGaps.map(k => <Pill key={k} text={k} variant="gap" />)
+                  : <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-disabled)' }}>None — excellent coverage!</span>
+                }
+              </div>
+            </div>
+            <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '16px', backgroundColor: 'var(--vt-surface-raised)' }}>
+              <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 10px' }}>
+                Matched keywords <span style={{ color: 'var(--vt-status-success)', fontFamily: 'var(--vt-font-mono)' }}>{score.matchedKeywords?.length ?? 0}</span>
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                {score.matchedKeywords?.length
+                  ? score.matchedKeywords.map(k => <Pill key={k} text={k} variant="match" />)
+                  : <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-disabled)' }}>No keywords matched.</span>
+                }
+              </div>
+            </div>
+          </div>
+
+          {score.recommendations && score.recommendations.length > 0 && (
+            <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '16px', backgroundColor: 'var(--vt-surface-raised)', marginBottom: '28px' }}>
+              <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 12px' }}>Recommendations</p>
+              <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {score.recommendations.map((r, i) => (
+                  <li key={i} style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-body)', lineHeight: 1.6 }}>{r}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Optimize section */}
+          <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--vt-surface-raised)', marginBottom: '28px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: optimization?.optimizationStatus === 'complete' ? '20px' : '0', gap: '16px' }}>
+              <div>
+                <h2 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '16px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 4px' }}>AI Resume Optimization</h2>
+                <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>Rewrite your resume to close keyword gaps — without fabricating anything.</p>
+              </div>
+
+              {/* Action / status */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', flexShrink: 0 }}>
+
+                {(!score.optimizationStatus || score.optimizationStatus === 'none') && (
+                  <button
+                    onClick={() => void handleOptimize()}
+                    disabled={optLoading}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 18px', backgroundColor: 'var(--vt-brand-500)', color: '#ffffff', borderRadius: '6px', fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', fontWeight: 500, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    type="button"
+                  >
+                    <Sparkles size={14} strokeWidth={1.5} />Optimize resume
+                  </button>
+                )}
+
+                {(score.optimizationStatus === 'pending' || score.optimizationStatus === 'optimizing' || optLoading) && (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--vt-status-warning)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
+                    <Loader size={14} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Rewriting resume…
+                  </div>
+                )}
+
+                {score.optimizationStatus === 'complete' && !optLoading && (
+                  <>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--vt-status-success)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
+                      <CheckCircle2 size={14} strokeWidth={1.5} />Optimization complete
+                    </div>
+                    {/* Export buttons — only shown when optimization is complete */}
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        style={exportingPdf ? btnDisabled : btnBase}
+                        disabled={exportingPdf}
+                        onClick={() => void handleExportPdf()}
+                        type="button"
+                        title="Download optimized resume as PDF"
+                      >
+                        {exportingPdf
+                          ? <Loader size={12} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />
+                          : <FileText size={12} strokeWidth={1.5} />}
+                        Export PDF
+                      </button>
+                      <button
+                        style={exportingDocx ? btnDisabled : btnBase}
+                        disabled={exportingDocx}
+                        onClick={() => void handleExportDocx()}
+                        type="button"
+                        title="Download optimized resume as Word document"
+                      >
+                        {exportingDocx
+                          ? <Loader size={12} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />
+                          : <FileType size={12} strokeWidth={1.5} />}
+                        Export DOCX
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {score.optimizationStatus === 'failed' && (
+                  <button
+                    onClick={() => void handleOptimize()}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 18px', backgroundColor: 'var(--vt-surface-overlay)', color: 'var(--vt-text-secondary)', borderRadius: '6px', fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', border: '1px solid var(--vt-surface-border)', cursor: 'pointer' }}
+                    type="button"
+                  >
+                    Retry optimization
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {optError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
+                <AlertCircle size={14} strokeWidth={1.5} />{optError}
+              </div>
+            )}
+
+            {exportError !== null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
+                <AlertCircle size={14} strokeWidth={1.5} />{exportError}
+              </div>
+            )}
+
+            {(optimization?.optimizationStatus === 'complete') && optimization.optimizedData && origResume?.structuredData && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '16px' }}>
+                  {['Original', 'Optimized'].map(label => (
+                    <div key={label} style={{ textAlign: 'center', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-disabled)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 0', borderBottom: '1px solid var(--vt-surface-border)' }}>{label}</div>
+                  ))}
+                </div>
+                <DiffView
+                  original={origResume.structuredData as unknown as ResumeData}
+                  optimized={optimization.optimizedData}
+                  changeLog={optimization.changeLog ?? []}
+                />
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

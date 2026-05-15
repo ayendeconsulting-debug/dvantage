@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "private": true,
+  "name": "@vantage/domain",
+  "description": "Domain value objects",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
+}

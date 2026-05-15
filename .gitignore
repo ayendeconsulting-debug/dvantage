@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+coverage/
+
+# Environment files — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.staging
+.env.production
+!.env.example
+
+# Doppler — local override only
+.doppler-env
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# Pulumi
+Pulumi.*.yaml
+!Pulumi.yaml
+!Pulumi.dev.yaml
+
+# Test artifacts
+/test-results/
+/playwright-report/
+
+# Sentry sourcemaps upload artifacts
+.sentryclirc

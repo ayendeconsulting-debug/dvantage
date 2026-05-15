@@ -1,0 +1,55 @@
+# =============================================================================
+# D'Vantage — API service
+# fly.api.toml  (repo root — build context must be repo root for pnpm monorepo)
+#
+# Deploy:  fly deploy --config fly.api.toml
+# Secrets: doppler secrets download --no-file --format env | fly secrets import --app dvantage-api
+# =============================================================================
+
+app            = 'dvantage-api'
+primary_region = 'yyz'          # Toronto — nearest + Canadian data residency (PIPEDA)
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+[build]
+  dockerfile = 'apps/api/Dockerfile'
+  # build_target not needed — final stage in Dockerfile is already 'runner'
+
+# ── Non-secret env (secrets injected via `fly secrets set`) ───────────────────
+[env]
+  NODE_ENV = 'production'
+  PORT     = '3001'
+
+# ── HTTP service ──────────────────────────────────────────────────────────────
+[http_service]
+  internal_port        = 3001
+  force_https          = true
+
+  # Keep one machine always warm — no cold-start latency for authenticated users
+  auto_stop_machines   = 'stop'
+  auto_start_machines  = true
+  min_machines_running = 1
+
+  # Fly load-balances when request queue reaches soft_limit.
+  # shared-cpu-1x handles ~200 concurrent in-flight requests comfortably.
+  [http_service.concurrency]
+    type       = 'requests'
+    hard_limit = 250
+    soft_limit = 200
+
+  # Fly health check — must return 200 before traffic is routed to machine
+  [[http_service.checks]]
+    grace_period    = '30s'   # allow NestJS + DB pool to warm up
+    interval        = '30s'
+    method          = 'GET'
+    path            = '/health'
+    protocol        = 'http'
+    timeout         = '5s'
+    tls_skip_verify = false
+
+# ── Machine sizing ────────────────────────────────────────────────────────────
+# shared-cpu-1x / 512 MB is sufficient for the API tier at MVP scale.
+# Upgrade to performance-1x / 1 GB when p95 latency climbs above 200 ms.
+[[vm]]
+  cpu_kind = 'shared'
+  cpus     = 1
+  memory   = '512mb'

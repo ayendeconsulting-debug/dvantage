@@ -1,0 +1,22 @@
+{
+  "version": "0.0.1",
+  "private": true,
+  "name": "@vantage/events",
+  "description": "Domain event type definitions",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "zod": "^3.23.0",
+    "@vantage/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
+}

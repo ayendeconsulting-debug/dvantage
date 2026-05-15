@@ -1,0 +1,15 @@
+# Vantage AI Worker — Fly.io configuration
+app = "vantage-worker-ai-dev"
+primary_region = "iad"
+
+[build]
+  dockerfile = "apps/worker-ai/Dockerfile"
+  build-target = "production"
+
+[env]
+  NODE_ENV = "development"
+
+# No HTTP service — this is a queue worker, no inbound traffic
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024mb"  # AI workers need more headroom for token buffers

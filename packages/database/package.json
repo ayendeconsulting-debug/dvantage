@@ -1,0 +1,28 @@
+{
+  "version": "0.0.1",
+  "private": true,
+  "name": "@vantage/database",
+  "description": "Drizzle ORM schema, migrations, and query helpers",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@vantage/domain": "workspace:*",
+    "drizzle-orm": "^0.45.0",
+    "postgres": "^3.4.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.30.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
+}

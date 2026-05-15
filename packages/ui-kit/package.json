@@ -1,0 +1,20 @@
+{
+  "name": "@vantage/ui-kit",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Design system — Atlas tokens, base components",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "react": "^18.3.0",
+    "@types/react": "^18.3.0"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0"
+  },
+  "main": "./src/index.ts"
+}

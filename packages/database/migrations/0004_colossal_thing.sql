@@ -1,0 +1,2 @@
+DROP INDEX "resume_versions_user_version_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "resume_versions_user_version_unique" ON "resume_versions" USING btree ("user_id","version_number") WHERE "resume_versions"."deleted_at" is null;

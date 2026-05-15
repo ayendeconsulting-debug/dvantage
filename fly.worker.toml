@@ -1,0 +1,30 @@
+# =============================================================================
+# D'Vantage — AI worker service
+# fly.worker.toml  (repo root)
+#
+# Deploy:  fly deploy --config fly.worker.toml
+# Secrets: doppler secrets download --no-file --format env | fly secrets import --app dvantage-worker
+#
+# The worker has no HTTP server — it polls BullMQ queues via ioredis.
+# No [http_service], no [checks]. Fly monitors via process exit code.
+# =============================================================================
+
+app            = 'dvantage-worker'
+primary_region = 'yyz'
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+[build]
+  dockerfile = 'apps/worker-ai/Dockerfile'
+
+# ── Non-secret env ────────────────────────────────────────────────────────────
+[env]
+  NODE_ENV = 'production'
+
+# ── Machine sizing ────────────────────────────────────────────────────────────
+# 1 GB RAM — Anthropic SDK streams large JSON payloads (resume text + AI output).
+# Worker is CPU-light (awaiting I/O) but memory-heavier than the API.
+# shared-cpu-1x is sufficient; the bottleneck is Anthropic API latency, not CPU.
+[[vm]]
+  cpu_kind = 'shared'
+  cpus     = 1
+  memory   = '1gb'

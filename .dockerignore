@@ -1,0 +1,57 @@
+# =============================================================================
+# D'Vantage — .dockerignore
+# Repo root — applies to all Docker builds in this repo.
+#
+# Goal: minimise build context sent to the Docker daemon.
+# The Next.js app (apps/web) is deployed to Vercel — exclude it entirely.
+# =============================================================================
+
+# ── Version control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+.github
+
+# ── Secrets — must never enter the image ─────────────────────────────────────
+**/.env
+**/.env.*
+**/*.local
+**/secrets
+
+# ── Build artefacts — builder stage compiles fresh ───────────────────────────
+**/dist
+**/build
+**/*.tsbuildinfo
+**/.turbo
+
+# ── Runtime deps — installer stage fetches from lockfile ─────────────────────
+**/node_modules
+
+# ── Test & coverage ───────────────────────────────────────────────────────────
+**/coverage
+**/__tests__
+**/*.spec.ts
+**/*.e2e-spec.ts
+**/jest*.config.*
+
+# ── Editor & OS noise ─────────────────────────────────────────────────────────
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db
+
+# ── Docs & scripts (not needed at runtime) ────────────────────────────────────
+*.md
+README*
+CHANGELOG*
+LICENSE*
+docs
+scripts
+
+# ── Docker files themselves ───────────────────────────────────────────────────
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore
+
+# ── Next.js app — deployed to Vercel, not Fly ────────────────────────────────
+apps/web

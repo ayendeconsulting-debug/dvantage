@@ -1,0 +1,165 @@
+/*
+ * D'Vantage — Global Styles
+ * Atlas theme · v2.0
+ *
+ * Dark mode  (default)  — rich blue-tinted surfaces
+ * Light mode             — [data-theme="light"] on <html>
+ *
+ * All colour values live here. Components consume via var(--vt-*).
+ * No raw hex values in component files.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@200;500;600;700;900&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;1,9..40,400&family=Geist+Mono:wght@400;500&display=swap');
+
+/* ── Dark theme (default) ─────────────────────────────────────────────────
+   Blue-tinted surfaces give depth and richness — the "glossy" quality
+   comes from the blue undertone reacting with the electric brand accent.
+   ─────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Brand */
+  --vt-brand-50:  #EFF6FF;
+  --vt-brand-100: #DBEAFE;
+  --vt-brand-200: #BFDBFE;
+  --vt-brand-300: #93C5FD;
+  --vt-brand-400: #60A5FA;
+  --vt-brand-500: #3B82F6;
+  --vt-brand-600: #2563EB;
+  --vt-brand-700: #1D4ED8;
+  --vt-brand-900: #1E3A8A;
+
+  /* Surface — near-black with a whisper of blue for richness */
+  --vt-surface-base:    #010305;   /* deepest layer  */
+  --vt-surface-raised:  #03070E;   /* cards, sidebar */
+  --vt-surface-overlay: #060D18;   /* modals, panels */
+  --vt-surface-border:  #0D1824;   /* dividers       */
+  --vt-surface-hover:   #111E2C;   /* interactive    */
+  --vt-surface-inverse: #EEF3FA;   /* inverse text   */
+
+  /* Text */
+  --vt-text-primary:   #F2F6FF;
+  --vt-text-body:      #C8D8EE;
+  --vt-text-secondary: #8AA4C4;
+  --vt-text-muted:     #56779A;
+  --vt-text-disabled:  #334D6A;
+
+  /* Status */
+  --vt-status-success: #10B981;
+  --vt-status-danger:  #EF4444;
+  --vt-status-warning: #F59E0B;
+  --vt-status-info:    #3B82F6;
+
+  /* Typography — families */
+  --vt-font-display: 'Outfit', sans-serif;
+  --vt-font-body:    'DM Sans', sans-serif;
+  --vt-font-mono:    'Geist Mono', monospace;
+
+  /* Typography — sizes */
+  --vt-text-xs:      11px;
+  --vt-text-sm:      12px;
+  --vt-text-base:    14px;
+  --vt-text-md:      16px;
+  --vt-text-lg:      18px;
+  --vt-text-xl:      20px;
+  --vt-text-2xl:     24px;
+  --vt-text-3xl:     30px;
+  --vt-text-4xl:     36px;
+  --vt-text-5xl:     48px;
+  --vt-text-6xl:     60px;
+  --vt-text-display: 64px;
+
+  /* Spacing */
+  --vt-space-1:  4px;
+  --vt-space-2:  8px;
+  --vt-space-3:  12px;
+  --vt-space-4:  16px;
+  --vt-space-5:  24px;
+  --vt-space-6:  32px;
+  --vt-space-7:  48px;
+  --vt-space-8:  64px;
+  --vt-space-9:  96px;
+  --vt-space-10: 128px;
+
+  /* Radius */
+  --vt-radius-1:    2px;
+  --vt-radius-2:    4px;
+  --vt-radius-3:    8px;
+  --vt-radius-4:    12px;
+  --vt-radius-5:    16px;
+  --vt-radius-full: 999px;
+
+  /* Motion */
+  --vt-duration-fast:       120ms;
+  --vt-duration-base:       200ms;
+  --vt-duration-slow:       320ms;
+  --vt-duration-deliberate: 560ms;
+  --vt-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --vt-ease-out:      cubic-bezier(0, 0, 0.2, 1);
+  --vt-ease-in:       cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* ── Light theme ──────────────────────────────────────────────────────────
+   Blue-tinted whites mirror the dark palette — brand blue feels at home.
+   Applied via data-theme="light" on <html>.
+   ─────────────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  /* Surface */
+  --vt-surface-base:    #EBF0F8;
+  --vt-surface-raised:  #FFFFFF;
+  --vt-surface-overlay: #F4F8FF;
+  --vt-surface-border:  #D4E0F0;
+  --vt-surface-hover:   #E2ECFA;
+  --vt-surface-inverse: #0B1828;
+
+  /* Text */
+  --vt-text-primary:   #0B1828;
+  --vt-text-body:      #1A3050;
+  --vt-text-secondary: #4A6585;
+  --vt-text-muted:     #7A9AB8;
+  --vt-text-disabled:  #A8C4DC;
+}
+
+/* ── Base reset ────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--vt-surface-base);
+  color: var(--vt-text-body);
+  font-family: var(--vt-font-body);
+  font-size: var(--vt-text-md);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'rlig' 1, 'calt' 1;
+  /* Smooth theme transition — only on background and color to avoid layout flicker */
+  transition:
+    background-color var(--vt-duration-slow) var(--vt-ease-standard),
+    color            var(--vt-duration-slow) var(--vt-ease-standard);
+}
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+}
+
+img,
+video {
+  max-width: 100%;
+  display: block;
+}
