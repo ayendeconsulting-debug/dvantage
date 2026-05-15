@@ -31,7 +31,7 @@
     "@opentelemetry/auto-instrumentations-node": "^0.50.0",
     "@opentelemetry/exporter-trace-otlp-grpc": "^0.56.0",
     "@opentelemetry/resources": "^1.26.0",
-    "@opentelemetry/sdk-node": "^0.53.0",
+    "@opentelemetry/sdk-node": "^0.217.0",
     "@opentelemetry/semantic-conventions": "^1.27.0",
     "@sentry/nestjs": "^8.0.0",
     "@sentry/node": "^8.0.0",
