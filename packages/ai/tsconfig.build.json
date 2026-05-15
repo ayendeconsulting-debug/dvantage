@@ -1,0 +1,9 @@
+﻿{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@vantage/validation": ["../validation/dist/index.d.ts"],
+      "@vantage/contracts": ["../contracts/dist/index.d.ts"]
+    }
+  }
+}
