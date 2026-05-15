@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "paths": {
+      "@vantage/config":     ["../../packages/config/dist/index.d.ts"],
+      "@vantage/database":   ["../../packages/database/dist/index.d.ts"],
+      "@vantage/queue":      ["../../packages/queue/dist/index.d.ts"],
+      "@vantage/events":     ["../../packages/events/dist/index.d.ts"],
+      "@vantage/validation": ["../../packages/validation/dist/index.d.ts"],
+      "@vantage/parsing":    ["../../packages/parsing/dist/index.d.ts"],
+      "@vantage/ai":         ["../../packages/ai/dist/index.d.ts"]
+    }
+  }
+}

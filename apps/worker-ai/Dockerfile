@@ -9,14 +9,14 @@
 #   - min_machines_running = 0 on Fly (scales to zero between jobs)
 # =============================================================================
 
-# ── Stage 0: base ─────────────────────────────────────────────────────────────
+# -- Stage 0: base ------------------------------------------------------------
 FROM node:20-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 
-# ── Stage 1: install ──────────────────────────────────────────────────────────
+# -- Stage 1: install ---------------------------------------------------------
 FROM base AS install
 WORKDIR /repo
 
@@ -39,17 +39,26 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 
-# ── Stage 2: builder ──────────────────────────────────────────────────────────
+# -- Stage 2: builder ---------------------------------------------------------
 FROM install AS builder
 WORKDIR /repo
 
 COPY . .
 
-# Builds worker-ai and all its workspace deps (ai, database, parsing, queue…)
+# Build all workspace package dependencies first, then the worker using
+# tsconfig.build.json (paths → dist/*.d.ts) so rootDir stays as "src"
+# and output lands at apps/worker-ai/dist/main.js — not a nested path.
 RUN pnpm turbo run build --filter=@vantage/worker-ai... --no-daemon
 
+# Override the worker build to use tsconfig.build.json
+RUN cd apps/worker-ai && npx tsc --project tsconfig.build.json
 
-# ── Stage 3: deploy ───────────────────────────────────────────────────────────
+# Verify the entry point exists before proceeding
+RUN test -f apps/worker-ai/dist/main.js || \
+    (echo "ERROR: apps/worker-ai/dist/main.js not found" && exit 1)
+
+
+# -- Stage 3: deploy ----------------------------------------------------------
 FROM base AS deploy
 WORKDIR /repo
 
@@ -59,7 +68,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm --filter @vantage/worker-ai --prod deploy /standalone
 
 
-# ── Stage 4: runner ───────────────────────────────────────────────────────────
+# -- Stage 4: runner ----------------------------------------------------------
 FROM node:20-alpine AS runner
 
 RUN addgroup --system --gid 1001 nodejs \
