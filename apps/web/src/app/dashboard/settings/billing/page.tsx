@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle2, AlertCircle, Loader, Sparkles, ExternalLink, Crown } from 'lucide-react';
 import {
@@ -19,9 +19,9 @@ function UsageMeter({
   used,
   limit,
 }: {
-  label:  string;
-  used:   number;
-  limit:  number | null;
+  label: string;
+  used: number;
+  limit: number | null;
 }) {
   if (limit === null) {
     return (
@@ -37,9 +37,9 @@ function UsageMeter({
     );
   }
 
-  const pct     = Math.min((used / limit) * 100, 100);
-  const isWarn  = pct >= 80 && pct < 100;
-  const isFull  = pct >= 100;
+  const pct = Math.min((used / limit) * 100, 100);
+  const isWarn = pct >= 80 && pct < 100;
+  const isFull = pct >= 100;
   const barColor = isFull ? 'var(--vt-status-danger)' : isWarn ? 'var(--vt-status-warning)' : 'var(--vt-brand-500)';
 
   return (
@@ -58,22 +58,23 @@ function UsageMeter({
 }
 
 // ---------------------------------------------------------------------------
-// Page
+// Inner component — uses useSearchParams (must be inside Suspense)
 // ---------------------------------------------------------------------------
 
-export default function BillingPage() {
+function BillingContent() {
   const searchParams = useSearchParams();
-  const success  = searchParams.get('success') === '1';
+  const success = searchParams.get('success') === '1';
   const canceled = searchParams.get('canceled') === '1';
 
-  const [sub,       setSub]       = useState<SubscriptionStatus_ | null>(null);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState<string | null>(null);
+  const [sub, setSub] = useState<SubscriptionStatus_ | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [actionError,   setActionError]   = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
+    setError(null);
     try {
       const data = await getSubscription();
       setSub(data);
@@ -92,7 +93,8 @@ export default function BillingPage() {
       setActionError('Stripe price ID not configured. Set NEXT_PUBLIC_STRIPE_PRICE_ID_PREMIUM_MONTHLY in your environment.');
       return;
     }
-    setActionLoading(true); setActionError(null);
+    setActionLoading(true);
+    setActionError(null);
     try {
       const { checkoutUrl } = await createCheckoutSession({ priceId, interval: 'monthly' });
       window.location.href = checkoutUrl;
@@ -103,7 +105,8 @@ export default function BillingPage() {
   }
 
   async function handleManage() {
-    setActionLoading(true); setActionError(null);
+    setActionLoading(true);
+    setActionError(null);
     try {
       const { portalUrl } = await createPortalSession();
       window.location.href = portalUrl;
@@ -192,7 +195,7 @@ export default function BillingPage() {
                   type="button"
                 >
                   {actionLoading
-                    ? <><Loader size={13} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Redirecting…</>
+                    ? <><Loader size={13} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Redirecting&hellip;</>
                     : <><Sparkles size={14} strokeWidth={1.5} />Upgrade to Premium</>
                   }
                 </button>
@@ -206,7 +209,7 @@ export default function BillingPage() {
                   type="button"
                 >
                   {actionLoading
-                    ? <><Loader size={12} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Redirecting…</>
+                    ? <><Loader size={12} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Redirecting&hellip;</>
                     : <><ExternalLink size={13} strokeWidth={1.5} />Manage subscription</>
                   }
                 </button>
@@ -276,12 +279,29 @@ export default function BillingPage() {
                 style={{ marginTop: '16px', width: '100%', padding: '10px', backgroundColor: 'var(--vt-brand-500)', color: '#ffffff', border: 'none', borderRadius: '6px', fontFamily: 'var(--vt-font-body)', fontSize: '14px', fontWeight: 500, cursor: actionLoading ? 'not-allowed' : 'pointer', opacity: actionLoading ? 0.6 : 1 }}
                 type="button"
               >
-                {actionLoading ? 'Redirecting to checkout…' : 'Upgrade to Premium'}
+                {actionLoading ? 'Redirecting to checkout\u2026' : 'Upgrade to Premium'}
               </button>
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page — Suspense boundary required by Next.js 15 for useSearchParams
+// ---------------------------------------------------------------------------
+
+export default function BillingPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '60px' }}>
+        <Loader size={20} strokeWidth={1.5} style={{ color: 'var(--vt-text-muted)', animation: 'spin 1s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    }>
+      <BillingContent />
+    </Suspense>
   );
 }
