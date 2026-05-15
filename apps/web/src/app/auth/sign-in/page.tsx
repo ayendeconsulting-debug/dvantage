@@ -40,7 +40,9 @@ export default function SignInPage() {
     setLoading(false);
   }
 
-  const apiUrl = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001';
+  const apiUrl  = process.env['NEXT_PUBLIC_API_URL']  ?? 'http://localhost:3001';
+  const appUrl  = process.env['NEXT_PUBLIC_APP_URL']  ?? 'http://localhost:3000';
+  const callbackURL = `${appUrl}/dashboard`;
 
   return (
     <AuthCard title="Sign in" subtitle="Welcome back.">
@@ -80,14 +82,14 @@ export default function SignInPage() {
       {/* OAuth providers */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <a
-          href={`${apiUrl}/api/auth/sign-in/social?provider=google&callbackURL=${encodeURIComponent('/dashboard')}`}
+          href={`${apiUrl}/api/auth/sign-in/social?provider=google&callbackURL=${encodeURIComponent(callbackURL)}`}
           style={styles.oauthBtn}
         >
           <GoogleIcon />
           Continue with Google
         </a>
         <a
-          href={`${apiUrl}/api/auth/sign-in/social?provider=microsoft&callbackURL=${encodeURIComponent('/dashboard')}`}
+          href={`${apiUrl}/api/auth/sign-in/social?provider=microsoft&callbackURL=${encodeURIComponent(callbackURL)}`}
           style={styles.oauthBtn}
         >
           <MicrosoftIcon />
