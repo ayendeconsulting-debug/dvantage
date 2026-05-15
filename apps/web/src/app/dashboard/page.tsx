@@ -374,7 +374,7 @@ export default function DashboardPage() {
           >
             {/* Ring + number overlay */}
             <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ScoreRing score={latestScore?.overallScore} size={116} />
+              <ScoreRing {...(latestScore ? { score: latestScore.overallScore } : {})} size={116} />
               <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 {latestScore ? (
                   <>
