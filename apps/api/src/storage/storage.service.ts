@@ -84,6 +84,14 @@ export class StorageService {
       region,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle,
+      // ---------------------------------------------------------------------------
+      // IMPORTANT: Disable automatic checksum calculation.
+      // AWS SDK v3 adds CRC32 checksum headers by default (x-amz-checksum-*,
+      // x-amz-sdk-checksum-algorithm) which Cloudflare R2 does not support and
+      // rejects with 403 Forbidden on presigned PUT uploads.
+      // ---------------------------------------------------------------------------
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
 
     this.logger.log(
@@ -102,13 +110,15 @@ export class StorageService {
     expiresInSeconds = UPLOAD_TTL_SECONDS,
   ): Promise<PresignedUploadResult> {
     const command = new PutObjectCommand({
-      Bucket: this.bucket,
-      Key: storageKey,
+      Bucket:      this.bucket,
+      Key:         storageKey,
       ContentType: mimeType,
     });
 
     const uploadUrl = await getSignedUrl(this.client, command, {
-      expiresIn: expiresInSeconds,
+      expiresIn:           expiresInSeconds,
+      // Do not include checksum headers in the presigned URL — R2 rejects them.
+      unhoistableHeaders:  new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
     });
 
     return {
@@ -124,7 +134,7 @@ export class StorageService {
   ): Promise<PresignedDownloadResult> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
-      Key: storageKey,
+      Key:    storageKey,
     });
 
     const downloadUrl = await getSignedUrl(this.client, command, {
