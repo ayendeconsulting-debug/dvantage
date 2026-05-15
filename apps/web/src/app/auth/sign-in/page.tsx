@@ -1,22 +1,27 @@
 'use client';
 
-import { useState }      from 'react';
-import Link              from 'next/link';
-import { useRouter }     from 'next/navigation';
-import { authClient }    from '@/lib/auth-client';
-import { AuthCard, AuthField, AuthButton, AuthError, AuthDivider, AuthLink } from '@/components/auth/auth-ui';
+import { useState }   from 'react';
+import Link           from 'next/link';
+import { useRouter }  from 'next/navigation';
+import { authClient } from '@/lib/auth-client';
+import {
+  AuthCard, AuthField, AuthButton, AuthError, AuthDivider, AuthLink,
+} from '@/components/auth/auth-ui';
 
 export default function SignInPage() {
-  const router   = useRouter();
+  const router = useRouter();
+
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'microsoft' | null>(null);
+
+  const appUrl = process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    setError(''); setLoading(true);
 
     const result = await authClient.signIn.email({
       email,
@@ -40,9 +45,20 @@ export default function SignInPage() {
     setLoading(false);
   }
 
-  const apiUrl  = process.env['NEXT_PUBLIC_API_URL']  ?? 'http://localhost:3001';
-  const appUrl  = process.env['NEXT_PUBLIC_APP_URL']  ?? 'http://localhost:3000';
-  const callbackURL = `${appUrl}/dashboard`;
+  async function handleOAuth(provider: 'google' | 'microsoft') {
+    setError('');
+    setOauthLoading(provider);
+    try {
+      await authClient.signIn.social({
+        provider,
+        callbackURL: `${appUrl}/dashboard`,
+      });
+      // better-auth redirects the browser — no further handling needed.
+    } catch (err) {
+      setError((err as Error).message ?? 'OAuth sign in failed.');
+      setOauthLoading(null);
+    }
+  }
 
   return (
     <AuthCard title="Sign in" subtitle="Welcome back.">
@@ -79,28 +95,44 @@ export default function SignInPage() {
 
       <AuthDivider />
 
-      {/* OAuth providers */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <a
-          href={`${apiUrl}/api/auth/sign-in/social?provider=google&callbackURL=${encodeURIComponent(callbackURL)}`}
-          style={styles.oauthBtn}
+        <button
+          type="button"
+          onClick={() => void handleOAuth('google')}
+          disabled={oauthLoading !== null}
+          style={{ ...styles.oauthBtn, opacity: oauthLoading !== null ? 0.6 : 1, cursor: oauthLoading !== null ? 'not-allowed' : 'pointer' }}
         >
-          <GoogleIcon />
-          Continue with Google
-        </a>
-        <a
-          href={`${apiUrl}/api/auth/sign-in/social?provider=microsoft&callbackURL=${encodeURIComponent(callbackURL)}`}
-          style={styles.oauthBtn}
+          {oauthLoading === 'google' ? <Spinner /> : <GoogleIcon />}
+          {oauthLoading === 'google' ? 'Redirecting…' : 'Continue with Google'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void handleOAuth('microsoft')}
+          disabled={oauthLoading !== null}
+          style={{ ...styles.oauthBtn, opacity: oauthLoading !== null ? 0.6 : 1, cursor: oauthLoading !== null ? 'not-allowed' : 'pointer' }}
         >
-          <MicrosoftIcon />
-          Continue with Microsoft
-        </a>
+          {oauthLoading === 'microsoft' ? <Spinner /> : <MicrosoftIcon />}
+          {oauthLoading === 'microsoft' ? 'Redirecting…' : 'Continue with Microsoft'}
+        </button>
       </div>
 
       <AuthLink>
-        No account? <Link href="/auth/sign-up" style={styles.link}>Sign up</Link>
+        No account?{' '}
+        <Link href="/auth/sign-up" style={styles.link}>Sign up</Link>
       </AuthLink>
     </AuthCard>
+  );
+}
+
+function Spinner() {
+  return (
+    <span style={{
+      display: 'inline-block', width: '16px', height: '16px',
+      border: '2px solid var(--vt-surface-border)',
+      borderTopColor: 'var(--vt-brand-400)',
+      borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+    }} />
   );
 }
 
@@ -147,7 +179,6 @@ const styles = {
     fontFamily:      'var(--vt-font-body)',
     fontSize:        'var(--vt-text-base)',
     textDecoration:  'none',
-    cursor:          'pointer',
     transition:      'border-color 120ms, background 120ms',
   },
   link: {
