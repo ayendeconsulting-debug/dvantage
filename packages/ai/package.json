@@ -1,21 +1,22 @@
 {
-  "name": "@vantage/ai",
-  "version": "0.0.1",
-  "private": true,
-  "description": "AI provider abstraction — Anthropic via @anthropic-ai/sdk",
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
-    "clean": "rimraf dist *.tsbuildinfo"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.96.0",
-    "@vantage/contracts": "workspace:*",
-    "@vantage/validation": "workspace:*"
-  },
-  "devDependencies": {
-    "rimraf": "^6.0.0",
-    "typescript": "^5.5.0"
-  },
-  "main": "./src/index.ts"
+    "name":  "@vantage/ai",
+    "version":  "0.0.1",
+    "private":  true,
+    "description":  "AI provider abstraction — Anthropic via @anthropic-ai/sdk",
+    "scripts":  {
+                    "typecheck":  "tsc --noEmit",
+                    "lint":  "eslint src/",
+                    "clean":  "rimraf dist *.tsbuildinfo",
+                    "build":  "tsc"
+                },
+    "dependencies":  {
+                         "@anthropic-ai/sdk":  "^0.96.0",
+                         "@vantage/contracts":  "workspace:*",
+                         "@vantage/validation":  "workspace:*"
+                     },
+    "devDependencies":  {
+                            "rimraf":  "^6.0.0",
+                            "typescript":  "^5.5.0"
+                        },
+    "main":  "./dist/index.js"
 }
