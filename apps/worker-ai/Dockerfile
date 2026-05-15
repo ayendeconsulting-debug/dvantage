@@ -50,6 +50,13 @@ RUN cd apps/worker-ai && npx tsc --project tsconfig.build.json
 RUN test -f apps/worker-ai/dist/main.js || \
     (echo "ERROR: apps/worker-ai/dist/main.js not found" && ls -la apps/worker-ai/dist/ && exit 1)
 
+# 4. Use pnpm deploy to create a self-contained production bundle
+#    with correct node_modules (resolves workspace symlinks)
+RUN pnpm --filter @vantage/worker-ai --prod deploy /standalone
+
+# 5. Copy the compiled dist into the standalone bundle
+RUN cp -r apps/worker-ai/dist /standalone/dist
+
 
 # -- Stage 3: runner ----------------------------------------------------------
 FROM node:20-alpine AS runner
@@ -59,17 +66,8 @@ RUN addgroup --system --gid 1001 nodejs \
 
 WORKDIR /app
 
-# Copy node_modules from the full install (includes all workspace deps)
-COPY --from=builder --chown=vantage:nodejs /repo/node_modules ./node_modules
-
-# Copy all built workspace packages (needed at runtime via require)
-COPY --from=builder --chown=vantage:nodejs /repo/packages ./packages
-
-# Copy the compiled worker dist
-COPY --from=builder --chown=vantage:nodejs /repo/apps/worker-ai/dist ./dist
-
-# Copy the worker package.json (needed by Node module resolution)
-COPY --from=builder --chown=vantage:nodejs /repo/apps/worker-ai/package.json ./package.json
+# Copy the self-contained standalone bundle (node_modules + dist + package.json)
+COPY --from=builder --chown=vantage:nodejs /standalone ./
 
 USER vantage
 
