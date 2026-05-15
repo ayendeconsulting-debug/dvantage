@@ -43,13 +43,50 @@ export class ResumeService {
   }
 
   // ---------------------------------------------------------------------------
-  // POST /v1/resumes/upload-url
+  // POST /v1/resumes/upload-url  (browser presigned flow)
   // ---------------------------------------------------------------------------
 
   async createUploadUrl(
     user: AuthUser,
     dto: UploadUrlRequestDto,
   ): Promise<UploadUrlResponseDto> {
+    const { resumeVersionId, storageKey } = await this.createVersionRow(user, dto);
+
+    const { uploadUrl, expiresAt } = await this.storage.presignUpload(
+      storageKey,
+      dto.mimeType,
+    );
+
+    this.logger.log(
+      `Upload URL issued — user=${user.id} version=${resumeVersionId} file=${dto.filename}`,
+    );
+
+    return {
+      resumeVersionId,
+      uploadUrl,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /v1/resumes/upload  (proxy upload flow — returns storageKey)
+  // ---------------------------------------------------------------------------
+
+  async createUploadUrlWithKey(
+    user: AuthUser,
+    dto: UploadUrlRequestDto,
+  ): Promise<{ resumeVersionId: string; storageKey: string }> {
+    return this.createVersionRow(user, dto);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shared: create the DB row and return IDs
+  // ---------------------------------------------------------------------------
+
+  private async createVersionRow(
+    user: AuthUser,
+    dto: UploadUrlRequestDto,
+  ): Promise<{ resumeVersionId: string; storageKey: string }> {
     // Validate MIME type
     if (!this.storage.isAllowedMimeType(dto.mimeType)) {
       throw new UnprocessableEntityException(
@@ -71,8 +108,6 @@ export class ResumeService {
       dto.filename,
     );
 
-    // Determine next version number in a single query (no distributed lock needed
-    // — collisions are prevented by the unique index on (user_id, version_number))
     const maxVersionRows = await this.db
       .select({ maxVersion: sql<number>`coalesce(max(${resumeVersions.versionNumber}), 0)` })
       .from(resumeVersions)
@@ -80,8 +115,6 @@ export class ResumeService {
 
     const versionNumber = (maxVersionRows[0]?.maxVersion ?? 0) + 1;
 
-    // Create the DB row before issuing the presign — if presign fails the row
-    // is orphaned in 'pending' state and can be cleaned up by a background job.
     await this.db.insert(resumeVersions).values({
       id:            resumeVersionId,
       userId:        user.id,
@@ -95,20 +128,7 @@ export class ResumeService {
       updatedAt:     new Date(),
     });
 
-    const { uploadUrl, expiresAt } = await this.storage.presignUpload(
-      storageKey,
-      dto.mimeType,
-    );
-
-    this.logger.log(
-      `Upload URL issued — user=${user.id} version=${resumeVersionId} file=${dto.filename}`,
-    );
-
-    return {
-      resumeVersionId,
-      uploadUrl,
-      expiresAt: expiresAt.toISOString(),
-    };
+    return { resumeVersionId, storageKey };
   }
 
   // ---------------------------------------------------------------------------
@@ -175,7 +195,6 @@ export class ResumeService {
     user: AuthUser,
     cursor?: string,
   ): Promise<ResumeVersionListResponseDto> {
-    // Cursor is the ISO timestamp of the last item's createdAt
     const cursorDate = cursor ? new Date(cursor) : undefined;
 
     const rows = await this.db
@@ -200,7 +219,7 @@ export class ResumeService {
         ),
       )
       .orderBy(desc(resumeVersions.createdAt))
-      .limit(PAGE_SIZE + 1); // fetch one extra to determine if there's a next page
+      .limit(PAGE_SIZE + 1);
 
     const hasNextPage = rows.length > PAGE_SIZE;
     const data = rows.slice(0, PAGE_SIZE);
@@ -280,14 +299,11 @@ export class ResumeService {
   ): Promise<DeleteResumeResponseDto> {
     const version = await this.findOwnedVersion(user.id, resumeVersionId);
 
-    // Soft-delete the DB row first — if storage delete fails, the row is still
-    // logically deleted and the storage object will be orphaned (acceptable).
     await this.db
       .update(resumeVersions)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(eq(resumeVersions.id, resumeVersionId));
 
-    // Best-effort storage delete — log but don't throw on failure
     try {
       await this.storage.deleteObject(version.storageKey);
     } catch (err) {
@@ -302,17 +318,9 @@ export class ResumeService {
   }
 
   // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-    // ---------------------------------------------------------------------------
   // GET /v1/resumes/:id/export/pdf  |  GET /v1/resumes/:id/export/docx
   // ---------------------------------------------------------------------------
 
-  /**
-   * Fetch a resume version for export.
-   * Throws 422 if parsing has not completed or extracted data is absent.
-   * Called by the controller before delegating to ResumePdfService / ResumeDocxService.
-   */
   async getVersionForExport(
     user: AuthUser,
     resumeVersionId: string,
@@ -330,6 +338,10 @@ export class ResumeService {
       fileName: version.fileName,
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
 
   private async findOwnedVersion(userId: string, resumeVersionId: string) {
     const [version] = await this.db
@@ -349,7 +361,6 @@ export class ResumeService {
       );
     }
 
-    // Ownership check — prevents cross-user access
     if (version.userId !== userId) {
       throw new ForbiddenException(
         'You do not have access to this resume version.',

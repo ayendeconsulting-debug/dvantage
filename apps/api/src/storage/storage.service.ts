@@ -101,6 +101,25 @@ export class StorageService {
   }
 
   // ---------------------------------------------------------------------------
+  // Direct server-side upload (used by proxy upload endpoint)
+  // Bypasses presigned URLs entirely — sends directly from API server to R2.
+  // ---------------------------------------------------------------------------
+
+  async putObject(
+    storageKey: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const command = new PutObjectCommand({
+      Bucket:      this.bucket,
+      Key:         storageKey,
+      Body:        body,
+      ContentType: contentType,
+    });
+    await this.client.send(command);
+  }
+
+  // ---------------------------------------------------------------------------
   // Presigned URLs
   // ---------------------------------------------------------------------------
 

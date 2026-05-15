@@ -46,9 +46,9 @@ export class ResumeController {
   // ---------------------------------------------------------------------------
   // POST /v1/resumes/upload  — proxy upload (browser → API → R2)
   //
-  // Replaces the two-step presign + confirm flow for browser clients.
   // Accepts multipart/form-data with a single "file" field.
-  // Avoids the CORS restriction on direct browser→R2 presigned PUT URLs.
+  // Uses PutObjectCommand directly — avoids presigned URL signature mismatch
+  // when uploading server-side vs the browser-targeted presigned URL.
   // ---------------------------------------------------------------------------
 
   @Post('upload')
@@ -70,15 +70,13 @@ export class ResumeController {
 
     // Validate mime type before buffering to fail fast
     if (!this.storageService.isAllowedMimeType(mimetype)) {
-      // Drain the stream to avoid memory leaks
-      fileStream.resume();
+      fileStream.resume(); // drain stream to avoid memory leak
       throw new BadRequestException(
         `Unsupported file type: ${mimetype}. Allowed: PDF, DOCX, TXT.`,
       );
     }
 
-    // Buffer the file by collecting stream chunks
-    // Note: @fastify/multipart@8.x requires stream consumption via async iteration
+    // Buffer the file via async stream iteration (@fastify/multipart@8.x)
     const chunks: Buffer[] = [];
     for await (const chunk of fileStream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
@@ -93,26 +91,17 @@ export class ResumeController {
       );
     }
 
-    // Create resume version row + get presigned upload URL
+    // Create a pending resume version row and get the storage key
     const dto = {
       filename,
       mimeType: mimetype as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'text/plain',
       sizeBytes,
     };
-    const { resumeVersionId, uploadUrl } = await this.resumeService.createUploadUrl(user, dto);
+    const { resumeVersionId, storageKey } = await this.resumeService.createUploadUrlWithKey(user, dto);
 
-    // Upload directly to R2 from the API server (no CORS issues)
-    const uploadResponse = await fetch(uploadUrl, {
-      method:  'PUT',
-      headers: { 'Content-Type': mimetype },
-      body:    buffer,
-    });
-
-    if (!uploadResponse.ok) {
-      throw new BadRequestException(
-        `Storage upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`,
-      );
-    }
+    // Upload directly to R2 via PutObjectCommand — no presigned URL needed,
+    // no CORS issues, no signature mismatch from header differences.
+    await this.storageService.putObject(storageKey, buffer, mimetype);
 
     // Confirm upload and enqueue parse job
     return this.resumeService.confirmUpload(user, resumeVersionId);
