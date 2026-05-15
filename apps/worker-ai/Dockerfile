@@ -1,12 +1,6 @@
 # =============================================================================
 # D'Vantage — AI Worker Dockerfile
 # apps/worker-ai/Dockerfile
-#
-# Identical multi-stage pattern to the API Dockerfile.
-# Key differences:
-#   - filter targets @vantage/worker-ai
-#   - no EXPOSE / no HEALTHCHECK (worker has no HTTP server)
-#   - min_machines_running = 0 on Fly (scales to zero between jobs)
 # =============================================================================
 
 # -- Stage 0: base ------------------------------------------------------------
@@ -45,30 +39,19 @@ WORKDIR /repo
 
 COPY . .
 
-# Build all workspace package dependencies first, then the worker using
-# tsconfig.build.json (paths → dist/*.d.ts) so rootDir stays as "src"
-# and output lands at apps/worker-ai/dist/main.js — not a nested path.
+# 1. Build all workspace package dependencies first
 RUN pnpm turbo run build --filter=@vantage/worker-ai... --no-daemon
 
-# Override the worker build to use tsconfig.build.json
+# 2. Build the worker using tsconfig.build.json so rootDir="src"
+#    and output lands at apps/worker-ai/dist/main.js
 RUN cd apps/worker-ai && npx tsc --project tsconfig.build.json
 
-# Verify the entry point exists before proceeding
+# 3. Verify the entry point exists
 RUN test -f apps/worker-ai/dist/main.js || \
-    (echo "ERROR: apps/worker-ai/dist/main.js not found" && exit 1)
+    (echo "ERROR: apps/worker-ai/dist/main.js not found" && ls -la apps/worker-ai/dist/ && exit 1)
 
 
-# -- Stage 3: deploy ----------------------------------------------------------
-FROM base AS deploy
-WORKDIR /repo
-
-COPY --from=builder /repo ./
-
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm --filter @vantage/worker-ai --prod deploy /standalone
-
-
-# -- Stage 4: runner ----------------------------------------------------------
+# -- Stage 3: runner ----------------------------------------------------------
 FROM node:20-alpine AS runner
 
 RUN addgroup --system --gid 1001 nodejs \
@@ -76,13 +59,20 @@ RUN addgroup --system --gid 1001 nodejs \
 
 WORKDIR /app
 
-COPY --from=deploy --chown=vantage:nodejs /standalone ./
+# Copy node_modules from the full install (includes all workspace deps)
+COPY --from=builder --chown=vantage:nodejs /repo/node_modules ./node_modules
+
+# Copy all built workspace packages (needed at runtime via require)
+COPY --from=builder --chown=vantage:nodejs /repo/packages ./packages
+
+# Copy the compiled worker dist
+COPY --from=builder --chown=vantage:nodejs /repo/apps/worker-ai/dist ./dist
+
+# Copy the worker package.json (needed by Node module resolution)
+COPY --from=builder --chown=vantage:nodejs /repo/apps/worker-ai/package.json ./package.json
 
 USER vantage
 
 ENV NODE_ENV=production
-
-# Worker has no HTTP server — no EXPOSE, no HEALTHCHECK
-# Fly monitors the process directly (exit code signals failure)
 
 CMD ["node", "dist/main.js"]
