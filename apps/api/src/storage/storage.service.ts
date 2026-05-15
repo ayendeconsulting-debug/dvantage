@@ -18,18 +18,13 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 // ---------------------------------------------------------------------------
 
 export interface PresignedUploadResult {
-  /** Presigned PUT URL. The browser sends the file body directly to this URL. */
   uploadUrl: string;
-  /** Object key used when generating the URL. */
   storageKey: string;
-  /** UTC timestamp after which the presigned URL is no longer valid. */
   expiresAt: Date;
 }
 
 export interface PresignedDownloadResult {
-  /** Presigned GET URL for authenticated file access. */
   downloadUrl: string;
-  /** UTC timestamp after which the presigned URL is no longer valid. */
   expiresAt: Date;
 }
 
@@ -37,14 +32,11 @@ export interface PresignedDownloadResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Presigned upload URL TTL — 15 minutes. */
-const UPLOAD_TTL_SECONDS = 15 * 60;
-
-/** Presigned download URL TTL — 1 hour. */
+const UPLOAD_TTL_SECONDS   = 15 * 60;
 const DOWNLOAD_TTL_SECONDS = 60 * 60;
 
 // ---------------------------------------------------------------------------
-// Env helper — fail fast with a clear message at startup
+// Env helper
 // ---------------------------------------------------------------------------
 
 function requireEnv(key: string): string {
@@ -63,11 +55,6 @@ export class StorageService {
   private readonly client: S3Client;
   private readonly bucket: string;
 
-  /**
-   * Maximum allowed resume file size in bytes.
-   * Sourced from @vantage/validation — single source of truth shared with
-   * the frontend form validation and ParsingService.
-   */
   readonly maxFileSizeBytes: number = RESUME_MAX_SIZE_BYTES;
 
   constructor() {
@@ -84,12 +71,7 @@ export class StorageService {
       region,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle,
-      // ---------------------------------------------------------------------------
-      // IMPORTANT: Disable automatic checksum calculation.
-      // AWS SDK v3 adds CRC32 checksum headers by default (x-amz-checksum-*,
-      // x-amz-sdk-checksum-algorithm) which Cloudflare R2 does not support and
-      // rejects with 403 Forbidden on presigned PUT uploads.
-      // ---------------------------------------------------------------------------
+      // Disable automatic checksum — R2 rejects the extra headers
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
     });
@@ -101,8 +83,7 @@ export class StorageService {
   }
 
   // ---------------------------------------------------------------------------
-  // Direct server-side upload (used by proxy upload endpoint)
-  // Bypasses presigned URLs entirely — sends directly from API server to R2.
+  // Direct server-side upload via native fetch (bypasses SDK checksum middleware)
   // ---------------------------------------------------------------------------
 
   async putObject(
@@ -110,13 +91,36 @@ export class StorageService {
     body: Buffer,
     contentType: string,
   ): Promise<void> {
+    // Generate a presigned URL for server-side use.
+    // We sign it server-side so there's no CORS issue, and we use fetch()
+    // with exactly the headers included in the signature (Content-Type only).
     const command = new PutObjectCommand({
       Bucket:      this.bucket,
       Key:         storageKey,
-      Body:        body,
       ContentType: contentType,
     });
-    await this.client.send(command);
+
+    const presignedUrl = await getSignedUrl(this.client, command, {
+      expiresIn:          300, // 5 minutes — plenty for a same-process upload
+      unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
+    });
+
+    // Use native fetch — no SDK checksum middleware, no extra headers
+    const res = await fetch(presignedUrl, {
+      method:  'PUT',
+      headers: {
+        'Content-Type':   contentType,
+        'Content-Length': String(body.length),
+      },
+      body,
+      // @ts-expect-error — Node 18+ fetch supports duplex for streaming
+      duplex: 'half',
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`R2 putObject failed: ${res.status} ${res.statusText} — ${text}`);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -135,9 +139,8 @@ export class StorageService {
     });
 
     const uploadUrl = await getSignedUrl(this.client, command, {
-      expiresIn:           expiresInSeconds,
-      // Do not include checksum headers in the presigned URL — R2 rejects them.
-      unhoistableHeaders:  new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
+      expiresIn:          expiresInSeconds,
+      unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
     });
 
     return {
@@ -198,23 +201,14 @@ export class StorageService {
   // Key utilities
   // ---------------------------------------------------------------------------
 
-  buildResumeKey(
-    userId: string,
-    resumeVersionId: string,
-    fileName: string,
-  ): string {
+  buildResumeKey(userId: string, resumeVersionId: string, fileName: string): string {
     const sanitised = fileName
       .trim()
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .replace(/_{2,}/g, '_');
-
     return `resumes/${userId}/${resumeVersionId}/${sanitised}`;
   }
 
-  /**
-   * Return true if the MIME type is allowed.
-   * Delegates to the shared @vantage/validation allow-list.
-   */
   isAllowedMimeType(mimeType: string): boolean {
     return (ALLOWED_RESUME_MIME_TYPES as readonly string[]).includes(mimeType);
   }
