@@ -29,7 +29,6 @@ import { AuthGuard }   from './guards/auth.guard';
 @Module({
   imports: [DatabaseModule, RedisModule, KmsModule, NotificationModule],
   providers: [
-    // -- better-auth instance (async factory — createAuth loads ESM via import()) --
     {
       provide:    AUTH_INSTANCE,
       inject:     [DATABASE_CLIENT, REDIS_CLIENT, KmsService, NotificationService],
@@ -78,19 +77,12 @@ export class AuthModule implements OnModuleInit {
     const fastify = this.httpAdapterHost.httpAdapter
       .getInstance<FastifyInstance>();
 
-    // ---------------------------------------------------------------------------
-    // IMPORTANT: Fly.io terminates TLS at the edge and forwards requests
-    // internally as plain HTTP. This means request.protocol is always 'http'
-    // regardless of the external scheme. We must use the API_URL env var
-    // (which is the public-facing URL) as the base to reconstruct the correct
-    // URL — otherwise better-auth's baseURL ('https://...') won't match the
-    // reconstructed request URL ('http://...') and OAuth state lookups fail.
-    // ---------------------------------------------------------------------------
+    // Fly.io terminates TLS at the edge and forwards requests internally as
+    // plain HTTP. request.protocol is always 'http' — we must use API_URL to
+    // reconstruct the correct https:// URL so better-auth's baseURL matches.
     const apiBase = process.env['API_URL'] ?? 'http://localhost:3001';
 
     fastify.all('/api/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
-      // Reconstruct the full URL using the public API base — not request.protocol
-      // which is always 'http' behind Fly.io's TLS-terminating proxy.
       const url = new URL(request.url, apiBase).toString();
 
       const reqHeaders = new Headers();
@@ -99,8 +91,8 @@ export class AuthModule implements OnModuleInit {
         else if (Array.isArray(value))  value.forEach((v) => reqHeaders.append(key, v));
       }
 
-      const hasBody    = !['GET', 'HEAD'].includes(request.method.toUpperCase());
-      const body       = hasBody && request.body != null
+      const hasBody = !['GET', 'HEAD'].includes(request.method.toUpperCase());
+      const body    = hasBody && request.body != null
         ? JSON.stringify(request.body)
         : undefined;
 
@@ -122,8 +114,24 @@ export class AuthModule implements OnModuleInit {
       }
 
       reply.status(response.status);
+
+      // Forward all headers EXCEPT Set-Cookie.
+      // Headers.entries() collapses multiple Set-Cookie values into one
+      // comma-separated string — invalid per RFC 6265, causes ERR_INVALID_RESPONSE
+      // in the browser when better-auth sets multiple cookies on OAuth redirect.
       for (const [key, value] of response.headers.entries()) {
+        if (key.toLowerCase() === 'set-cookie') continue;
         void reply.header(key, value);
+      }
+
+      // Forward each Set-Cookie value as a separate header (Node 18+ API).
+      type HeadersPlus = Headers & { getSetCookie?: () => string[] };
+      const setCookieFn = (response.headers as HeadersPlus).getSetCookie;
+      const cookies: string[] = typeof setCookieFn === 'function'
+        ? setCookieFn.call(response.headers)
+        : [];
+      for (const cookie of cookies) {
+        void reply.header('set-cookie', cookie);
       }
 
       return reply.send(Buffer.from(await response.arrayBuffer()));
