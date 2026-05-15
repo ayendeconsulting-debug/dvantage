@@ -1,23 +1,21 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import { AuthCard, AuthButton, AuthError, AuthSuccess } from '@/components/auth/auth-ui';
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
   const params = useSearchParams();
   const email = params.get('email') ?? '';
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
   async function resend() {
     setError(''); setLoading(true);
     const result = await authClient.sendVerificationEmail({ email, callbackURL: '/dashboard' });
     if (result.error) { setError(result.error.message ?? 'Could not resend.'); } else { setSent(true); }
     setLoading(false);
   }
-
   return (
     <AuthCard title="Check your email" subtitle={email ? 'We sent a link to ' + email + '.' : 'We sent you a verification link.'}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -32,5 +30,13 @@ export default function VerifyEmailPage() {
         </p>
       </div>
     </AuthCard>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<AuthCard title="Loading..." subtitle=""><span /></AuthCard>}>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }
