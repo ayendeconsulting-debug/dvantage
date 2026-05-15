@@ -113,7 +113,6 @@ export class StorageService {
         'Content-Length': String(body.length),
       },
       body,
-      // @ts-expect-error — Node 18+ fetch supports duplex for streaming
       duplex: 'half',
     });
 
@@ -213,3 +212,5 @@ export class StorageService {
     return (ALLOWED_RESUME_MIME_TYPES as readonly string[]).includes(mimeType);
   }
 }
+
+
