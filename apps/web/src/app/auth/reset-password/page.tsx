@@ -46,7 +46,7 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<AuthCard title="Loading..." subtitle="" />}>
+    <Suspense fallback={<AuthCard title="Loading..." subtitle=""><span /></AuthCard>}>
       <ResetPasswordContent />
     </Suspense>
   );
