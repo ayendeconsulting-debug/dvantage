@@ -22,15 +22,13 @@ import { ResumePdfService } from './export/resume-pdf.service';
 import { ResumeDocxService } from './export/resume-docx.service';
 import { StorageService } from '../storage/storage.service';
 import { uploadUrlRequestSchema } from './dto/upload-url-request.dto';
-import { uuidv7 } from 'uuidv7';
 
-// Extend FastifyRequest to include multipart method
+// Extend FastifyRequest to include multipart method added by @fastify/multipart
 type MultipartRequest = FastifyRequest & {
   file: () => Promise<{
     filename: string;
     mimetype: string;
-    file:     NodeJS.ReadableStream & { bytesRead: number };
-    toBuffer: () => Promise<Buffer>;
+    file: NodeJS.ReadableStream;
   } | undefined>;
 };
 
@@ -68,17 +66,24 @@ export class ResumeController {
       throw new BadRequestException('No file found in request. Use field name "file".');
     }
 
-    const { filename, mimetype, toBuffer } = part;
+    const { filename, mimetype, file: fileStream } = part;
 
-    // Validate mime type
+    // Validate mime type before buffering to fail fast
     if (!this.storageService.isAllowedMimeType(mimetype)) {
+      // Drain the stream to avoid memory leaks
+      fileStream.resume();
       throw new BadRequestException(
         `Unsupported file type: ${mimetype}. Allowed: PDF, DOCX, TXT.`,
       );
     }
 
-    // Buffer the file
-    const buffer = await toBuffer();
+    // Buffer the file by collecting stream chunks
+    // Note: @fastify/multipart@8.x requires stream consumption via async iteration
+    const chunks: Buffer[] = [];
+    for await (const chunk of fileStream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+    }
+    const buffer = Buffer.concat(chunks);
     const sizeBytes = buffer.length;
 
     // Validate file size
@@ -88,8 +93,12 @@ export class ResumeController {
       );
     }
 
-    // Create resume version row + get storage key via service
-    const dto = { filename, mimeType: mimetype as "application/pdf" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "text/plain", sizeBytes };
+    // Create resume version row + get presigned upload URL
+    const dto = {
+      filename,
+      mimeType: mimetype as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'text/plain',
+      sizeBytes,
+    };
     const { resumeVersionId, uploadUrl } = await this.resumeService.createUploadUrl(user, dto);
 
     // Upload directly to R2 from the API server (no CORS issues)
