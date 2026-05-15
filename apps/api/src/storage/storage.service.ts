@@ -13,10 +13,6 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-// ---------------------------------------------------------------------------
-// Public interfaces
-// ---------------------------------------------------------------------------
-
 export interface PresignedUploadResult {
   uploadUrl: string;
   storageKey: string;
@@ -28,26 +24,14 @@ export interface PresignedDownloadResult {
   expiresAt: Date;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const UPLOAD_TTL_SECONDS   = 15 * 60;
 const DOWNLOAD_TTL_SECONDS = 60 * 60;
-
-// ---------------------------------------------------------------------------
-// Env helper
-// ---------------------------------------------------------------------------
 
 function requireEnv(key: string): string {
   const value = process.env[key];
   if (!value) throw new Error(`StorageService: environment variable "${key}" is not set`);
   return value;
 }
-
-// ---------------------------------------------------------------------------
-// Service
-// ---------------------------------------------------------------------------
 
 @Injectable()
 export class StorageService {
@@ -71,59 +55,40 @@ export class StorageService {
       region,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle,
-      // Disable automatic checksum — R2 rejects the extra headers
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
     });
 
     this.logger.log(
-      `StorageService initialised — bucket=${this.bucket} ` +
-        `endpoint=${endpoint} forcePathStyle=${forcePathStyle}`,
+      `StorageService initialised — bucket=${this.bucket} endpoint=${endpoint} forcePathStyle=${forcePathStyle}`,
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Direct server-side upload via native fetch (bypasses SDK checksum middleware)
+  // Direct server-side upload (proxy upload — no CORS, no presigned URL)
+  //
+  // ContentLength MUST be set explicitly. Without it the SDK may use chunked
+  // transfer encoding which changes the signing payload → SignatureDoesNotMatch.
+  //
+  // ChecksumAlgorithm is intentionally NOT set. The global client config of
+  // requestChecksumCalculation:'WHEN_REQUIRED' should suppress x-amz-checksum-*
+  // headers. Cloudflare R2 rejects any request that includes these headers.
   // ---------------------------------------------------------------------------
 
-  async putObject(
-    storageKey: string,
-    body: Buffer,
-    contentType: string,
-  ): Promise<void> {
-    // Generate a presigned URL for server-side use.
-    // We sign it server-side so there's no CORS issue, and we use fetch()
-    // with exactly the headers included in the signature (Content-Type only).
-    const command = new PutObjectCommand({
-      Bucket:      this.bucket,
-      Key:         storageKey,
-      ContentType: contentType,
-    });
-
-    const presignedUrl = await getSignedUrl(this.client, command, {
-      expiresIn:          300, // 5 minutes — plenty for a same-process upload
-      unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
-    });
-
-    // Use native fetch — no SDK checksum middleware, no extra headers
-    const res = await fetch(presignedUrl, {
-      method:  'PUT',
-      headers: {
-        'Content-Type':   contentType,
-        'Content-Length': String(body.length),
-      },
-      body,
-      duplex: 'half',
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`R2 putObject failed: ${res.status} ${res.statusText} — ${text}`);
-    }
+  async putObject(storageKey: string, body: Buffer, contentType: string): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket:        this.bucket,
+        Key:           storageKey,
+        Body:          body,
+        ContentType:   contentType,
+        ContentLength: body.length,
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------
-  // Presigned URLs
+  // Presigned upload URL (legacy browser-direct path)
   // ---------------------------------------------------------------------------
 
   async presignUpload(
@@ -142,30 +107,20 @@ export class StorageService {
       unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
     });
 
-    return {
-      uploadUrl,
-      storageKey,
-      expiresAt: new Date(Date.now() + expiresInSeconds * 1_000),
-    };
+    return { uploadUrl, storageKey, expiresAt: new Date(Date.now() + expiresInSeconds * 1_000) };
   }
+
+  // ---------------------------------------------------------------------------
+  // Presigned download URL
+  // ---------------------------------------------------------------------------
 
   async presignDownload(
     storageKey: string,
     expiresInSeconds = DOWNLOAD_TTL_SECONDS,
   ): Promise<PresignedDownloadResult> {
-    const command = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key:    storageKey,
-    });
-
-    const downloadUrl = await getSignedUrl(this.client, command, {
-      expiresIn: expiresInSeconds,
-    });
-
-    return {
-      downloadUrl,
-      expiresAt: new Date(Date.now() + expiresInSeconds * 1_000),
-    };
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
+    const downloadUrl = await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    return { downloadUrl, expiresAt: new Date(Date.now() + expiresInSeconds * 1_000) };
   }
 
   // ---------------------------------------------------------------------------
@@ -173,25 +128,16 @@ export class StorageService {
   // ---------------------------------------------------------------------------
 
   async deleteObject(storageKey: string): Promise<void> {
-    await this.client.send(
-      new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }),
-    );
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }));
     this.logger.log(`Deleted storage object: ${storageKey}`);
   }
 
   async objectExists(storageKey: string): Promise<boolean> {
     try {
-      await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: storageKey }),
-      );
+      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: storageKey }));
       return true;
     } catch (err) {
-      if (
-        err instanceof S3ServiceException &&
-        err.$metadata.httpStatusCode === 404
-      ) {
-        return false;
-      }
+      if (err instanceof S3ServiceException && err.$metadata.httpStatusCode === 404) return false;
       throw err;
     }
   }
@@ -201,10 +147,7 @@ export class StorageService {
   // ---------------------------------------------------------------------------
 
   buildResumeKey(userId: string, resumeVersionId: string, fileName: string): string {
-    const sanitised = fileName
-      .trim()
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .replace(/_{2,}/g, '_');
+    const sanitised = fileName.trim().replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_{2,}/g, '_');
     return `resumes/${userId}/${resumeVersionId}/${sanitised}`;
   }
 
@@ -212,5 +155,3 @@ export class StorageService {
     return (ALLOWED_RESUME_MIME_TYPES as readonly string[]).includes(mimeType);
   }
 }
-
-
