@@ -89,7 +89,7 @@ export class ResumeController {
     }
 
     // Create resume version row + get storage key via service
-    const dto = { filename, mimeType: mimetype, sizeBytes };
+    const dto = { filename, mimeType: mimetype as "application/pdf" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document" | "text/plain", sizeBytes };
     const { resumeVersionId, uploadUrl } = await this.resumeService.createUploadUrl(user, dto);
 
     // Upload directly to R2 from the API server (no CORS issues)
