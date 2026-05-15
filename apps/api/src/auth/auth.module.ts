@@ -78,10 +78,20 @@ export class AuthModule implements OnModuleInit {
     const fastify = this.httpAdapterHost.httpAdapter
       .getInstance<FastifyInstance>();
 
+    // ---------------------------------------------------------------------------
+    // IMPORTANT: Fly.io terminates TLS at the edge and forwards requests
+    // internally as plain HTTP. This means request.protocol is always 'http'
+    // regardless of the external scheme. We must use the API_URL env var
+    // (which is the public-facing URL) as the base to reconstruct the correct
+    // URL — otherwise better-auth's baseURL ('https://...') won't match the
+    // reconstructed request URL ('http://...') and OAuth state lookups fail.
+    // ---------------------------------------------------------------------------
+    const apiBase = process.env['API_URL'] ?? 'http://localhost:3001';
+
     fastify.all('/api/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
-      const protocol   = request.protocol ?? 'http';
-      const host       = request.hostname  ?? 'localhost';
-      const url        = `${protocol}://${host}${request.url}`;
+      // Reconstruct the full URL using the public API base — not request.protocol
+      // which is always 'http' behind Fly.io's TLS-terminating proxy.
+      const url = new URL(request.url, apiBase).toString();
 
       const reqHeaders = new Headers();
       for (const [key, value] of Object.entries(request.headers)) {
