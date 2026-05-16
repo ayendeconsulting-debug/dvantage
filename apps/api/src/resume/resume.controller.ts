@@ -45,10 +45,6 @@ export class ResumeController {
 
   // ---------------------------------------------------------------------------
   // POST /v1/resumes/upload  — proxy upload (browser → API → R2)
-  //
-  // Accepts multipart/form-data with a single "file" field.
-  // Uses PutObjectCommand directly — avoids presigned URL signature mismatch
-  // when uploading server-side vs the browser-targeted presigned URL.
   // ---------------------------------------------------------------------------
 
   @Post('upload')
@@ -60,7 +56,6 @@ export class ResumeController {
   ) {
     this.requireIdempotencyKey(idempotencyKey);
 
-    // Parse the multipart file
     const part = await req.file();
     if (!part) {
       throw new BadRequestException('No file found in request. Use field name "file".');
@@ -68,15 +63,13 @@ export class ResumeController {
 
     const { filename, mimetype, file: fileStream } = part;
 
-    // Validate mime type before buffering to fail fast
     if (!this.storageService.isAllowedMimeType(mimetype)) {
-      fileStream.resume(); // drain stream to avoid memory leak
+      fileStream.resume();
       throw new BadRequestException(
         `Unsupported file type: ${mimetype}. Allowed: PDF, DOCX, TXT.`,
       );
     }
 
-    // Buffer the file via async stream iteration (@fastify/multipart@8.x)
     const chunks: Buffer[] = [];
     for await (const chunk of fileStream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
@@ -84,14 +77,12 @@ export class ResumeController {
     const buffer = Buffer.concat(chunks);
     const sizeBytes = buffer.length;
 
-    // Validate file size
     if (sizeBytes > this.storageService.maxFileSizeBytes) {
       throw new BadRequestException(
         `File too large: ${(sizeBytes / 1024 / 1024).toFixed(1)} MB. Maximum: 10 MB.`,
       );
     }
 
-    // Create a pending resume version row and get the storage key
     const dto = {
       filename,
       mimeType: mimetype as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'text/plain',
@@ -99,11 +90,8 @@ export class ResumeController {
     };
     const { resumeVersionId, storageKey } = await this.resumeService.createUploadUrlWithKey(user, dto);
 
-    // Upload directly to R2 via PutObjectCommand — no presigned URL needed,
-    // no CORS issues, no signature mismatch from header differences.
     await this.storageService.putObject(storageKey, buffer, mimetype);
 
-    // Confirm upload and enqueue parse job
     return this.resumeService.confirmUpload(user, resumeVersionId);
   }
 
@@ -160,6 +148,23 @@ export class ResumeController {
     @Param('id') id: string,
   ) {
     return this.resumeService.getVersion(user, id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /v1/resumes/:id/optimizations
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns all completed optimizations that used this resume version,
+   * ordered most-recent first. Each item includes enough context
+   * (job title, company, date) to label a dropdown option in the UI.
+   */
+  @Get(':id/optimizations')
+  async listOptimizations(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.resumeService.listOptimizationsForVersion(user, id);
   }
 
   // ---------------------------------------------------------------------------

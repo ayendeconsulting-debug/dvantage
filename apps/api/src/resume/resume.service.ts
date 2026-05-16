@@ -11,7 +11,12 @@ import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 
 import { QUEUE_NAMES, createQueueConnection } from '@vantage/queue';
-import { resumeVersions, type DatabaseClient } from '@vantage/database';
+import {
+  atsScores,
+  jobDescriptions,
+  resumeVersions,
+  type DatabaseClient,
+} from '@vantage/database';
 import type { AuthUser } from '../auth/auth.service';
 import { DATABASE_CLIENT } from '../database/database.module';
 import { StorageService } from '../storage/storage.service';
@@ -24,6 +29,7 @@ import type {
   ConfirmUploadResponseDto,
   DeleteResumeResponseDto,
 } from './dto/resume-version-response.dto';
+import type { ResumeOptimizationListDto } from './dto/resume-optimization-response.dto';
 
 const PAGE_SIZE = 20;
 
@@ -87,14 +93,12 @@ export class ResumeService {
     user: AuthUser,
     dto: UploadUrlRequestDto,
   ): Promise<{ resumeVersionId: string; storageKey: string }> {
-    // Validate MIME type
     if (!this.storage.isAllowedMimeType(dto.mimeType)) {
       throw new UnprocessableEntityException(
         `Unsupported file type "${dto.mimeType}".`,
       );
     }
 
-    // Validate file size
     if (dto.sizeBytes > this.storage.maxFileSizeBytes) {
       throw new UnprocessableEntityException(
         `File size ${dto.sizeBytes} bytes exceeds the maximum of ${this.storage.maxFileSizeBytes} bytes.`,
@@ -147,7 +151,6 @@ export class ResumeService {
       );
     }
 
-    // Verify the file actually landed in storage before enqueuing
     const exists = await this.storage.objectExists(version.storageKey);
     if (!exists) {
       throw new UnprocessableEntityException(
@@ -155,13 +158,11 @@ export class ResumeService {
       );
     }
 
-    // Mark uploaded
     await this.db
       .update(resumeVersions)
       .set({ parseStatus: 'uploaded', updatedAt: new Date() })
       .where(eq(resumeVersions.id, resumeVersionId));
 
-    // Enqueue parse job — worker-ai picks it up immediately
     await this.queue.add(
       'parse',
       {
@@ -171,8 +172,8 @@ export class ResumeService {
         fileName:   version.fileName,
       },
       {
-        attempts:    3,
-        backoff:     { type: 'exponential', delay: 5_000 },
+        attempts:         3,
+        backoff:          { type: 'exponential', delay: 5_000 },
         removeOnComplete: 100,
         removeOnFail:     100,
       },
@@ -336,6 +337,58 @@ export class ResumeService {
     return {
       structuredData: version.structuredData as import('@vantage/validation').ResumeData,
       fileName: version.fileName,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /v1/resumes/:id/optimizations
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns every completed optimization that used this resume version,
+   * ordered most-recent first.
+   *
+   * Only jobs owned by the requesting user are included — the JOIN on
+   * jobDescriptions.userId enforces this without a separate ownership check.
+   * The findOwnedVersion call at the top still verifies the resume itself
+   * belongs to the user.
+   */
+  async listOptimizationsForVersion(
+    user: AuthUser,
+    resumeVersionId: string,
+  ): Promise<ResumeOptimizationListDto> {
+    await this.findOwnedVersion(user.id, resumeVersionId);
+
+    const rows = await this.db
+      .select({
+        atsScoreId:  atsScores.id,
+        jobId:       jobDescriptions.id,
+        jobTitle:    jobDescriptions.title,
+        jobCompany:  jobDescriptions.company,
+        optimizedAt: atsScores.updatedAt,
+      })
+      .from(atsScores)
+      .innerJoin(
+        jobDescriptions,
+        eq(atsScores.jobDescriptionId, jobDescriptions.id),
+      )
+      .where(
+        and(
+          eq(atsScores.resumeVersionId, resumeVersionId),
+          eq(atsScores.optimizationStatus, 'complete'),
+          eq(jobDescriptions.userId, user.id),
+        ),
+      )
+      .orderBy(desc(atsScores.updatedAt));
+
+    return {
+      data: rows.map(r => ({
+        atsScoreId:  r.atsScoreId,
+        jobId:       r.jobId,
+        jobTitle:    r.jobTitle,
+        jobCompany:  r.jobCompany,
+        optimizedAt: r.optimizedAt.toISOString(),
+      })),
     };
   }
 

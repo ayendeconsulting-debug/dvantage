@@ -17,18 +17,18 @@ import {
   Wrench,
   Award,
 } from 'lucide-react';
-import { getResume } from '@/lib/api/resume';
-import type { ResumeVersionDetail } from '@/lib/api/resume';
+import { getResume, listOptimizationsForResume } from '@/lib/api/resume';
+import type { ResumeVersionDetail, ResumeOptimizationItem } from '@/lib/api/resume';
 
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? '';
 const POLL_MS  = 3000;
 const TERMINAL = ['complete', 'failed'] as const;
 
 // ---------------------------------------------------------------------------
-// Export download helper
+// Export helpers
 // ---------------------------------------------------------------------------
 
-async function triggerExportDownload(
+async function triggerOriginalExport(
   resumeId: string,
   format: 'pdf' | 'docx',
   baseFileName: string,
@@ -49,6 +49,44 @@ async function triggerExportDownload(
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+async function triggerOptimizedExport(
+  jobId: string,
+  scoreId: string,
+  format: 'pdf' | 'docx',
+  contactName: string,
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/v1/jobs/${jobId}/scores/${scoreId}/optimize/export/${format}`,
+    { credentials: 'include' },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { detail?: string };
+    throw new Error(body.detail ?? `Export failed (HTTP ${res.status})`);
+  }
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${contactName.replace(/\s+/g, '-')}-optimized.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function optimizationLabel(opt: ResumeOptimizationItem): string {
+  const title   = opt.jobTitle   ?? 'Untitled role';
+  const company = opt.jobCompany ?? 'Unknown company';
+  const date    = new Date(opt.optimizedAt).toLocaleDateString('en-CA', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
+  return `${title} at ${company} \u2014 ${date}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +112,7 @@ function Section({ icon: Icon, label, children }: SectionProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Skills category background colours
+// Skill category background colours
 // ---------------------------------------------------------------------------
 
 const SKILL_BG: Record<string, string> = {
@@ -91,12 +129,14 @@ const SKILL_BG: Record<string, string> = {
 export default function ResumeDetailPage() {
   const { id } = useParams<{ id: string }>();
 
-  const [data,         setData]         = useState<ResumeVersionDetail | null>(null);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState<string | null>(null);
+  const [data,          setData]          = useState<ResumeVersionDetail | null>(null);
+  const [optimizations, setOptimizations] = useState<ResumeOptimizationItem[]>([]);
+  const [selectedExport, setSelectedExport] = useState<string>('original');
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState<string | null>(null);
   const [exportingPdf,  setExportingPdf]  = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
-  const [exportError,  setExportError]  = useState<string | null>(null);
+  const [exportError,   setExportError]   = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -107,10 +147,20 @@ export default function ResumeDetailPage() {
   const fetchData = useCallback(async () => {
     try {
       const res = await getResume(id);
-      setData(res); setError(null);
-      if (TERMINAL.includes(res.parseStatus as typeof TERMINAL[number])) stopPolling();
+      setData(res);
+      setError(null);
+
+      if (TERMINAL.includes(res.parseStatus as typeof TERMINAL[number])) {
+        stopPolling();
+        // Fetch optimizations once parse reaches a terminal state
+        if (res.parseStatus === 'complete') {
+          const opts = await listOptimizationsForResume(id).catch(() => ({ data: [] as ResumeOptimizationItem[] }));
+          setOptimizations(opts.data);
+        }
+      }
     } catch (err) {
-      setError((err as Error).message); stopPolling();
+      setError((err as Error).message);
+      stopPolling();
     } finally {
       setLoading(false);
     }
@@ -122,14 +172,23 @@ export default function ResumeDetailPage() {
     return stopPolling;
   }, [fetchData, stopPolling]);
 
-  // -- Export handlers -------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Export handlers
+  // ---------------------------------------------------------------------------
 
   const handleExportPdf = async () => {
     if (!data) return;
     setExportingPdf(true);
     setExportError(null);
     try {
-      await triggerExportDownload(id, 'pdf', data.fileName);
+      if (selectedExport === 'original') {
+        await triggerOriginalExport(id, 'pdf', data.fileName);
+      } else {
+        const opt = optimizations.find(o => o.atsScoreId === selectedExport);
+        if (!opt) throw new Error('Selected optimization not found.');
+        const contactName = data.structuredData?.contact?.name ?? 'resume';
+        await triggerOptimizedExport(opt.jobId, opt.atsScoreId, 'pdf', contactName);
+      }
     } catch (err) {
       setExportError((err as Error).message);
     } finally {
@@ -142,7 +201,14 @@ export default function ResumeDetailPage() {
     setExportingDocx(true);
     setExportError(null);
     try {
-      await triggerExportDownload(id, 'docx', data.fileName);
+      if (selectedExport === 'original') {
+        await triggerOriginalExport(id, 'docx', data.fileName);
+      } else {
+        const opt = optimizations.find(o => o.atsScoreId === selectedExport);
+        if (!opt) throw new Error('Selected optimization not found.');
+        const contactName = data.structuredData?.contact?.name ?? 'resume';
+        await triggerOptimizedExport(opt.jobId, opt.atsScoreId, 'docx', contactName);
+      }
     } catch (err) {
       setExportError((err as Error).message);
     } finally {
@@ -150,7 +216,9 @@ export default function ResumeDetailPage() {
     }
   };
 
-  // -- Loading ---------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Render guards
+  // ---------------------------------------------------------------------------
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '80px' }}>
@@ -158,8 +226,6 @@ export default function ResumeDetailPage() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
-
-  // -- Error -----------------------------------------------------------------
 
   if (error) return (
     <div>
@@ -178,27 +244,28 @@ export default function ResumeDetailPage() {
   const isComplete = data.parseStatus === 'complete';
   const isFailed   = data.parseStatus === 'failed';
   const isParsing  = !TERMINAL.includes(data.parseStatus as typeof TERMINAL[number]);
+  const hasOptimizations = optimizations.length > 0;
 
   const btnBase: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '7px 13px',
-    border: '1px solid var(--vt-surface-border)',
-    borderRadius: '6px',
-    color: 'var(--vt-text-secondary)',
-    fontFamily: 'var(--vt-font-body)',
-    fontSize: '13px',
-    background: 'transparent',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
+    display:     'inline-flex',
+    alignItems:  'center',
+    gap:         '6px',
+    padding:     '7px 13px',
+    border:      '1px solid var(--vt-surface-border)',
+    borderRadius:'6px',
+    color:       'var(--vt-text-secondary)',
+    fontFamily:  'var(--vt-font-body)',
+    fontSize:    '13px',
+    background:  'transparent',
+    cursor:      'pointer',
+    whiteSpace:  'nowrap',
+    flexShrink:  0,
   };
 
   const btnDisabled: React.CSSProperties = {
     ...btnBase,
     opacity: 0.45,
-    cursor: 'not-allowed',
+    cursor:  'not-allowed',
   };
 
   return (
@@ -213,23 +280,47 @@ export default function ResumeDetailPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', gap: '16px' }}>
         <div>
           <h1 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '20px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 4px', wordBreak: 'break-all' }}>{data.fileName}</h1>
-          <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>v{data.versionNumber} · {(data.fileSize / 1024).toFixed(0)} KB · {new Date(data.createdAt).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
+          <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
+            v{data.versionNumber} \u00b7 {(data.fileSize / 1024).toFixed(0)} KB \u00b7 {new Date(data.createdAt).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
+          </p>
         </div>
 
-        {/* Action buttons — only shown when parsing is complete */}
+        {/* Action buttons â€” shown when parse is complete */}
         {isComplete && (
-          <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
 
-            {/* Original file download */}
+            {/* Original file download â€” always available */}
             {data.downloadUrl && (
-              <a
-                href={data.downloadUrl}
-                download={data.fileName}
-                style={btnBase}
-              >
+              <a href={data.downloadUrl} download={data.fileName} style={btnBase}>
                 <Download size={13} strokeWidth={1.5} />
                 Original
               </a>
+            )}
+
+            {/* Export-version picker â€” only shown when optimizations exist */}
+            {hasOptimizations && (
+              <select
+                value={selectedExport}
+                onChange={e => setSelectedExport(e.target.value)}
+                style={{
+                  padding:         '7px 10px',
+                  backgroundColor: 'var(--vt-surface-overlay)',
+                  border:          '1px solid var(--vt-surface-border)',
+                  borderRadius:    '6px',
+                  color:           'var(--vt-text-primary)',
+                  fontFamily:      'var(--vt-font-body)',
+                  fontSize:        '13px',
+                  cursor:          'pointer',
+                  maxWidth:        '260px',
+                }}
+              >
+                <option value="original">Original</option>
+                {optimizations.map(opt => (
+                  <option key={opt.atsScoreId} value={opt.atsScoreId}>
+                    {optimizationLabel(opt)}
+                  </option>
+                ))}
+              </select>
             )}
 
             {/* Export PDF */}
@@ -237,7 +328,7 @@ export default function ResumeDetailPage() {
               style={exportingPdf ? btnDisabled : btnBase}
               disabled={exportingPdf}
               onClick={() => void handleExportPdf()}
-              title="Download as formatted PDF"
+              title={selectedExport === 'original' ? 'Download as formatted PDF' : 'Download optimized version as PDF'}
             >
               {exportingPdf
                 ? <Loader size={13} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />
@@ -250,7 +341,7 @@ export default function ResumeDetailPage() {
               style={exportingDocx ? btnDisabled : btnBase}
               disabled={exportingDocx}
               onClick={() => void handleExportDocx()}
-              title="Download as Word document"
+              title={selectedExport === 'original' ? 'Download as Word document' : 'Download optimized version as Word document'}
             >
               {exportingDocx
                 ? <Loader size={13} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />
@@ -270,7 +361,7 @@ export default function ResumeDetailPage() {
 
       {isParsing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', border: '1px solid var(--vt-status-warning)', background: '#3d2e0a', borderRadius: '8px', fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', color: 'var(--vt-text-body)', marginBottom: '24px' }}>
-          <Loader size={15} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Analysing your resume — this usually takes 20–40 seconds.
+          <Loader size={15} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Analysing your resume \u2014 this usually takes 20\u201340 seconds.
         </div>
       )}
 
@@ -291,14 +382,20 @@ export default function ResumeDetailPage() {
                 sd.contact.location ? ['Location', sd.contact.location] : null,
                 sd.contact.linkedin ? ['LinkedIn', sd.contact.linkedin] : null,
                 sd.contact.github   ? ['GitHub',   sd.contact.github]   : null,
-              ] as ([string, string] | null)[]).filter((item): item is [string, string] => item !== null).map(([label, val]) => (
-                <div key={label} style={{ display: 'flex', gap: '12px', alignItems: 'baseline' }}>
-                  <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-muted)', minWidth: '64px', flexShrink: 0 }}>{label}</span>
-                  <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', color: 'var(--vt-text-primary)', wordBreak: 'break-all' }}>{val}</span>
-                </div>
-              ))}
+              ] as ([string, string] | null)[])
+                .filter((item): item is [string, string] => item !== null)
+                .map(([label, val]) => (
+                  <div key={label} style={{ display: 'flex', gap: '12px', alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-muted)', minWidth: '64px', flexShrink: 0 }}>{label}</span>
+                    <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', color: 'var(--vt-text-primary)', wordBreak: 'break-all' }}>{val}</span>
+                  </div>
+                ))}
             </div>
-            {sd.summary && <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', color: 'var(--vt-text-body)', lineHeight: 1.7, margin: '16px 0 0', borderTop: '1px solid var(--vt-surface-border)', paddingTop: '16px' }}>{sd.summary}</p>}
+            {sd.summary && (
+              <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', color: 'var(--vt-text-body)', lineHeight: 1.7, margin: '16px 0 0', borderTop: '1px solid var(--vt-surface-border)', paddingTop: '16px' }}>
+                {sd.summary}
+              </p>
+            )}
           </Section>
 
           {sd.experience.length > 0 && (
@@ -310,12 +407,18 @@ export default function ResumeDetailPage() {
                       <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '14px', fontWeight: 500, color: 'var(--vt-text-primary)', margin: '0 0 2px' }}>{exp.title}</p>
                       <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{exp.company}</p>
                     </div>
-                    <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-muted)', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>{exp.startDate} — {exp.current ? 'Present' : exp.endDate ?? ''}</p>
+                    <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-muted)', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {exp.startDate} \u2014 {exp.current ? 'Present' : exp.endDate ?? ''}
+                    </p>
                   </div>
-                  {exp.description && <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', lineHeight: 1.6, margin: '0 0 8px' }}>{exp.description}</p>}
+                  {exp.description && (
+                    <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', lineHeight: 1.6, margin: '0 0 8px' }}>{exp.description}</p>
+                  )}
                   {exp.highlights.length > 0 && (
                     <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                      {exp.highlights.map((h, j) => <li key={j} style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', lineHeight: 1.6, marginBottom: '4px' }}>{h}</li>)}
+                      {exp.highlights.map((h, j) => (
+                        <li key={j} style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', lineHeight: 1.6, marginBottom: '4px' }}>{h}</li>
+                      ))}
                     </ul>
                   )}
                 </div>
@@ -333,7 +436,7 @@ export default function ResumeDetailPage() {
                       <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{edu.institution}</p>
                     </div>
                     <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-muted)', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {edu.startDate}{edu.endDate ? ` — ${edu.endDate}` : ''}{edu.gpa ? ` · GPA ${edu.gpa}` : ''}
+                      {edu.startDate}{edu.endDate ? ` \u2014 ${edu.endDate}` : ''}{edu.gpa ? ` \u00b7 GPA ${edu.gpa}` : ''}
                     </p>
                   </div>
                 </div>
@@ -358,7 +461,7 @@ export default function ResumeDetailPage() {
               {sd.certifications.map((c, i) => (
                 <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: '1px solid var(--vt-surface-border)' }}>
                   <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '14px', fontWeight: 500, color: 'var(--vt-text-primary)', margin: '0 0 2px' }}>{c.name}</p>
-                  <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{c.issuer}{c.date ? ` · ${c.date}` : ''}</p>
+                  <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{c.issuer}{c.date ? ` \u00b7 ${c.date}` : ''}</p>
                 </div>
               ))}
             </Section>

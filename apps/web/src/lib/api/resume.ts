@@ -61,22 +61,22 @@ export interface ConfirmUploadResponse {
 
 // Minimal ResumeData types for rendering
 export interface ResumeContact {
-  name:     string;
-  email:    string;
-  phone?:   string;
-  location?:string;
-  linkedin?:string;
-  github?:  string;
+  name:      string;
+  email:     string;
+  phone?:    string;
+  location?: string;
+  linkedin?: string;
+  github?:   string;
 }
 
 export interface ResumeExperience {
-  company:    string;
-  title:      string;
-  startDate:  string;
-  endDate?:   string;
-  current:    boolean;
-  description:string;
-  highlights: string[];
+  company:     string;
+  title:       string;
+  startDate:   string;
+  endDate?:    string;
+  current:     boolean;
+  description: string;
+  highlights:  string[];
 }
 
 export interface ResumeEducation {
@@ -95,11 +95,11 @@ export interface ResumeSkill {
 }
 
 export interface ResumeCertification {
-  name:       string;
-  issuer:     string;
-  date?:      string;
-  expiryDate?:string;
-  url?:       string;
+  name:        string;
+  issuer:      string;
+  date?:       string;
+  expiryDate?: string;
+  url?:        string;
 }
 
 export interface ResumeData {
@@ -109,6 +109,26 @@ export interface ResumeData {
   education:      ResumeEducation[];
   skills:         ResumeSkill[];
   certifications: ResumeCertification[];
+}
+
+// ---------------------------------------------------------------------------
+// Optimization list types — GET /v1/resumes/:id/optimizations
+// ---------------------------------------------------------------------------
+
+/**
+ * A single completed optimization run that used a specific resume version.
+ * Provides enough context to label a UI dropdown option.
+ */
+export interface ResumeOptimizationItem {
+  atsScoreId:  string;
+  jobId:       string;
+  jobTitle:    string | null;
+  jobCompany:  string | null;
+  optimizedAt: string; // ISO 8601
+}
+
+export interface ResumeOptimizationListResponse {
+  data: ResumeOptimizationItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -195,14 +215,14 @@ export function uploadResume(
 
 /** Request a presigned upload URL. Creates a pending resume version row. */
 export async function createUploadUrl(payload: {
-  filename: string;
-  mimeType: string;
+  filename:  string;
+  mimeType:  string;
   sizeBytes: number;
 }): Promise<UploadUrlResponse> {
   return apiFetch<UploadUrlResponse>('/v1/resumes/upload-url', {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Idempotency-Key': idempotencyKey() },
-    body: JSON.stringify(payload),
+    body:    JSON.stringify(payload),
   });
 }
 
@@ -248,9 +268,9 @@ export async function confirmUpload(
   return apiFetch<ConfirmUploadResponse>(
     `/v1/resumes/${resumeVersionId}/confirm`,
     {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Idempotency-Key': idempotencyKey() },
-      body: '{}',
+      body:    '{}',
     },
   );
 }
@@ -273,4 +293,15 @@ export async function deleteResume(
   id: string,
 ): Promise<{ resumeVersionId: string; deleted: true }> {
   return apiFetch(`/v1/resumes/${id}`, { method: 'DELETE' });
+}
+
+/**
+ * List all completed optimizations that used this resume version.
+ * Returns items ordered most-recent first.
+ * Used to populate the export-format picker on the resume detail page.
+ */
+export async function listOptimizationsForResume(
+  id: string,
+): Promise<ResumeOptimizationListResponse> {
+  return apiFetch<ResumeOptimizationListResponse>(`/v1/resumes/${id}/optimizations`);
 }
