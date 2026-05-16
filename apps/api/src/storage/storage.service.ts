@@ -1,3 +1,4 @@
+import { createRequire }  from 'node:module';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   ALLOWED_RESUME_MIME_TYPES,
@@ -14,22 +15,42 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // ---------------------------------------------------------------------------
-// @smithy/signature-v4 and @aws-crypto/sha256-js are transitive dependencies
-// of @aws-sdk/client-s3 and are present at runtime in the pnpm .pnpm store.
-// They cannot be imported as top-level ESM/CJS imports because they are not
-// listed in apps/api/package.json (pnpm strict phantom-dependency prevention).
-// We load them via require() with explicit type casts — the same pattern used
-// for @fastify/multipart in main.ts.
+// Load @smithy/signature-v4 and @aws-crypto/sha256-js through the module
+// resolution context of @aws-sdk/client-s3.
+//
+// WHY NOT A DIRECT IMPORT?
+//   pnpm strict mode creates node_modules symlinks only for packages listed in
+//   a package's own package.json.  @smithy/signature-v4 is a transitive dep
+//   of @aws-sdk/client-s3 — not a direct dep of apps/api — so there is no
+//   symlink at apps/api/node_modules/@smithy/signature-v4.  A plain
+//   require('@smithy/signature-v4') from dist/storage/storage.service.js
+//   walks up the directory tree, finds nothing, and throws MODULE_NOT_FOUND.
+//
+// WHY createRequire WORKS?
+//   require.resolve('@aws-sdk/client-s3') returns the absolute path inside the
+//   .pnpm store where that package lives.  createRequire(that_path) produces a
+//   require() whose CWD is the SDK package directory, which DOES have a
+//   node_modules/@smithy/signature-v4 symlink (pnpm writes one for every
+//   direct dependency of the SDK).  We then resolve @smithy/signature-v4's
+//   own path to load @aws-crypto/sha256-js through the same mechanism.
+//
+// This is a zero-lockfile-change, zero-package-json-change approach. It relies
+// only on the Node.js built-in `node:module` and the pnpm .pnpm store layout
+// that is already present in the Docker runner image.
+//
+// Verified against @aws-sdk/client-s3 v3.1045.0 + pnpm 9.15.0 + Node 20.
 // ---------------------------------------------------------------------------
 
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
-const { SignatureV4 } = require('@smithy/signature-v4')  as { SignatureV4: new (c: any) => any };
-const { Sha256 }      = require('@aws-crypto/sha256-js') as { Sha256: new () => any };
-/* eslint-enable  @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const _s3Require  = createRequire(require.resolve('@aws-sdk/client-s3'));
+const { SignatureV4 } = _s3Require('@smithy/signature-v4') as { SignatureV4: new (c: any) => any };
+const _sv4Require = createRequire(_s3Require.resolve('@smithy/signature-v4'));
+const { Sha256 }      = _sv4Require('@aws-crypto/sha256-js') as { Sha256: new () => any };
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ---------------------------------------------------------------------------
 // Root cause of every SignatureDoesNotMatch error against Cloudflare R2
-// (AWS SDK v3.726+):
+// (AWS SDK v3.726 and later):
 //
 // The SDK automatically injects two request-tracking headers into every S3
 // request and includes them in the SigV4 `SignedHeaders` list:
@@ -38,7 +59,7 @@ const { Sha256 }      = require('@aws-crypto/sha256-js') as { Sha256: new () => 
 //   amz-sdk-request        — retry attempt counter
 //
 // When R2 verifies the signature it reconstructs the canonical request from
-// the incoming HTTP headers. R2 does not know these AWS-SDK-specific headers,
+// the incoming HTTP headers. R2 does not know these AWS-specific headers,
 // so its canonical request differs from ours → HTTP 403 SignatureDoesNotMatch.
 //
 // Fix: provide a custom SigV4 signer that strips these (and any checksum)
@@ -78,8 +99,8 @@ function stripR2IncompatibleHeaders(
  * Builds an R2-compatible SigV4 signer.
  *
  * Wraps @smithy/signature-v4 and strips incompatible AWS-SDK headers before
- * computing the canonical request. Both `sign` (PutObject, HeadObject, …)
- * and `presign` (getSignedUrl for upload/download) are covered.
+ * computing the canonical request. Covers both direct requests (PutObject,
+ * HeadObject, …) and presigned URLs (getSignedUrl for upload/download).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildR2Signer(credentials: { accessKeyId: string; secretAccessKey: string }, region: string): any {
