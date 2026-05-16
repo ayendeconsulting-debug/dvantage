@@ -68,6 +68,8 @@ export interface AtsScoreDetail {
   id:               string;
   resumeVersionId:  string;
   jobDescriptionId: string;
+
+  // Original resume scoring
   scoringStatus:    ScoringStatus;
   overallScore:     number | null;
   sectionScores:    ATSSectionScores | null;
@@ -75,9 +77,16 @@ export interface AtsScoreDetail {
   matchedKeywords:  string[] | null;
   recommendations:  string[] | null;
   scoreError:       string | null;
+
+  // Optimization
   optimizationStatus: OptimizationStatus;
-  createdAt:        string;
-  updatedAt:        string;
+
+  // Post-optimization re-score — null until optimizationStatus === 'complete'
+  optimizedOverallScore:  number | null;
+  optimizedSectionScores: ATSSectionScores | null;
+
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateAtsScoreResponse {

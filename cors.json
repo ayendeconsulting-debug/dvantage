@@ -1,0 +1,9 @@
+﻿[
+  {
+    "AllowedOrigins": ["https://dvantage.ca", "https://www.dvantage.ca", "http://localhost:3000"],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]

@@ -58,7 +58,7 @@ export const atsScores = pgTable(
       .references(() => jobDescriptions.id, { onDelete: 'cascade' }),
 
     // -----------------------------------------------------------------------
-    // Scoring
+    // Scoring — original resume vs JD
     // -----------------------------------------------------------------------
 
     scoringStatus: scoringStatusEnum('scoring_status').notNull().default('pending'),
@@ -107,6 +107,25 @@ export const atsScores = pgTable(
 
     /** Human-readable error from a failed optimization attempt. */
     optimizationError: text('optimization_error'),
+
+    // -----------------------------------------------------------------------
+    // Post-optimization re-score — populated by the optimize worker inline
+    // immediately after optimization completes. Null if optimization has not
+    // run or failed.
+    // -----------------------------------------------------------------------
+
+    /**
+     * ATS overall score 0–100 computed against the OPTIMIZED resume.
+     * Enables the before/after delta display (overallScore → optimizedOverallScore).
+     */
+    optimizedOverallScore: integer('optimized_overall_score'),
+
+    /**
+     * Per-section breakdown scores for the OPTIMIZED resume.
+     * Shape: { skills, experience, education, keywords }
+     * Enables side-by-side section diff in the UI.
+     */
+    optimizedSectionScores: jsonb('optimized_section_scores'),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

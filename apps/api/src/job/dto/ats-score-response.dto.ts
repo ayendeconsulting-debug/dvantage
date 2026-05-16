@@ -25,7 +25,8 @@ export interface AtsScoreListResponseDto {
 }
 
 // ---------------------------------------------------------------------------
-// Full detail — includes all section scores, gaps, and recommendations
+// Full detail — includes all section scores, gaps, recommendations,
+// and post-optimization re-score fields for before/after delta display.
 // ---------------------------------------------------------------------------
 
 export interface AtsScoreDetailDto {
@@ -33,7 +34,7 @@ export interface AtsScoreDetailDto {
   resumeVersionId:  string;
   jobDescriptionId: string;
 
-  // Scoring
+  // Scoring — original resume
   scoringStatus:    ScoringStatus;
   overallScore:     number | null;
   sectionScores:    ATSSectionScores | null;
@@ -42,8 +43,13 @@ export interface AtsScoreDetailDto {
   recommendations:  string[] | null;
   scoreError:       string | null;
 
-  // Optimization (populated in M3-C)
+  // Optimization
   optimizationStatus: OptimizationStatus;
+
+  // Post-optimization re-score — null until optimization is complete.
+  // Used by the frontend to render the before/after delta (overallScore → optimizedOverallScore).
+  optimizedOverallScore:   number | null;
+  optimizedSectionScores:  ATSSectionScores | null;
 
   createdAt: string;
   updatedAt: string;

@@ -192,16 +192,25 @@ export class AtsScoreService {
       id:               row.id,
       resumeVersionId:  row.resumeVersionId,
       jobDescriptionId: row.jobDescriptionId,
-      scoringStatus:    row.scoringStatus,
-      overallScore:     row.overallScore,
-      sectionScores:    row.sectionScores as ATSSectionScores | null,
-      keywordGaps:      row.keywordGaps as string[] | null,
-      matchedKeywords:  row.matchedKeywords as string[] | null,
-      recommendations:  row.recommendations as string[] | null,
-      scoreError:       row.scoreError,
+
+      // Original scoring
+      scoringStatus:   row.scoringStatus,
+      overallScore:    row.overallScore,
+      sectionScores:   row.sectionScores as ATSSectionScores | null,
+      keywordGaps:     row.keywordGaps as string[] | null,
+      matchedKeywords: row.matchedKeywords as string[] | null,
+      recommendations: row.recommendations as string[] | null,
+      scoreError:      row.scoreError,
+
+      // Optimization
       optimizationStatus: row.optimizationStatus,
-      createdAt:        row.createdAt.toISOString(),
-      updatedAt:        row.updatedAt.toISOString(),
+
+      // Post-optimization re-score
+      optimizedOverallScore:  row.optimizedOverallScore,
+      optimizedSectionScores: row.optimizedSectionScores as ATSSectionScores | null,
+
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
     };
   }
 

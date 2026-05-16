@@ -50,6 +50,13 @@
       "when": 1778781191811,
       "tag": "0006_pale_triton",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1778901473186,
+      "tag": "0007_loud_mad_thinker",
+      "breakpoints": true
     }
   ]
 }

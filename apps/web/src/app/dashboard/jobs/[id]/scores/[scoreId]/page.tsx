@@ -12,10 +12,17 @@ import {
   XCircle,
   FileText,
   FileType,
+  TrendingUp,
 } from 'lucide-react';
 import { getScore, requestOptimization, getOptimization } from '@/lib/api/job';
 import { getResume } from '@/lib/api/resume';
-import type { AtsScoreDetail, OptimizationResult, OptimizationChange, ResumeData } from '@/lib/api/job';
+import type {
+  AtsScoreDetail,
+  OptimizationResult,
+  OptimizationChange,
+  ResumeData,
+  ATSSectionScores,
+} from '@/lib/api/job';
 import type { ResumeVersionDetail } from '@/lib/api/resume';
 
 const API_BASE =
@@ -52,7 +59,7 @@ async function triggerOptimizedExport(
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Colour helpers
 // ---------------------------------------------------------------------------
 
 function scoreColor(score: number): string {
@@ -62,36 +69,224 @@ function scoreColor(score: number): string {
   return 'var(--vt-status-danger)';
 }
 
-function SectionBar({ label, value }: { label: string; value: number }) {
+function deltaColor(delta: number): string {
+  if (delta > 0) return 'var(--vt-status-success)';
+  if (delta < 0) return 'var(--vt-status-danger)';
+  return 'var(--vt-text-disabled)';
+}
+
+// ---------------------------------------------------------------------------
+// Score hero — shows baseline alone OR optimized hero + "was N" baseline
+// ---------------------------------------------------------------------------
+
+interface ScoreHeroProps {
+  baseline:  number;
+  optimized: number | null;
+}
+
+function ScoreHero({ baseline, optimized }: ScoreHeroProps) {
+  const isComplete = optimized !== null;
+  const delta      = isComplete ? optimized - baseline : 0;
+
   return (
-    <div style={{ marginBottom: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-        <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', textTransform: 'capitalize' }}>{label}</span>
-        <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '12px', color: scoreColor(value), fontWeight: 500 }}>{value}</span>
-      </div>
-      <div style={{ height: '5px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '3px', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${value}%`, backgroundColor: scoreColor(value), borderRadius: '3px', transition: 'width 700ms cubic-bezier(0,0,0.2,1)' }} />
-      </div>
+    <div style={{
+      display:        'flex',
+      flexDirection:  'column',
+      alignItems:     'center',
+      justifyContent: 'center',
+      border:         '1px solid var(--vt-surface-border)',
+      borderRadius:   '8px',
+      padding:        '28px 16px',
+      backgroundColor: 'var(--vt-surface-raised)',
+      gap:            '4px',
+    }}>
+      {/* Primary score — optimized when available, baseline otherwise */}
+      <span style={{
+        fontFamily: 'var(--vt-font-display)',
+        fontSize:   '60px',
+        fontWeight: 700,
+        color:      scoreColor(isComplete ? optimized : baseline),
+        lineHeight: 1,
+      }}>
+        {isComplete ? optimized : baseline}
+      </span>
+
+      <span style={{
+        fontFamily: 'var(--vt-font-mono)',
+        fontSize:   '11px',
+        color:      'var(--vt-text-disabled)',
+        marginTop:  '2px',
+      }}>
+        out of 100
+      </span>
+
+      <span style={{
+        fontFamily: 'var(--vt-font-body)',
+        fontSize:   '12px',
+        color:      'var(--vt-text-muted)',
+        marginTop:  '4px',
+      }}>
+        {isComplete ? 'Optimized score' : 'Overall match'}
+      </span>
+
+      {/* Baseline + delta — only shown post-optimization */}
+      {isComplete && (
+        <div style={{
+          display:        'flex',
+          alignItems:     'center',
+          gap:            '8px',
+          marginTop:      '10px',
+          padding:        '6px 12px',
+          backgroundColor: 'var(--vt-surface-overlay)',
+          borderRadius:   '6px',
+        }}>
+          <span style={{
+            fontFamily: 'var(--vt-font-body)',
+            fontSize:   '12px',
+            color:      'var(--vt-text-muted)',
+          }}>
+            was {baseline}
+          </span>
+          <span style={{
+            fontFamily: 'var(--vt-font-mono)',
+            fontSize:   '12px',
+            fontWeight: 500,
+            color:      deltaColor(delta),
+          }}>
+            {delta > 0 ? `+${delta}` : delta}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Section bars — renders before bar alone OR before + after with delta badge
+// ---------------------------------------------------------------------------
+
+interface SectionBarsProps {
+  label:     string;
+  before:    number;
+  after:     number | null;
+}
+
+function SectionBars({ label, before, after }: SectionBarsProps) {
+  const isComplete = after !== null;
+  const delta      = isComplete ? after - before : 0;
+
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      {/* Label row */}
+      <div style={{
+        display:        'flex',
+        justifyContent: 'space-between',
+        alignItems:     'center',
+        marginBottom:   '6px',
+      }}>
+        <span style={{
+          fontFamily:    'var(--vt-font-body)',
+          fontSize:      '13px',
+          color:         'var(--vt-text-secondary)',
+          textTransform: 'capitalize',
+        }}>
+          {label}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isComplete && (
+            <span style={{
+              fontFamily:      'var(--vt-font-mono)',
+              fontSize:        '11px',
+              fontWeight:      500,
+              color:           deltaColor(delta),
+              backgroundColor: delta > 0 ? '#0a2e1e' : delta < 0 ? '#2e0a0a' : 'transparent',
+              padding:         '1px 6px',
+              borderRadius:    '4px',
+            }}>
+              {delta > 0 ? `+${delta}` : delta === 0 ? '—' : delta}
+            </span>
+          )}
+          <span style={{
+            fontFamily: 'var(--vt-font-mono)',
+            fontSize:   '12px',
+            color:      isComplete ? scoreColor(after) : scoreColor(before),
+            fontWeight: 500,
+          }}>
+            {isComplete ? after : before}
+          </span>
+        </div>
+      </div>
+
+      {/* Single bar (pre-optimization) OR stacked before/after bars */}
+      {!isComplete ? (
+        <div style={{ height: '5px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '3px', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${before}%`, backgroundColor: scoreColor(before), borderRadius: '3px', transition: 'width 700ms cubic-bezier(0,0,0.2,1)' }} />
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          {/* Before */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '10px', color: 'var(--vt-text-disabled)', width: '36px', textAlign: 'right', flexShrink: 0 }}>
+              {before}
+            </span>
+            <div style={{ flex: 1, height: '4px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '3px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${before}%`, backgroundColor: 'var(--vt-text-disabled)', borderRadius: '3px', opacity: 0.45 }} />
+            </div>
+            <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '10px', color: 'var(--vt-text-disabled)', width: '32px', flexShrink: 0 }}>before</span>
+          </div>
+          {/* After */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '10px', color: scoreColor(after), width: '36px', textAlign: 'right', flexShrink: 0 }}>
+              {after}
+            </span>
+            <div style={{ flex: 1, height: '4px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '3px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${after}%`, backgroundColor: scoreColor(after), borderRadius: '3px', transition: 'width 700ms cubic-bezier(0,0,0.2,1)' }} />
+            </div>
+            <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '10px', color: scoreColor(after), width: '32px', flexShrink: 0 }}>after</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Keyword pills
+// ---------------------------------------------------------------------------
+
 function Pill({ text, variant }: { text: string; variant: 'gap' | 'match' }) {
-  const styles = variant === 'gap'
-    ? { color: 'var(--vt-status-danger)', bg: '#2e0a0a' }
+  const s = variant === 'gap'
+    ? { color: 'var(--vt-status-danger)',  bg: '#2e0a0a' }
     : { color: 'var(--vt-status-success)', bg: '#0a2e1e' };
   return (
-    <span style={{ display: 'inline-block', padding: '3px 10px', backgroundColor: styles.bg, color: styles.color, borderRadius: '999px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', margin: '3px' }}>
+    <span style={{
+      display:         'inline-block',
+      padding:         '3px 10px',
+      backgroundColor: s.bg,
+      color:           s.color,
+      borderRadius:    '999px',
+      fontFamily:      'var(--vt-font-mono)',
+      fontSize:        '11px',
+      margin:          '3px',
+    }}>
       {text}
     </span>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Side-by-side diff view
+// Side-by-side diff view (unchanged from original, retained verbatim)
 // ---------------------------------------------------------------------------
 
-function DiffView({ original, optimized, changeLog }: { original: ResumeData; optimized: ResumeData; changeLog: OptimizationChange[] }) {
+function DiffView({
+  original,
+  optimized,
+  changeLog,
+}: {
+  original:  ResumeData;
+  optimized: ResumeData;
+  changeLog: OptimizationChange[];
+}) {
   const changedSections = new Set(changeLog.map(c => c.section));
 
   function isChanged(section: string): boolean {
@@ -100,16 +295,27 @@ function DiffView({ original, optimized, changeLog }: { original: ResumeData; op
 
   const highlightStyle: React.CSSProperties = {
     backgroundColor: '#1e3a1a',
-    borderLeft: '2px solid var(--vt-status-success)',
-    paddingLeft: '8px',
-    borderRadius: '0 4px 4px 0',
+    borderLeft:      '2px solid var(--vt-status-success)',
+    paddingLeft:     '8px',
+    borderRadius:    '0 4px 4px 0',
+  };
+
+  const sectionHeader: React.CSSProperties = {
+    fontFamily:    'var(--vt-font-display)',
+    fontSize:      '14px',
+    fontWeight:    600,
+    color:         'var(--vt-text-primary)',
+    margin:        '0 0 12px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
   };
 
   return (
     <div>
+      {/* Summary */}
       {(original.summary || optimized.summary) && (
         <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Summary</h3>
+          <h3 style={sectionHeader}>Summary</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div style={{ padding: '12px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '6px' }}>
               <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-body)', lineHeight: 1.7, margin: 0 }}>{original.summary || '—'}</p>
@@ -121,15 +327,18 @@ function DiffView({ original, optimized, changeLog }: { original: ResumeData; op
         </div>
       )}
 
+      {/* Experience */}
       {original.experience.length > 0 && (
         <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Experience</h3>
+          <h3 style={sectionHeader}>Experience</h3>
           {original.experience.map((exp, ei) => {
             const optExp = optimized.experience[ei];
             if (!optExp) return null;
             return (
               <div key={ei} style={{ marginBottom: '16px' }}>
-                <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 8px' }}>{exp.title} · {exp.company}</p>
+                <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 8px' }}>
+                  {exp.title} · {exp.company}
+                </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {exp.highlights.map((h, hi) => (
@@ -151,21 +360,32 @@ function DiffView({ original, optimized, changeLog }: { original: ResumeData; op
         </div>
       )}
 
+      {/* Skills */}
       <div style={{ marginBottom: '24px' }}>
-        <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Skills</h3>
+        <h3 style={sectionHeader}>Skills</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div style={{ padding: '12px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '6px' }}>
-            {original.skills.map(s => <span key={s.name} style={{ display: 'inline-block', margin: '2px', padding: '2px 8px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '4px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-secondary)' }}>{s.name}</span>)}
+            {original.skills.map(s => (
+              <span key={s.name} style={{ display: 'inline-block', margin: '2px', padding: '2px 8px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '4px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-secondary)' }}>{s.name}</span>
+            ))}
           </div>
           <div style={{ padding: '12px', backgroundColor: 'var(--vt-surface-overlay)', borderRadius: '6px', ...(isChanged('skills') ? highlightStyle : {}) }}>
-            {optimized.skills.map(s => <span key={s.name} style={{ display: 'inline-block', margin: '2px', padding: '2px 8px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '4px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-secondary)' }}>{s.name}</span>)}
+            {optimized.skills.map(s => (
+              <span key={s.name} style={{ display: 'inline-block', margin: '2px', padding: '2px 8px', backgroundColor: 'var(--vt-surface-border)', borderRadius: '4px', fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-secondary)' }}>{s.name}</span>
+            ))}
           </div>
         </div>
       </div>
 
+      {/* Change log */}
       {changeLog.length > 0 && (
         <div>
-          <h3 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '14px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Change log <span style={{ color: 'var(--vt-text-disabled)', fontFamily: 'var(--vt-font-mono)', fontSize: '12px', textTransform: 'none', letterSpacing: 0 }}>{changeLog.length} change{changeLog.length !== 1 ? 's' : ''}</span></h3>
+          <h3 style={sectionHeader}>
+            Change log{' '}
+            <span style={{ color: 'var(--vt-text-disabled)', fontFamily: 'var(--vt-font-mono)', fontSize: '12px', textTransform: 'none', letterSpacing: 0 }}>
+              {changeLog.length} change{changeLog.length !== 1 ? 's' : ''}
+            </span>
+          </h3>
           <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -216,6 +436,24 @@ export default function ScoreDetailPage() {
   const scoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const pollOptimization = useCallback(async () => {
+    try {
+      const data = await getOptimization(jobId, scoreId);
+      setOptimization(data);
+      if (data.optimizationStatus === 'pending' || data.optimizationStatus === 'optimizing') {
+        optTimerRef.current = setTimeout(() => { void pollOptimization(); }, 5000);
+      } else {
+        setOptLoading(false);
+        // Re-fetch score to pick up optimizedOverallScore + optimizedSectionScores
+        const fresh = await getScore(jobId, scoreId).catch(() => null);
+        if (fresh) setScore(fresh);
+      }
+    } catch (err) {
+      setOptError((err as Error).message);
+      setOptLoading(false);
+    }
+  }, [jobId, scoreId]);
+
   const pollScore = useCallback(async () => {
     try {
       const data = await getScore(jobId, scoreId);
@@ -231,6 +469,7 @@ export default function ScoreDetailPage() {
           const opt = await getOptimization(jobId, scoreId).catch(() => null);
           setOptimization(opt);
         } else if (data.optimizationStatus === 'pending' || data.optimizationStatus === 'optimizing') {
+          setOptLoading(true);
           void pollOptimization();
         }
       }
@@ -238,23 +477,7 @@ export default function ScoreDetailPage() {
       setError((err as Error).message);
       setLoading(false);
     }
-  }, [jobId, scoreId]);
-
-  const pollOptimization = useCallback(async () => {
-    try {
-      const data = await getOptimization(jobId, scoreId);
-      setOptimization(data);
-
-      if (data.optimizationStatus === 'pending' || data.optimizationStatus === 'optimizing') {
-        optTimerRef.current = setTimeout(() => { void pollOptimization(); }, 5000);
-      } else {
-        setOptLoading(false);
-      }
-    } catch (err) {
-      setOptError((err as Error).message);
-      setOptLoading(false);
-    }
-  }, [jobId, scoreId]);
+  }, [jobId, scoreId, pollOptimization]);
 
   useEffect(() => {
     void pollScore();
@@ -299,6 +522,11 @@ export default function ScoreDetailPage() {
     }
   }
 
+  // Derived
+  const optimizationComplete = score?.optimizationStatus === 'complete';
+  const optimizedOverall     = optimizationComplete ? (score.optimizedOverallScore ?? null) : null;
+  const optimizedSections    = optimizationComplete ? (score.optimizedSectionScores ?? null) : null;
+
   const btnBase: React.CSSProperties = {
     display: 'inline-flex', alignItems: 'center', gap: '6px',
     padding: '6px 12px', border: '1px solid var(--vt-surface-border)',
@@ -306,25 +534,31 @@ export default function ScoreDetailPage() {
     fontFamily: 'var(--vt-font-body)', fontSize: '12px',
     background: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap',
   };
-
   const btnDisabled: React.CSSProperties = { ...btnBase, opacity: 0.45, cursor: 'not-allowed' };
 
   return (
     <div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <Link href={`/dashboard/jobs/${jobId}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--vt-text-muted)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '24px', textDecoration: 'none' }}>
+      <Link
+        href={`/dashboard/jobs/${jobId}`}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--vt-text-muted)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '24px', textDecoration: 'none' }}
+      >
         <ArrowLeft size={14} strokeWidth={1.5} />Back to job
       </Link>
 
-      <h1 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '22px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 24px' }}>ATS Score</h1>
+      <h1 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '22px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 24px' }}>
+        ATS Score
+      </h1>
 
+      {/* Page-level error */}
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '20px' }}>
           <AlertCircle size={15} strokeWidth={1.5} />{error}
         </div>
       )}
 
+      {/* Scoring in progress */}
       {(loading || score?.scoringStatus === 'pending' || score?.scoringStatus === 'scoring') && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', paddingTop: '60px' }}>
           <Loader size={28} strokeWidth={1.5} style={{ color: 'var(--vt-brand-400)', animation: 'spin 1s linear infinite' }} />
@@ -333,32 +567,47 @@ export default function ScoreDetailPage() {
         </div>
       )}
 
+      {/* Scoring failed */}
       {score?.scoringStatus === 'failed' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
           <XCircle size={15} strokeWidth={1.5} />Scoring failed: {score.scoreError ?? 'Unknown error.'}
         </div>
       )}
 
+      {/* Scoring complete */}
       {score?.scoringStatus === 'complete' && score.overallScore !== null && (
         <>
+          {/* ── Score hero + section bars ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: '20px', marginBottom: '24px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '24px 16px', backgroundColor: 'var(--vt-surface-raised)' }}>
-              <span style={{ fontFamily: 'var(--vt-font-display)', fontSize: '52px', fontWeight: 700, color: scoreColor(score.overallScore), lineHeight: 1 }}>{score.overallScore}</span>
-              <span style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-disabled)', marginTop: '4px' }}>out of 100</span>
-              <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', color: 'var(--vt-text-muted)', marginTop: '8px' }}>Overall match</span>
-            </div>
+            <ScoreHero
+              baseline={score.overallScore}
+              optimized={optimizedOverall}
+            />
             <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--vt-surface-raised)' }}>
               {score.sectionScores && (
                 <>
-                  <SectionBar label="Skills"     value={score.sectionScores.skills}     />
-                  <SectionBar label="Experience"  value={score.sectionScores.experience}  />
-                  <SectionBar label="Education"   value={score.sectionScores.education}   />
-                  <SectionBar label="Keywords"    value={score.sectionScores.keywords}    />
+                  {optimizationComplete && optimizedSections && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px' }}>
+                      <TrendingUp size={14} strokeWidth={1.5} style={{ color: 'var(--vt-status-success)' }} />
+                      <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', color: 'var(--vt-text-muted)' }}>
+                        Section scores — before &amp; after optimization
+                      </span>
+                    </div>
+                  )}
+                  {(['skills', 'experience', 'education', 'keywords'] as const).map(key => (
+                    <SectionBars
+                      key={key}
+                      label={key}
+                      before={score.sectionScores![key]}
+                      after={optimizedSections ? optimizedSections[key] : null}
+                    />
+                  ))}
                 </>
               )}
             </div>
           </div>
 
+          {/* ── Keyword gaps + matched ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '16px', backgroundColor: 'var(--vt-surface-raised)' }}>
               <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 10px' }}>
@@ -384,6 +633,7 @@ export default function ScoreDetailPage() {
             </div>
           </div>
 
+          {/* ── Recommendations ── */}
           {score.recommendations && score.recommendations.length > 0 && (
             <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '16px', backgroundColor: 'var(--vt-surface-raised)', marginBottom: '28px' }}>
               <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 12px' }}>Recommendations</p>
@@ -395,17 +645,22 @@ export default function ScoreDetailPage() {
             </div>
           )}
 
-          {/* Optimize section */}
+          {/* ── Optimization panel ── */}
           <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--vt-surface-raised)', marginBottom: '28px' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: optimization?.optimizationStatus === 'complete' ? '20px' : '0', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: optimizationComplete ? '20px' : '0', gap: '16px' }}>
               <div>
-                <h2 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '16px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 4px' }}>AI Resume Optimization</h2>
-                <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>Rewrite your resume to close keyword gaps — without fabricating anything.</p>
+                <h2 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '16px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 4px' }}>
+                  AI Resume Optimization
+                </h2>
+                <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>
+                  Rewrite your resume to close keyword gaps — without fabricating anything.
+                </p>
               </div>
 
-              {/* Action / status */}
+              {/* Action / status controls */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', flexShrink: 0 }}>
 
+                {/* Not yet started */}
                 {(!score.optimizationStatus || score.optimizationStatus === 'none') && (
                   <button
                     onClick={() => void handleOptimize()}
@@ -417,18 +672,19 @@ export default function ScoreDetailPage() {
                   </button>
                 )}
 
-                {(score.optimizationStatus === 'pending' || score.optimizationStatus === 'optimizing' || optLoading) && (
+                {/* In progress */}
+                {(score.optimizationStatus === 'pending' || score.optimizationStatus === 'optimizing' || (optLoading && score.optimizationStatus === 'none')) && (
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--vt-status-warning)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
                     <Loader size={14} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Rewriting resume…
                   </div>
                 )}
 
-                {score.optimizationStatus === 'complete' && !optLoading && (
+                {/* Complete */}
+                {optimizationComplete && !optLoading && (
                   <>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--vt-status-success)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
                       <CheckCircle2 size={14} strokeWidth={1.5} />Optimization complete
                     </div>
-                    {/* Export buttons — only shown when optimization is complete */}
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button
                         style={exportingPdf ? btnDisabled : btnBase}
@@ -458,6 +714,7 @@ export default function ScoreDetailPage() {
                   </>
                 )}
 
+                {/* Failed */}
                 {score.optimizationStatus === 'failed' && (
                   <button
                     onClick={() => void handleOptimize()}
@@ -470,19 +727,20 @@ export default function ScoreDetailPage() {
               </div>
             </div>
 
+            {/* Optimization errors */}
             {optError && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
                 <AlertCircle size={14} strokeWidth={1.5} />{optError}
               </div>
             )}
-
-            {exportError !== null && (
+            {exportError && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
                 <AlertCircle size={14} strokeWidth={1.5} />{exportError}
               </div>
             )}
 
-            {(optimization?.optimizationStatus === 'complete') && optimization.optimizedData && origResume?.structuredData && (
+            {/* Diff view */}
+            {optimizationComplete && optimization?.optimizedData && origResume?.structuredData && (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '16px' }}>
                   {['Original', 'Optimized'].map(label => (

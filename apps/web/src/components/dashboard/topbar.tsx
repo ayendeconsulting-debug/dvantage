@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronRight, Sun, Moon } from 'lucide-react';
+import { ChevronRight, Sun, Moon, Menu } from 'lucide-react';
 import { useSession } from '@/lib/auth-client';
 import { useTheme } from '@/lib/theme';
 
@@ -31,54 +31,76 @@ function buildBreadcrumbs(pathname: string): { label: string; href: string }[] {
 }
 
 // ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+interface TopBarProps {
+  /** Called when the burger menu button is tapped (mobile only). */
+  onBurgerClick: () => void;
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function TopBar() {
-  const pathname       = usePathname();
+export function TopBar({ onBurgerClick }: TopBarProps) {
+  const pathname          = usePathname();
   const { data: session } = useSession();
   const { theme, toggle } = useTheme();
-  const crumbs         = buildBreadcrumbs(pathname);
-  const user           = (session as { user?: { name?: string } } | null)?.user;
+  const crumbs            = buildBreadcrumbs(pathname);
+  const user              = (session as { user?: { name?: string } } | null)?.user;
 
   return (
     <header style={styles.topbar}>
-      {/* Breadcrumbs */}
-      <nav aria-label="Breadcrumb" style={styles.breadcrumb}>
-        {crumbs.map((crumb, i) => {
-          const isLast = i === crumbs.length - 1;
-          return (
-            <span key={crumb.href} style={styles.crumbGroup}>
-              {i > 0 && (
-                <ChevronRight
-                  size={13}
-                  strokeWidth={1.5}
-                  style={{ color: 'var(--vt-text-disabled)' }}
-                  aria-hidden="true"
-                />
-              )}
-              {isLast ? (
-                <span style={styles.crumbCurrent} aria-current="page">
-                  {crumb.label}
-                </span>
-              ) : (
-                <Link href={crumb.href} style={styles.crumbLink}>
-                  {crumb.label}
-                </Link>
-              )}
-            </span>
-          );
-        })}
-      </nav>
+      {/* Left — burger (mobile) + breadcrumbs */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+        {/* Burger button — visible only on mobile via .vt-burger-btn class */}
+        <button
+          className="vt-burger-btn"
+          onClick={onBurgerClick}
+          aria-label="Open navigation menu"
+          type="button"
+          style={styles.iconBtn}
+        >
+          <Menu size={18} strokeWidth={1.5} />
+        </button>
+
+        {/* Breadcrumbs */}
+        <nav aria-label="Breadcrumb" style={styles.breadcrumb}>
+          {crumbs.map((crumb, i) => {
+            const isLast = i === crumbs.length - 1;
+            return (
+              <span key={crumb.href} style={styles.crumbGroup}>
+                {i > 0 && (
+                  <ChevronRight
+                    size={13}
+                    strokeWidth={1.5}
+                    style={{ color: 'var(--vt-text-disabled)', flexShrink: 0 }}
+                    aria-hidden="true"
+                  />
+                )}
+                {isLast ? (
+                  <span style={styles.crumbCurrent} aria-current="page">
+                    {crumb.label}
+                  </span>
+                ) : (
+                  <Link href={crumb.href} style={styles.crumbLink}>
+                    {crumb.label}
+                  </Link>
+                )}
+              </span>
+            );
+          })}
+        </nav>
+      </div>
 
       {/* Right side — theme toggle + user pill */}
       <div style={styles.rightGroup}>
-
         {/* Theme toggle */}
         <button
           onClick={toggle}
           aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          style={styles.themeBtn}
+          style={styles.iconBtn}
           type="button"
         >
           {theme === 'dark' ? (
@@ -116,36 +138,44 @@ const styles = {
     padding:         '0 24px',
     backgroundColor: 'var(--vt-surface-raised)',
     flexShrink:      0,
+    gap:             '8px',
     transition:      'background-color 320ms cubic-bezier(0.4,0,0.2,1)',
   },
   breadcrumb: {
-    display:    'flex',
+    display:   'flex',
     alignItems: 'center',
     gap:        '4px',
+    overflow:   'hidden',
   },
   crumbGroup: {
     display:    'flex',
     alignItems: 'center',
     gap:        '4px',
+    flexShrink: 0,
   },
   crumbLink: {
     fontFamily:     'var(--vt-font-body)',
     fontSize:       '13px',
     color:          'var(--vt-text-secondary)',
     textDecoration: 'none',
+    whiteSpace:     'nowrap' as const,
   },
   crumbCurrent: {
-    fontFamily: 'var(--vt-font-body)',
-    fontSize:   '13px',
-    color:      'var(--vt-text-primary)',
-    fontWeight: 500,
+    fontFamily:  'var(--vt-font-body)',
+    fontSize:    '13px',
+    color:       'var(--vt-text-primary)',
+    fontWeight:  500,
+    whiteSpace:  'nowrap' as const,
+    overflow:    'hidden' as const,
+    textOverflow: 'ellipsis' as const,
   },
   rightGroup: {
     display:    'flex',
     alignItems: 'center',
     gap:        '10px',
+    flexShrink: 0,
   },
-  themeBtn: {
+  iconBtn: {
     display:         'flex',
     alignItems:      'center',
     justifyContent:  'center',
@@ -157,6 +187,7 @@ const styles = {
     color:           'var(--vt-text-muted)',
     cursor:          'pointer',
     transition:      'background 120ms ease, color 120ms ease, border-color 120ms ease',
+    flexShrink:      0,
   },
   userPill: {
     display:    'flex',
@@ -181,5 +212,6 @@ const styles = {
     fontFamily: 'var(--vt-font-body)',
     fontSize:   '13px',
     color:      'var(--vt-text-secondary)',
+    whiteSpace: 'nowrap' as const,
   },
 } as const;

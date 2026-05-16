@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Worker, type Job } from 'bullmq';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createQueueConnection } from '@vantage/queue';
 import { atsScores, resumeVersions, jobDescriptions } from '@vantage/database';
-import { ResumeOptimizer } from '@vantage/ai';
+import { ResumeOptimizer, AtsScorer } from '@vantage/ai';
 import type { ResumeData, ATSScore, OptimizationChange } from '@vantage/validation';
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,10 @@ export interface ResumeOptimizeJobPayload {
 export class ResumeOptimizeProcessor {
   private readonly logger = new Logger(ResumeOptimizeProcessor.name);
 
-  constructor(private readonly resumeOptimizer: ResumeOptimizer) {}
+  constructor(
+    private readonly resumeOptimizer: ResumeOptimizer,
+    private readonly atsScorer: AtsScorer,
+  ) {}
 
   /**
    * Process a single resume optimization job.
@@ -34,7 +37,9 @@ export class ResumeOptimizeProcessor {
    *   4. Load job_description → content
    *   5. Mark optimizationStatus → 'optimizing'
    *   6. Run ResumeOptimizer.optimize()
-   *   7. Write optimizedStructuredData + optimizationChangeLog → status 'complete'
+   *   7. Run AtsScorer.score() against the OPTIMIZED resume (inline re-score)
+   *   8. Write optimizedStructuredData + optimizationChangeLog + optimizedOverallScore
+   *      + optimizedSectionScores → status 'complete' (single DB update)
    */
   async process(
     job: Job<ResumeOptimizeJobPayload>,
@@ -119,7 +124,20 @@ export class ResumeOptimizeProcessor {
       `[job:${job.id}] Optimization complete — ${changeLog.length} changes made`,
     );
 
-    // 7. Write results
+    // 7. Re-score the optimized resume against the same JD.
+    //    This produces the "after" score for the before/after delta UI.
+    //    Run inline — no second queue job, no additional latency beyond the scorer itself.
+    this.logger.log(
+      `[job:${job.id}] Running inline re-score on optimized resume — ats_score=${atsScoreId}`,
+    );
+
+    const optimizedAtsScore = await this.atsScorer.score(optimizedData, jdRow.content);
+
+    this.logger.log(
+      `[job:${job.id}] Re-score complete — optimized overall=${optimizedAtsScore.overall} (was ${scoreRow.overallScore ?? 0})`,
+    );
+
+    // 8. Write results — single atomic update
     await db
       .update(atsScores)
       .set({
@@ -127,11 +145,16 @@ export class ResumeOptimizeProcessor {
         optimizedStructuredData: optimizedData,
         optimizationChangeLog:   changeLog as unknown as OptimizationChange[],
         optimizationError:       null,
+        // Post-optimization re-score
+        optimizedOverallScore:   optimizedAtsScore.overall,
+        optimizedSectionScores:  optimizedAtsScore.sections,
         updatedAt:               new Date(),
       })
       .where(eq(atsScores.id, atsScoreId));
 
-    this.logger.log(`[job:${job.id}] ats_score=${atsScoreId} optimization → complete`);
+    this.logger.log(
+      `[job:${job.id}] ats_score=${atsScoreId} optimization → complete (${scoreRow.overallScore ?? 0} → ${optimizedAtsScore.overall})`,
+    );
   }
 
   /**
