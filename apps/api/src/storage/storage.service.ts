@@ -120,7 +120,7 @@ function signRequest(
 
   const sortedKeys = Object.keys(allHeaders).map((k) => k.toLowerCase()).sort();
   const canonicalHeaders = sortedKeys
-    .map((k) => `${k}:${allHeaders[k].trim()}`)
+    .map((k) => `${k}:${(allHeaders[k] ?? '').trim()}`)
     .join('\n') + '\n';
   const signedHeaders = sortedKeys.join(';');
 
