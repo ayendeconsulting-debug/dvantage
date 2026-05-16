@@ -12,6 +12,106 @@ import {
   S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { SignatureV4 } from '@smithy/signature-v4';
+import { Sha256 } from '@aws-crypto/sha256-js';
+
+// ---------------------------------------------------------------------------
+// Root cause (AWS SDK v3.726+):
+//
+// AWS SDK v3 adds two request-tracking headers to EVERY S3 request:
+//   - amz-sdk-invocation-id  (unique per SDK call)
+//   - amz-sdk-request        (retry attempt number)
+//
+// These headers are included in the SigV4 `SignedHeaders` list. Cloudflare R2
+// does NOT include them in its own canonical request when verifying the
+// signature → the computed signatures differ → HTTP 403 SignatureDoesNotMatch.
+//
+// Fix: provide a custom SigV4 signer that strips these (and other SDK-specific)
+// headers from the request BEFORE computing the canonical request hash. The
+// stripped headers are also absent from the actual HTTP call, so R2's
+// verification and our signature remain in sync.
+//
+// Verified against @aws-sdk/client-s3 v3.1045.0 + Cloudflare R2.
+// ---------------------------------------------------------------------------
+
+/** Headers injected by the AWS SDK that R2 cannot handle in SignedHeaders. */
+const SDK_HEADERS_TO_EXCLUDE_FROM_SIGNING = new Set([
+  'amz-sdk-invocation-id',
+  'amz-sdk-request',
+  'x-amz-user-agent',
+  'user-agent',
+]);
+
+/** Header prefixes for AWS checksum extensions that R2 does not support. */
+const CHECKSUM_HEADER_PREFIXES = [
+  'x-amz-checksum-',
+  'x-amz-sdk-checksum-',
+];
+
+function stripR2IncompatibleHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([key]) => {
+      const lower = key.toLowerCase();
+      return (
+        !SDK_HEADERS_TO_EXCLUDE_FROM_SIGNING.has(lower) &&
+        !CHECKSUM_HEADER_PREFIXES.some((p) => lower.startsWith(p)) &&
+        lower !== 'x-amz-trailer'
+      );
+    }),
+  );
+}
+
+/**
+ * Builds an R2-compatible SigV4 signer.
+ *
+ * Wraps @smithy/signature-v4 and strips incompatible AWS-SDK headers before
+ * computing the canonical request, so only standard S3 headers appear in
+ * SignedHeaders:  content-length;content-type;host;x-amz-content-sha256;x-amz-date
+ */
+function buildR2Signer(
+  credentials: { accessKeyId: string; secretAccessKey: string },
+  region: string,
+) {
+  const base = new SignatureV4({
+    service: 's3',
+    region,
+    credentials,
+    sha256: Sha256,
+  });
+
+  return {
+    sign: async (
+      request: Record<string, unknown>,
+      options?: Record<string, unknown>,
+    ) => {
+      const cleaned = {
+        ...request,
+        headers: stripR2IncompatibleHeaders(
+          (request.headers as Record<string, string>) ?? {},
+        ),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return base.sign(cleaned as any, options as any);
+    },
+    presign: async (
+      request: Record<string, unknown>,
+      options?: Record<string, unknown>,
+    ) => {
+      const cleaned = {
+        ...request,
+        headers: stripR2IncompatibleHeaders(
+          (request.headers as Record<string, string>) ?? {},
+        ),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return base.presign(cleaned as any, options as any);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 export interface PresignedUploadResult {
   uploadUrl: string;
@@ -55,8 +155,14 @@ export class StorageService {
       region,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle,
+      // Suppress x-amz-checksum-* headers (SDK v3.726+ adds them by default;
+      // R2 rejects any request that includes them).
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
+      // Custom signer strips amz-sdk-invocation-id / amz-sdk-request from the
+      // canonical request so R2's signature verification matches ours.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      signer: buildR2Signer({ accessKeyId, secretAccessKey }, region) as any,
     });
 
     this.logger.log(
@@ -66,16 +172,10 @@ export class StorageService {
 
   // ---------------------------------------------------------------------------
   // Direct server-side upload (proxy upload — no CORS, no presigned URL)
-  //
-  // ContentLength MUST be set explicitly. Without it the SDK may use chunked
-  // transfer encoding which changes the signing payload → SignatureDoesNotMatch.
-  //
-  // ChecksumAlgorithm is intentionally NOT set. The global client config of
-  // requestChecksumCalculation:'WHEN_REQUIRED' should suppress x-amz-checksum-*
-  // headers. Cloudflare R2 rejects any request that includes these headers.
   // ---------------------------------------------------------------------------
 
   async putObject(storageKey: string, body: Buffer, contentType: string): Promise<void> {
+    this.logger.debug(`putObject — key=${storageKey} bytes=${body.length} type=${contentType}`);
     await this.client.send(
       new PutObjectCommand({
         Bucket:        this.bucket,
@@ -85,6 +185,7 @@ export class StorageService {
         ContentLength: body.length,
       }),
     );
+    this.logger.log(`putObject success — key=${storageKey}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -103,11 +204,14 @@ export class StorageService {
     });
 
     const uploadUrl = await getSignedUrl(this.client, command, {
-      expiresIn:          expiresInSeconds,
-      unhoistableHeaders: new Set(['x-amz-checksum-crc32', 'x-amz-sdk-checksum-algorithm']),
+      expiresIn: expiresInSeconds,
     });
 
-    return { uploadUrl, storageKey, expiresAt: new Date(Date.now() + expiresInSeconds * 1_000) };
+    return {
+      uploadUrl,
+      storageKey,
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1_000),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -119,8 +223,13 @@ export class StorageService {
     expiresInSeconds = DOWNLOAD_TTL_SECONDS,
   ): Promise<PresignedDownloadResult> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
-    const downloadUrl = await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
-    return { downloadUrl, expiresAt: new Date(Date.now() + expiresInSeconds * 1_000) };
+    const downloadUrl = await getSignedUrl(this.client, command, {
+      expiresIn: expiresInSeconds,
+    });
+    return {
+      downloadUrl,
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1_000),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -128,16 +237,25 @@ export class StorageService {
   // ---------------------------------------------------------------------------
 
   async deleteObject(storageKey: string): Promise<void> {
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }));
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }),
+    );
     this.logger.log(`Deleted storage object: ${storageKey}`);
   }
 
   async objectExists(storageKey: string): Promise<boolean> {
     try {
-      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: storageKey }));
+      await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: storageKey }),
+      );
       return true;
     } catch (err) {
-      if (err instanceof S3ServiceException && err.$metadata.httpStatusCode === 404) return false;
+      if (
+        err instanceof S3ServiceException &&
+        err.$metadata.httpStatusCode === 404
+      ) {
+        return false;
+      }
       throw err;
     }
   }
@@ -147,7 +265,10 @@ export class StorageService {
   // ---------------------------------------------------------------------------
 
   buildResumeKey(userId: string, resumeVersionId: string, fileName: string): string {
-    const sanitised = fileName.trim().replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_{2,}/g, '_');
+    const sanitised = fileName
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/_{2,}/g, '_');
     return `resumes/${userId}/${resumeVersionId}/${sanitised}`;
   }
 
