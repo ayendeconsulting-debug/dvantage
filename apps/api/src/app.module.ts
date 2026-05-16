@@ -16,7 +16,8 @@ import { ApplicationModule } from './application/application.module';
 
 @Module({
   imports: [
-    ThrottlerModule.forRootAsync({
+    ThrottlerModule.forRootAsync({clear
+      
       imports:    [RedisModule],
       inject:     [REDIS_CLIENT],
       useFactory: (redis: Redis) => ({
