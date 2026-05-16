@@ -1,62 +1,62 @@
-﻿{
-    "name":  "vantage",
-    "version":  "0.0.1",
-    "private":  true,
-    "description":  "Vantage â€” AI-powered career operating system",
-    "engines":  {
-                    "node":  "\u003e=20.0.0",
-                    "pnpm":  "\u003e=9.0.0"
-                },
-    "scripts":  {
-                    "build":  "turbo run build",
-                    "dev":  "turbo run dev --parallel",
-                    "lint":  "turbo run lint",
-                    "lint:fix":  "turbo run lint:fix",
-                    "typecheck":  "turbo run typecheck",
-                    "test":  "turbo run test",
-                    "test:e2e":  "turbo run test:e2e",
-                    "clean":  "turbo run clean \u0026\u0026 rimraf node_modules",
-                    "format":  "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
-                    "format:check":  "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
-                    "dev:docker:up":  "docker compose up -d",
-                    "dev:docker:down":  "docker compose down",
-                    "dev:docker:reset":  "docker compose down -v --remove-orphans \u0026\u0026 docker compose up -d",
-                    "dev:docker:logs":  "docker compose logs -f",
-                    "dev:setup":  "powershell -ExecutionPolicy Bypass -File scripts/dev-setup.ps1"
-                },
-    "devDependencies":  {
-                            "@typescript-eslint/eslint-plugin":  "^8.0.0",
-                            "@typescript-eslint/parser":  "^8.0.0",
-                            "eslint":  "^9.0.0",
-                            "eslint-config-prettier":  "^9.0.0",
-                            "prettier":  "^3.0.0",
-                            "rimraf":  "^6.0.0",
-                            "turbo":  "^2.0.0",
-                            "typescript":  "^5.5.0"
-                        },
-    "packageManager":  "pnpm@9.15.0",
-    "pnpm":  {
-                 "overrides":  {
-                                   "@fastify/multipart@\u003c=8.3.0":  "\u003e=8.3.1",
-                                   "esbuild@\u003c=0.24.2":  "\u003e=0.25.0",
-                                   "tmp@\u003c=0.2.3":  "\u003e=0.2.4",
-                                   "glob@\u003e=10.2.0 \u003c10.5.0":  "\u003e=10.5.0",
-                                   "lodash@\u003e=4.0.0 \u003c=4.17.22":  "\u003e=4.17.23",
-                                   "js-yaml@\u003e=4.0.0 \u003c4.1.1":  "\u003e=4.1.1",
-                                   "webpack@\u003e=5.49.0 \u003c=5.104.0":  "\u003e=5.104.1",
-                                   "webpack@\u003e=5.49.0 \u003c5.104.0":  "\u003e=5.104.0",
-                                   "ajv@\u003e=7.0.0-alpha.0 \u003c8.18.0":  "\u003e=8.18.0",
-                                   "file-type@\u003e=13.0.0 \u003c21.3.1":  "\u003e=21.3.1",
-                                   "file-type@\u003e=20.0.0 \u003c=21.3.1":  "\u003e=21.3.2",
-                                   "fastify@\u003c=5.8.2":  "\u003e=5.8.3",
-                                   "picomatch@\u003e=4.0.0 \u003c4.0.4":  "\u003e=4.0.4",
-                                   "lodash@\u003e=4.0.0 \u003c=4.17.23":  "\u003e=4.18.0",
-                                   "lodash@\u003c=4.17.23":  "\u003e=4.18.0",
-                                   "postcss@\u003c8.5.10":  "\u003e=8.5.10",
-                                   "fast-uri@\u003c=3.1.0":  "\u003e=3.1.1",
-                                   "fast-uri@\u003c=3.1.1":  "\u003e=3.1.2",
-                                   "@opentelemetry/auto-instrumentations-node@\u003c0.75.0":  "\u003e=0.75.0",
-                                   "@opentelemetry/sdk-node@\u003c0.217.0":  "\u003e=0.217.0"
-                               }
-             }
+{
+  "name": "vantage",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Vantage â€” AI-powered career operating system",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "clean": "turbo run clean && rimraf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "dev:docker:up": "docker compose up -d",
+    "dev:docker:down": "docker compose down",
+    "dev:docker:reset": "docker compose down -v --remove-orphans && docker compose up -d",
+    "dev:docker:logs": "docker compose logs -f",
+    "dev:setup": "powershell -ExecutionPolicy Bypass -File scripts/dev-setup.ps1"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "prettier": "^3.0.0",
+    "rimraf": "^6.0.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "@fastify/multipart@<=8.3.0": ">=8.3.1",
+      "esbuild@<=0.24.2": ">=0.25.0",
+      "tmp@<=0.2.3": ">=0.2.4",
+      "glob@>=10.2.0 <10.5.0": ">=10.5.0",
+                "lodash@>=4.0.0 <=4.17.22": ">=4.17.23",
+      "js-yaml@>=4.0.0 <4.1.1": ">=4.1.1",
+                "webpack@>=5.49.0 <=5.104.0": ">=5.104.1",
+      "webpack@>=5.49.0 <5.104.0": ">=5.104.0",
+           "ajv@>=7.0.0-alpha.0 <8.18.0": ">=8.18.0",
+           "file-type@>=13.0.0 <21.3.1": ">=21.3.1",
+      "file-type@>=20.0.0 <=21.3.1": ">=21.3.2",
+           "fastify@<=5.8.2": ">=5.8.3",
+      "picomatch@>=4.0.0 <4.0.4": ">=4.0.4",
+      "lodash@>=4.0.0 <=4.17.23": ">=4.18.0",
+      "lodash@<=4.17.23": ">=4.18.0",
+           "postcss@<8.5.10": ">=8.5.10",
+           "fast-uri@<=3.1.0": ">=3.1.1",
+      "fast-uri@<=3.1.1": ">=3.1.2",
+      "@opentelemetry/auto-instrumentations-node@<0.75.0": ">=0.75.0",
+      "@opentelemetry/sdk-node@<0.217.0": ">=0.217.0"
+    }
+  }
 }
