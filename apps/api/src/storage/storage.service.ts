@@ -1,5 +1,6 @@
-import { createRequire }  from 'node:module';
 import { Injectable, Logger } from '@nestjs/common';
+import * as https from 'node:https';
+import * as crypto from 'node:crypto';
 import {
   ALLOWED_RESUME_MIME_TYPES,
   RESUME_MAX_SIZE_BYTES,
@@ -7,7 +8,6 @@ import {
 import {
   DeleteObjectCommand,
   GetObjectCommand,
-  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
   S3ServiceException,
@@ -15,113 +15,184 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // ---------------------------------------------------------------------------
-// Load @smithy/signature-v4 and @aws-crypto/sha256-js through the module
-// resolution context of @aws-sdk/client-s3.
+// Why raw HTTPS for putObject and objectExists?
 //
-// WHY NOT A DIRECT IMPORT?
-//   pnpm strict mode creates node_modules symlinks only for packages listed in
-//   a package's own package.json.  @smithy/signature-v4 is a transitive dep
-//   of @aws-sdk/client-s3 — not a direct dep of apps/api — so there is no
-//   symlink at apps/api/node_modules/@smithy/signature-v4.  A plain
-//   require('@smithy/signature-v4') from dist/storage/storage.service.js
-//   walks up the directory tree, finds nothing, and throws MODULE_NOT_FOUND.
+// AWS SDK v3.1045.0 (smithy-based architecture) ignores the `signer` option
+// on S3Client.  The new @aws-sdk/middleware-sdk-s3 + @smithy/core schema
+// executor handles signing internally — our custom signer was loaded but
+// never called.  In addition, @aws-sdk/middleware-flexible-checksums adds
+// x-amz-checksum-crc32 AFTER signing in a layer we cannot intercept.
 //
-// WHY createRequire WORKS?
-//   require.resolve('@aws-sdk/client-s3') returns the absolute path inside the
-//   .pnpm store where that package lives.  createRequire(that_path) produces a
-//   require() whose CWD is the SDK package directory, which DOES have a
-//   node_modules/@smithy/signature-v4 symlink (pnpm writes one for every
-//   direct dependency of the SDK).  We then resolve @smithy/signature-v4's
-//   own path to load @aws-crypto/sha256-js through the same mechanism.
+// Both issues cause Cloudflare R2 to return HTTP 403 SignatureDoesNotMatch
+// on every PutObjectCommand.
 //
-// This is a zero-lockfile-change, zero-package-json-change approach. It relies
-// only on the Node.js built-in `node:module` and the pnpm .pnpm store layout
-// that is already present in the Docker runner image.
+// Fix: bypass the SDK for mutating S3 calls (PUT, HEAD) and implement
+// SigV4 directly using only node:crypto + node:https built-ins:
+//   - We control exactly which headers are signed
+//   - No SDK middleware can add incompatible headers post-signing
+//   - Zero external dependencies — no version fragility
 //
-// Verified against @aws-sdk/client-s3 v3.1045.0 + pnpm 9.15.0 + Node 20.
-// ---------------------------------------------------------------------------
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-const _s3Require  = createRequire(require.resolve('@aws-sdk/client-s3'));
-const { SignatureV4 } = _s3Require('@smithy/signature-v4') as { SignatureV4: new (c: any) => any };
-const _sv4Require = createRequire(_s3Require.resolve('@smithy/signature-v4'));
-const { Sha256 }      = _sv4Require('@aws-crypto/sha256-js') as { Sha256: new () => any };
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
-// ---------------------------------------------------------------------------
-// Root cause of every SignatureDoesNotMatch error against Cloudflare R2
-// (AWS SDK v3.726 and later):
-//
-// The SDK automatically injects two request-tracking headers into every S3
-// request and includes them in the SigV4 `SignedHeaders` list:
-//
-//   amz-sdk-invocation-id  — unique ID per SDK call
-//   amz-sdk-request        — retry attempt counter
-//
-// When R2 verifies the signature it reconstructs the canonical request from
-// the incoming HTTP headers. R2 does not know these AWS-specific headers,
-// so its canonical request differs from ours → HTTP 403 SignatureDoesNotMatch.
-//
-// Fix: provide a custom SigV4 signer that strips these (and any checksum)
-// headers before computing the canonical request hash, so the resulting
-// SignedHeaders contains only standard S3 headers that R2 supports:
-//
+// Signed headers for PUT / HEAD:
 //   content-length ; content-type ; host ; x-amz-content-sha256 ; x-amz-date
+//   (or without content-length/content-type for HEAD)
 //
-// Verified against @aws-sdk/client-s3 v3.1045.0 + Cloudflare R2.
+// The legacy SDK client is kept for getSignedUrl (presign) only because
+// getSignedUrl generates a URL without making an HTTP call — the URL is
+// used by the browser which is a different signing context.
 // ---------------------------------------------------------------------------
 
-const SDK_TRACKING_HEADERS = new Set([
-  'amz-sdk-invocation-id',
-  'amz-sdk-request',
-  'x-amz-user-agent',
-  'user-agent',
-]);
+// ── SigV4 helpers (node:crypto only) ───────────────────────────────────────
 
-const CHECKSUM_PREFIXES = ['x-amz-checksum-', 'x-amz-sdk-checksum-'];
+function hmac(key: Buffer | string, data: string): Buffer {
+  return crypto.createHmac('sha256', key).update(data, 'utf8').digest();
+}
 
-function stripR2IncompatibleHeaders(
-  headers: Record<string, string>,
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(headers).filter(([key]) => {
-      const lower = key.toLowerCase();
-      return (
-        !SDK_TRACKING_HEADERS.has(lower) &&
-        !CHECKSUM_PREFIXES.some((p) => lower.startsWith(p)) &&
-        lower !== 'x-amz-trailer'
-      );
-    }),
-  );
+function sha256Hex(data: Buffer | string): string {
+  return crypto.createHash('sha256').update(data).digest('hex');
 }
 
 /**
- * Builds an R2-compatible SigV4 signer.
- *
- * Wraps @smithy/signature-v4 and strips incompatible AWS-SDK headers before
- * computing the canonical request. Covers both direct requests (PutObject,
- * HeadObject, …) and presigned URLs (getSignedUrl for upload/download).
+ * Percent-encode an S3 key segment per AWS URI encoding rules.
+ * Slashes are preserved (passed through as segment separators).
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildR2Signer(credentials: { accessKeyId: string; secretAccessKey: string }, region: string): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const base: any = new SignatureV4({ service: 's3', region, credentials, sha256: Sha256 });
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const clean = (req: any): any => ({
-    ...req,
-    headers: stripR2IncompatibleHeaders((req['headers'] as Record<string, string>) ?? {}),
-  });
-
-  return {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    sign:    (req: any, opts?: any): Promise<any> => base.sign(clean(req),    opts),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    presign: (req: any, opts?: any): Promise<any> => base.presign(clean(req), opts),
-  };
+/**
+ * Percent-encode an S3 key per AWS SigV4 URI encoding rules.
+ * Unreserved chars (A-Z a-z 0-9 - _ . ~) are NOT encoded.
+ * Slashes are preserved as path separators.
+ * encodeURIComponent leaves ( ) ! * ' unencoded — we fix that.
+ */
+function awsUriEncode(segment: string): string {
+  return encodeURIComponent(segment).replace(
+    /[!'()*]/g,
+    (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
+  );
 }
 
-// ---------------------------------------------------------------------------
+function encodeS3Key(key: string): string {
+  return key.split('/').map(awsUriEncode).join('/');
+}
+
+interface SigV4Config {
+  accessKeyId:     string;
+  secretAccessKey: string;
+  region:          string;
+  service:         string;
+}
+
+interface RawS3Options {
+  method:      'PUT' | 'HEAD' | 'DELETE';
+  hostname:    string;
+  path:        string;            // must start with /
+  headers:     Record<string, string>;
+  body?:       Buffer;
+}
+
+/**
+ * Compute the AWS SigV4 Authorization header and x-amz-date for a request.
+ *
+ * @param cfg       AWS credentials + region + service
+ * @param method    HTTP verb
+ * @param hostname  Virtual hosted / path style hostname
+ * @param path      URI path (must start with /)
+ * @param headers   All request headers (will be included in canonical request)
+ * @param bodyHash  Hex SHA-256 of the body (or the empty-body constant)
+ * @returns         { authorization, amzDate }
+ */
+function signRequest(
+  cfg: SigV4Config,
+  method: string,
+  hostname: string,
+  path: string,
+  headers: Record<string, string>,
+  bodyHash: string,
+): { authorization: string; amzDate: string } {
+  const now      = new Date();
+  const amzDate  = now.toISOString().replace(/[:-]/g, '').replace(/\..+/, '') + 'Z';
+  const dateStamp = amzDate.slice(0, 8);
+
+  // Canonical headers — sorted alphabetically by lowercase header name
+  const allHeaders: Record<string, string> = {
+    ...headers,
+    host:                 hostname,
+    'x-amz-date':        amzDate,
+    'x-amz-content-sha256': bodyHash,
+  };
+
+  const sortedKeys = Object.keys(allHeaders).map((k) => k.toLowerCase()).sort();
+  const canonicalHeaders = sortedKeys
+    .map((k) => `${k}:${allHeaders[k].trim()}`)
+    .join('\n') + '\n';
+  const signedHeaders = sortedKeys.join(';');
+
+  const canonicalRequest = [
+    method,
+    path,
+    '',               // no query string
+    canonicalHeaders,
+    signedHeaders,
+    bodyHash,
+  ].join('\n');
+
+  const credentialScope = `${dateStamp}/${cfg.region}/${cfg.service}/aws4_request`;
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    sha256Hex(Buffer.from(canonicalRequest)),
+  ].join('\n');
+
+  const signingKey = hmac(
+    hmac(
+      hmac(
+        hmac(Buffer.from(`AWS4${cfg.secretAccessKey}`), dateStamp),
+        cfg.region,
+      ),
+      cfg.service,
+    ),
+    'aws4_request',
+  );
+
+  const signature     = crypto.createHmac('sha256', signingKey).update(stringToSign, 'utf8').digest('hex');
+  const authorization = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return { authorization, amzDate };
+}
+
+/** Execute a signed raw HTTPS request against R2 / S3. */
+function rawS3Request(opts: RawS3Options): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: opts.hostname,
+        path:     opts.path,
+        method:   opts.method,
+        headers:  opts.headers,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          const status = res.statusCode ?? 0;
+          if (status >= 200 && status < 300) {
+            resolve();
+          } else {
+            const body = Buffer.concat(chunks).toString('utf8');
+            reject(new Error(`R2 ${opts.method} failed HTTP ${status}: ${body.slice(0, 400)}`));
+          }
+        });
+      },
+    );
+    req.on('error', reject);
+    if (opts.body) req.write(opts.body);
+    req.end();
+  });
+}
+
+// ── R2 helpers ──────────────────────────────────────────────────────────────
+
+const EMPTY_BODY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+// ── Public interfaces ───────────────────────────────────────────────────────
 
 export interface PresignedUploadResult {
   uploadUrl: string;
@@ -143,11 +214,20 @@ function requireEnv(key: string): string {
   return value;
 }
 
+// ── Service ─────────────────────────────────────────────────────────────────
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
+
+  // SDK client kept for presign-only operations (getSignedUrl does not hit R2)
   private readonly client: S3Client;
-  private readonly bucket: string;
+
+  private readonly bucket:          string;
+  private readonly sigCfg:          SigV4Config;
+  private readonly r2Hostname:      string;   // virtual hosted style hostname for the bucket
+  private readonly forcePathStyle:  boolean;
+  private readonly rawHostname:     string;   // account endpoint hostname
 
   readonly maxFileSizeBytes: number = RESUME_MAX_SIZE_BYTES;
 
@@ -158,51 +238,113 @@ export class StorageService {
     const region          = process.env['R2_REGION'] ?? 'auto';
     const forcePathStyle  = process.env['R2_FORCE_PATH_STYLE'] === 'true';
 
-    this.bucket = requireEnv('R2_BUCKET_RESUMES');
+    this.bucket         = requireEnv('R2_BUCKET_RESUMES');
+    this.forcePathStyle = forcePathStyle;
+    this.sigCfg         = { accessKeyId, secretAccessKey, region, service: 's3' };
 
+    // Derive the bare hostname from the endpoint URL
+    const endpointUrl   = new URL(endpoint);
+    this.rawHostname    = endpointUrl.hostname;
+    this.r2Hostname     = forcePathStyle
+      ? this.rawHostname
+      : `${this.bucket}.${this.rawHostname}`;
+
+    // SDK client — used ONLY for getSignedUrl (no actual HTTP calls to R2)
     this.client = new S3Client({
       endpoint,
       region,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle,
-      // Suppress x-amz-checksum-* headers (SDK v3.726+ enables them by default;
-      // Cloudflare R2 rejects any request that includes them).
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
-      // Custom R2-compatible signer — see module-level comment for rationale.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      signer: buildR2Signer({ accessKeyId, secretAccessKey }, region) as any,
     });
 
     this.logger.log(
-      `StorageService initialised — bucket=${this.bucket} endpoint=${endpoint} forcePathStyle=${forcePathStyle}`,
+      `StorageService initialised — bucket=${this.bucket} endpoint=${endpoint} ` +
+      `forcePathStyle=${forcePathStyle} hostname=${this.r2Hostname}`,
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Direct server-side upload (proxy upload — no CORS, no presigned URL)
-  //
-  // ContentLength must be set explicitly so the SDK does not fall back to
-  // chunked transfer encoding, which changes the body hash in the canonical
-  // request and causes a second SignatureDoesNotMatch.
+  // Direct server-side upload — raw HTTPS + manual SigV4
+  // SignedHeaders: content-length;content-type;host;x-amz-content-sha256;x-amz-date
   // ---------------------------------------------------------------------------
 
   async putObject(storageKey: string, body: Buffer, contentType: string): Promise<void> {
     this.logger.debug(`putObject — key=${storageKey} bytes=${body.length} type=${contentType}`);
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket:        this.bucket,
-        Key:           storageKey,
-        Body:          body,
-        ContentType:   contentType,
-        ContentLength: body.length,
-      }),
+
+    const bodyHash = sha256Hex(body);
+    const path     = this.buildPath(storageKey);
+
+    const extraHeaders: Record<string, string> = {
+      'content-type':   contentType,
+      'content-length': String(body.length),
+    };
+
+    const { authorization, amzDate } = signRequest(
+      this.sigCfg,
+      'PUT',
+      this.r2Hostname,
+      path,
+      extraHeaders,
+      bodyHash,
     );
+
+    await rawS3Request({
+      method:   'PUT',
+      hostname: this.r2Hostname,
+      path,
+      body,
+      headers: {
+        'Content-Type':          contentType,
+        'Content-Length':        String(body.length),
+        'x-amz-date':            amzDate,
+        'x-amz-content-sha256':  bodyHash,
+        'Authorization':         authorization,
+      },
+    });
+
     this.logger.log(`putObject success — key=${storageKey}`);
   }
 
   // ---------------------------------------------------------------------------
+  // Check object existence — raw HTTPS + manual SigV4 (HEAD)
+  // ---------------------------------------------------------------------------
+
+  async objectExists(storageKey: string): Promise<boolean> {
+    const path = this.buildPath(storageKey);
+
+    const { authorization, amzDate } = signRequest(
+      this.sigCfg,
+      'HEAD',
+      this.r2Hostname,
+      path,
+      {},
+      EMPTY_BODY_SHA256,
+    );
+
+    try {
+      await rawS3Request({
+        method:   'HEAD',
+        hostname: this.r2Hostname,
+        path,
+        headers: {
+          'x-amz-date':           amzDate,
+          'x-amz-content-sha256': EMPTY_BODY_SHA256,
+          'Authorization':        authorization,
+        },
+      });
+      return true;
+    } catch (err) {
+      const msg = (err as Error).message ?? '';
+      if (msg.includes('HTTP 404') || msg.includes('HTTP 403')) return false;
+      throw err;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Presigned upload URL (legacy browser-direct path)
+  // getSignedUrl does NOT make an HTTP call — safe to use SDK here
   // ---------------------------------------------------------------------------
 
   async presignUpload(
@@ -229,16 +371,15 @@ export class StorageService {
 
   // ---------------------------------------------------------------------------
   // Presigned download URL
+  // getSignedUrl does NOT make an HTTP call — safe to use SDK here
   // ---------------------------------------------------------------------------
 
   async presignDownload(
     storageKey: string,
     expiresInSeconds = DOWNLOAD_TTL_SECONDS,
   ): Promise<PresignedDownloadResult> {
-    const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
-    const downloadUrl = await getSignedUrl(this.client, command, {
-      expiresIn: expiresInSeconds,
-    });
+    const command     = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
+    const downloadUrl = await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
     return {
       downloadUrl,
       expiresAt: new Date(Date.now() + expiresInSeconds * 1_000),
@@ -246,31 +387,19 @@ export class StorageService {
   }
 
   // ---------------------------------------------------------------------------
-  // Object management
+  // Delete (uses SDK — errors are non-fatal, caught by caller)
   // ---------------------------------------------------------------------------
 
   async deleteObject(storageKey: string): Promise<void> {
-    await this.client.send(
-      new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }),
-    );
-    this.logger.log(`Deleted storage object: ${storageKey}`);
-  }
-
-  async objectExists(storageKey: string): Promise<boolean> {
     try {
       await this.client.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: storageKey }),
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }),
       );
-      return true;
     } catch (err) {
-      if (
-        err instanceof S3ServiceException &&
-        err.$metadata.httpStatusCode === 404
-      ) {
-        return false;
-      }
+      // Re-throw — caller (ResumeService.deleteVersion) catches and logs
       throw err;
     }
+    this.logger.log(`Deleted storage object: ${storageKey}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -287,5 +416,16 @@ export class StorageService {
 
   isAllowedMimeType(mimeType: string): boolean {
     return (ALLOWED_RESUME_MIME_TYPES as readonly string[]).includes(mimeType);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal — build the request path for a storage key
+  // ---------------------------------------------------------------------------
+
+  private buildPath(storageKey: string): string {
+    const encodedKey = encodeS3Key(storageKey);
+    return this.forcePathStyle
+      ? `/${this.bucket}/${encodedKey}`
+      : `/${encodedKey}`;
   }
 }
