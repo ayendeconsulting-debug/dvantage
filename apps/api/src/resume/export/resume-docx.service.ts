@@ -8,7 +8,6 @@ import {
   BorderStyle,
   AlignmentType,
   TabStopType,
-  TabStopLeader,
 } from 'docx';
 import type { ResumeData } from '@vantage/validation';
 
@@ -318,7 +317,6 @@ export class ResumeDocxService {
         {
           type:     TabStopType.RIGHT,
           position: RIGHT_TAB,
-          leader:   TabStopLeader.NONE,
         },
       ],
       spacing: { after: 60 },
