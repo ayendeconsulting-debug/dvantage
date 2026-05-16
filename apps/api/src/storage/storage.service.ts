@@ -12,41 +12,52 @@ import {
   S3ServiceException,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { SignatureV4 } from '@smithy/signature-v4';
-import { Sha256 } from '@aws-crypto/sha256-js';
 
 // ---------------------------------------------------------------------------
-// Root cause (AWS SDK v3.726+):
+// @smithy/signature-v4 and @aws-crypto/sha256-js are transitive dependencies
+// of @aws-sdk/client-s3 and are present at runtime in the pnpm .pnpm store.
+// They cannot be imported as top-level ESM/CJS imports because they are not
+// listed in apps/api/package.json (pnpm strict phantom-dependency prevention).
+// We load them via require() with explicit type casts — the same pattern used
+// for @fastify/multipart in main.ts.
+// ---------------------------------------------------------------------------
+
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+const { SignatureV4 } = require('@smithy/signature-v4')  as { SignatureV4: new (c: any) => any };
+const { Sha256 }      = require('@aws-crypto/sha256-js') as { Sha256: new () => any };
+/* eslint-enable  @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any */
+
+// ---------------------------------------------------------------------------
+// Root cause of every SignatureDoesNotMatch error against Cloudflare R2
+// (AWS SDK v3.726+):
 //
-// AWS SDK v3 adds two request-tracking headers to EVERY S3 request:
-//   - amz-sdk-invocation-id  (unique per SDK call)
-//   - amz-sdk-request        (retry attempt number)
+// The SDK automatically injects two request-tracking headers into every S3
+// request and includes them in the SigV4 `SignedHeaders` list:
 //
-// These headers are included in the SigV4 `SignedHeaders` list. Cloudflare R2
-// does NOT include them in its own canonical request when verifying the
-// signature → the computed signatures differ → HTTP 403 SignatureDoesNotMatch.
+//   amz-sdk-invocation-id  — unique ID per SDK call
+//   amz-sdk-request        — retry attempt counter
 //
-// Fix: provide a custom SigV4 signer that strips these (and other SDK-specific)
-// headers from the request BEFORE computing the canonical request hash. The
-// stripped headers are also absent from the actual HTTP call, so R2's
-// verification and our signature remain in sync.
+// When R2 verifies the signature it reconstructs the canonical request from
+// the incoming HTTP headers. R2 does not know these AWS-SDK-specific headers,
+// so its canonical request differs from ours → HTTP 403 SignatureDoesNotMatch.
+//
+// Fix: provide a custom SigV4 signer that strips these (and any checksum)
+// headers before computing the canonical request hash, so the resulting
+// SignedHeaders contains only standard S3 headers that R2 supports:
+//
+//   content-length ; content-type ; host ; x-amz-content-sha256 ; x-amz-date
 //
 // Verified against @aws-sdk/client-s3 v3.1045.0 + Cloudflare R2.
 // ---------------------------------------------------------------------------
 
-/** Headers injected by the AWS SDK that R2 cannot handle in SignedHeaders. */
-const SDK_HEADERS_TO_EXCLUDE_FROM_SIGNING = new Set([
+const SDK_TRACKING_HEADERS = new Set([
   'amz-sdk-invocation-id',
   'amz-sdk-request',
   'x-amz-user-agent',
   'user-agent',
 ]);
 
-/** Header prefixes for AWS checksum extensions that R2 does not support. */
-const CHECKSUM_HEADER_PREFIXES = [
-  'x-amz-checksum-',
-  'x-amz-sdk-checksum-',
-];
+const CHECKSUM_PREFIXES = ['x-amz-checksum-', 'x-amz-sdk-checksum-'];
 
 function stripR2IncompatibleHeaders(
   headers: Record<string, string>,
@@ -55,8 +66,8 @@ function stripR2IncompatibleHeaders(
     Object.entries(headers).filter(([key]) => {
       const lower = key.toLowerCase();
       return (
-        !SDK_HEADERS_TO_EXCLUDE_FROM_SIGNING.has(lower) &&
-        !CHECKSUM_HEADER_PREFIXES.some((p) => lower.startsWith(p)) &&
+        !SDK_TRACKING_HEADERS.has(lower) &&
+        !CHECKSUM_PREFIXES.some((p) => lower.startsWith(p)) &&
         lower !== 'x-amz-trailer'
       );
     }),
@@ -67,47 +78,25 @@ function stripR2IncompatibleHeaders(
  * Builds an R2-compatible SigV4 signer.
  *
  * Wraps @smithy/signature-v4 and strips incompatible AWS-SDK headers before
- * computing the canonical request, so only standard S3 headers appear in
- * SignedHeaders:  content-length;content-type;host;x-amz-content-sha256;x-amz-date
+ * computing the canonical request. Both `sign` (PutObject, HeadObject, …)
+ * and `presign` (getSignedUrl for upload/download) are covered.
  */
-function buildR2Signer(
-  credentials: { accessKeyId: string; secretAccessKey: string },
-  region: string,
-) {
-  const base = new SignatureV4({
-    service: 's3',
-    region,
-    credentials,
-    sha256: Sha256,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildR2Signer(credentials: { accessKeyId: string; secretAccessKey: string }, region: string): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const base: any = new SignatureV4({ service: 's3', region, credentials, sha256: Sha256 });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const clean = (req: any): any => ({
+    ...req,
+    headers: stripR2IncompatibleHeaders((req['headers'] as Record<string, string>) ?? {}),
   });
 
   return {
-    sign: async (
-      request: Record<string, unknown>,
-      options?: Record<string, unknown>,
-    ) => {
-      const cleaned = {
-        ...request,
-        headers: stripR2IncompatibleHeaders(
-          (request.headers as Record<string, string>) ?? {},
-        ),
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return base.sign(cleaned as any, options as any);
-    },
-    presign: async (
-      request: Record<string, unknown>,
-      options?: Record<string, unknown>,
-    ) => {
-      const cleaned = {
-        ...request,
-        headers: stripR2IncompatibleHeaders(
-          (request.headers as Record<string, string>) ?? {},
-        ),
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return base.presign(cleaned as any, options as any);
-    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sign:    (req: any, opts?: any): Promise<any> => base.sign(clean(req),    opts),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    presign: (req: any, opts?: any): Promise<any> => base.presign(clean(req), opts),
   };
 }
 
@@ -155,12 +144,11 @@ export class StorageService {
       region,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle,
-      // Suppress x-amz-checksum-* headers (SDK v3.726+ adds them by default;
-      // R2 rejects any request that includes them).
+      // Suppress x-amz-checksum-* headers (SDK v3.726+ enables them by default;
+      // Cloudflare R2 rejects any request that includes them).
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
-      // Custom signer strips amz-sdk-invocation-id / amz-sdk-request from the
-      // canonical request so R2's signature verification matches ours.
+      // Custom R2-compatible signer — see module-level comment for rationale.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       signer: buildR2Signer({ accessKeyId, secretAccessKey }, region) as any,
     });
@@ -172,6 +160,10 @@ export class StorageService {
 
   // ---------------------------------------------------------------------------
   // Direct server-side upload (proxy upload — no CORS, no presigned URL)
+  //
+  // ContentLength must be set explicitly so the SDK does not fall back to
+  // chunked transfer encoding, which changes the body hash in the canonical
+  // request and causes a second SignatureDoesNotMatch.
   // ---------------------------------------------------------------------------
 
   async putObject(storageKey: string, body: Buffer, contentType: string): Promise<void> {
