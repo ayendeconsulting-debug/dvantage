@@ -73,7 +73,7 @@ function SignInScreen() {
     // Open sign-in page with callbackURL=/extension/done.
     // The BG SW monitors chrome.tabs.onUpdated for that URL and calls the
     // exchange endpoint directly once sign-in is complete.
-    const callbackUrl = `${APP_BASE}/extension/done`;
+    const callbackUrl = '/extension/done';
     const signInUrl   = `${APP_BASE}/auth/sign-in?callbackURL=${encodeURIComponent(callbackUrl)}`;
     chrome.tabs.create({ url: signInUrl });
   }
