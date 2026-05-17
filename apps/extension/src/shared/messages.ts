@@ -32,6 +32,14 @@ export type ContentToBackground =
   | {
       type:    'FORM_SUBMITTED';
       payload: { company: string | null; role: string | null; pageUrl: string; jdSnapshot: string | null };
+    }
+  // D4: Auth bridge — sent by auth-bridge.ts content script on dvantage.ca/extension/auth.
+  // The content script receives a CustomEvent from the web page and relays it
+  // here via the internal chrome.runtime.sendMessage channel (always available
+  // in content scripts, unlike externally_connectable which is unreliable).
+  | {
+      type:    'AUTH_BRIDGE_TOKEN';
+      payload: { token: string; expiresAt: string };
     };
 
 // ---------------------------------------------------------------------------

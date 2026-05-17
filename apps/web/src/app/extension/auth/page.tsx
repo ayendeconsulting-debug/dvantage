@@ -14,18 +14,23 @@
 //   1. Session loading  → spinner
 //   2. Not logged in    → redirect to /auth/sign-in (preserving return param)
 //   3. Logged in        → POST /v1/extension/auth/exchange
-//   4. Exchange success → chrome.runtime.sendMessage(extId, token)
-//   5. Ack received     → window.close()
-//   6. Any failure      → error state + retry CTA
+//   4. Exchange success → CustomEvent('dvantage:ext:token') dispatched to window
+//   5. auth-bridge.ts content script relays to BG SW via chrome.runtime.sendMessage
+//   6. Ack received     → window.close()
+//   7. Any failure      → error state + retry CTA
+//
+// Token delivery mechanism (D4):
+//   Direct chrome.runtime.sendMessage via externally_connectable was unreliable
+//   (chrome.runtime.runtime returned undefined in production — D4 diagnostic).
+//   Replaced with a CustomEvent bridge: the extension injects auth-bridge.ts
+//   as a content script on this page. Content scripts always have chrome.runtime
+//   access regardless of externally_connectable configuration.
 //
 // Security:
 //   • return param validated — must be chrome-extension:// protocol.
 //   • callbackURL redirect validated — relative paths only (no open redirect).
-//   • sendMessage targets the specific extension ID from the return param.
-//
-// Chrome typing:
-//   Minimal scoped type instead of @types/chrome — keeps the Next.js web app
-//   type surface free of the Chrome extension global namespace.
+//   • Background SW re-validates sender.origin as defence-in-depth.
+//   • 8-second timeout on ack prevents hung UI if extension is unresponsive.
 // ---------------------------------------------------------------------------
 
 import { Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -34,35 +39,22 @@ import { useSession }                                                   from '@/
 import { exchangeExtensionToken }                                       from '@/lib/api/extension';
 
 // ---------------------------------------------------------------------------
-// Minimal Chrome runtime type — scoped to this file only.
+// CustomEvent channel constants
 // ---------------------------------------------------------------------------
-type ChromeRuntime = {
-  sendMessage(
-    extensionId: string,
-    message:     unknown,
-    callback:    (response: unknown) => void,
-  ): void;
-};
 
-function getChromeRuntime(): ChromeRuntime | null {
-  if (typeof window === 'undefined') return null;
-  // Cast through unknown — Window & typeof globalThis has no index signature.
-  const win          = window as unknown as Record<string, unknown>;
-  const maybeChrome  = win['chrome'];
-  if (typeof maybeChrome !== 'object' || maybeChrome === null) return null;
-  const maybeRuntime = (maybeChrome as Record<string, unknown>)['runtime'];
-  if (typeof maybeRuntime !== 'object' || maybeRuntime === null) return null;
-  const sendMessage  = (maybeRuntime as Record<string, unknown>)['sendMessage'];
-  if (typeof sendMessage !== 'function') return null;
-  return { sendMessage: sendMessage as ChromeRuntime['sendMessage'] };
-}
+const TOKEN_EVENT   = 'dvantage:ext:token' as const;
+const ACK_EVENT     = 'dvantage:ext:ack'   as const;
+const ACK_TIMEOUT   = 8_000; // ms — time to wait for content script ack
 
-function isAckOk(response: unknown): boolean {
-  return (
-    typeof response === 'object' &&
-    response !== null &&
-    (response as Record<string, unknown>)['ok'] === true
-  );
+// ---------------------------------------------------------------------------
+// Ack type — mirrors ExternalAck from the extension
+// ---------------------------------------------------------------------------
+
+type BridgeAck = { ok: true } | { ok: false; error?: string };
+
+function isBridgeAck(value: unknown): value is BridgeAck {
+  if (typeof value !== 'object' || value === null) return false;
+  return typeof (value as Record<string, unknown>)['ok'] === 'boolean';
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +65,7 @@ type PageState =
   | 'checking'    // Session still loading
   | 'redirecting' // Not logged in — going to /auth/sign-in
   | 'exchanging'  // Calling POST /v1/extension/auth/exchange
-  | 'sending'     // Calling chrome.runtime.sendMessage
+  | 'sending'     // Dispatching CustomEvent + awaiting ack
   | 'success'     // Ack received — tab closing
   | 'error';      // Show message + optional retry
 
@@ -152,6 +144,9 @@ function ExtensionAuthContent() {
   // Parse and validate the return param — immutable for this page load.
   const returnParam = searchParams.get('return') ?? '';
 
+  // Validate that the return param is a chrome-extension:// URL.
+  // extensionId is kept for the open-redirect guard and future reference
+  // but is no longer passed to sendMessage (content script bridge handles routing).
   const extensionId: string | null = (() => {
     try {
       const url = new URL(returnParam);
@@ -160,10 +155,10 @@ function ExtensionAuthContent() {
     return null;
   })();
 
-  // ── Main effect — runs once after session resolves ─────────────────────
+  // — Main effect — runs once after session resolves ——————————————————————
   useEffect(() => {
-    if (isPending)          return;
-    if (initiated.current)  return;
+    if (isPending)         return;
+    if (initiated.current) return;
     initiated.current = true;
 
     if (!session) {
@@ -183,15 +178,23 @@ function ExtensionAuthContent() {
       return;
     }
 
-    void runBridge(extensionId);
+    void runBridge();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPending]);
 
-  // ── Bridge: exchange → sendMessage ─────────────────────────────────────
-  async function runBridge(extId: string): Promise<void> {
+  // — Bridge: exchange → CustomEvent → await ack ——————————————————————————
+  //
+  // 1. Exchange current web session for an extension bearer token (API call).
+  // 2. Set up the ack listener BEFORE dispatching so there is no race window.
+  // 3. Dispatch CustomEvent('dvantage:ext:token') — auth-bridge.ts content
+  //    script picks this up and relays it to the background SW.
+  // 4. Await ack CustomEvent('dvantage:ext:ack') with an 8-second timeout.
+  // 5. On success: transition to 'success' and close the tab.
+  // 6. On failure or timeout: show actionable error.
+  async function runBridge(): Promise<void> {
     setPageState('exchanging');
 
-    let token: string;
+    let token:     string;
     let expiresAt: string;
 
     try {
@@ -209,43 +212,53 @@ function ExtensionAuthContent() {
 
     setPageState('sending');
 
-    const runtime = getChromeRuntime();
-    if (!runtime) {
+    // Set up ack listener BEFORE dispatching to eliminate any race condition.
+    const ack = await new Promise<BridgeAck>((resolve) => {
+      const timer = setTimeout(() => {
+        resolve({ ok: false, error: 'timeout' });
+      }, ACK_TIMEOUT);
+
+      window.addEventListener(
+        ACK_EVENT,
+        (event: Event) => {
+          clearTimeout(timer);
+          const detail = (event as CustomEvent<unknown>).detail;
+          resolve(isBridgeAck(detail) ? detail : { ok: false, error: 'malformed_ack' });
+        },
+        { once: true },
+      );
+    });
+
+    // Dispatch after listener is registered.
+    window.dispatchEvent(
+      new CustomEvent(TOKEN_EVENT, { detail: { token, expiresAt } }),
+    );
+
+    if (!ack.ok) {
+      const isTimeout = ack.error === 'timeout';
       setPageState('error');
       setErrorMsg(
-        'Chrome extension API is not available. Please ensure you are using ' +
-        'Chrome with the D\u2019Vantage extension installed and enabled.',
+        isTimeout
+          ? 'The extension didn\u2019t respond in time. Please ensure the ' +
+            'D\u2019Vantage extension is enabled and try again.'
+          : 'The extension didn\u2019t respond. Please ensure the D\u2019Vantage ' +
+            'extension is enabled, then try again.',
       );
       return;
     }
 
-    runtime.sendMessage(
-      extId,
-      { type: 'DVANTAGE_EXT_TOKEN', payload: { token, expiresAt } },
-      (response: unknown) => {
-        if (!isAckOk(response)) {
-          setPageState('error');
-          setErrorMsg(
-            'The extension didn\u2019t respond. Please ensure the D\u2019Vantage ' +
-            'extension is enabled, then try again.',
-          );
-          return;
-        }
-        setPageState('success');
-        // Tab was opened by chrome.tabs.create — window.close() is permitted.
-        setTimeout(() => { window.close(); }, 1200);
-      },
-    );
+    setPageState('success');
+    // Tab was opened by chrome.tabs.create — window.close() is permitted.
+    setTimeout(() => { window.close(); }, 1200);
   }
 
   function handleRetry(): void {
-    if (!extensionId) return;
     initiated.current = false;
     setErrorMsg(null);
-    void runBridge(extensionId);
+    void runBridge();
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // — Render ————————————————————————————————————————————————————————————————
   const isLoading = LOADING_STATES.has(pageState);
 
   return (

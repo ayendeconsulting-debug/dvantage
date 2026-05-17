@@ -9,12 +9,16 @@
 //
 // externally_connectable restricts which web origins may call
 // chrome.runtime.sendMessage into this extension. Only dvantage.ca is
-// permitted — this is the security boundary for the D3 auth bridge.
+// permitted — kept as belt-and-suspenders alongside the content script bridge.
+//
+// D4: auth-bridge.ts content script added — injected on dvantage.ca/extension/auth.
+//   Bridges CustomEvent (web page) ↔ chrome.runtime.sendMessage (BG SW).
+//   Resolves chrome.runtime unavailability via externally_connectable on
+//   some Chrome configurations (object | undefined diagnostic confirmed D4).
 //
 // Spec reference: CHROME_EXTENSION_V1_SPEC.md §6
 // ---------------------------------------------------------------------------
 import { defineManifest } from '@crxjs/vite-plugin';
-
 export default defineManifest({
   manifest_version: 3,
   name:             "D'Vantage \u2014 From applied to interview",
@@ -44,12 +48,20 @@ export default defineManifest({
     'https://*.myworkdayjobs.com/*',
   ],
   // Allow dvantage.ca to call chrome.runtime.sendMessage into this extension.
-  // Required for the D3 auth bridge: the web app posts the bearer token to
-  // the background service worker via onMessageExternal.
+  // Belt-and-suspenders alongside the auth-bridge content script (D4).
   externally_connectable: {
     matches: ['https://dvantage.ca/*'],
   },
   content_scripts: [
+    // D4: Auth bridge — injected on the extension auth callback page only.
+    // Bridges CustomEvent from the web page to chrome.runtime.sendMessage
+    // so the background SW can store the extension token reliably.
+    {
+      matches: ['https://dvantage.ca/extension/auth*'],
+      js:      ['src/content/auth-bridge.ts'],
+      run_at:  'document_idle',
+    },
+    // Job board content scripts — Phase 2 Week 2.
     {
       matches: [
         'https://*.linkedin.com/jobs/*',
