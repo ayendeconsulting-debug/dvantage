@@ -10,10 +10,15 @@
 //   POST /v1/extension/auth/refresh with the current Bearer token.
 //   On 200: writes new TOKEN_EXPIRES_AT to storage (AuthGate.onChanged fires).
 //   On 401/error: clears both token keys (AuthGate transitions to unauthed).
+//
+// D6: Message router wired in.
+//   All messages NOT handled by the auth handlers below are delegated to
+//   background/message-router.ts. See that file for the full routing table.
 // ---------------------------------------------------------------------------
 
-import { STORAGE_KEYS, API_BASE, APP_BASE }                           from '../shared/constants';
+import { STORAGE_KEYS, API_BASE }                                     from '../shared/constants';
 import type { ExternalToBackground, ExternalAck, ContentToBackground } from '../shared/messages';
+import { routeMessage }                                                from './message-router';
 
 // ---------------------------------------------------------------------------
 // Side panel — open on toolbar action click
@@ -183,24 +188,26 @@ chrome.tabs.onUpdated.addListener(
 );
 
 // ---------------------------------------------------------------------------
-// D5 — REQUEST_REFRESH handler
+// onMessage — auth handlers + message router delegate (D6)
 //
-// AuthGate sends this when TOKEN_EXPIRES_AT is within 7 days. We read
-// the current token from storage, call the refresh endpoint, and write
-// the new expiresAt. On 401 we clear storage — the AuthGate onChanged
-// listener will transition to unauthenticated automatically.
+// Priority order (first match wins):
+//   1. AUTH_BRIDGE_TOKEN  — relay from auth-bridge content script
+//   2. REQUEST_REFRESH    — token sliding-window refresh (D5)
+//   3. routeMessage()     — all other messages (D6+): JOB_DETECTED,
+//                           REQUEST_SCORE, REQUEST_AUTOFILL, …
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener(
   (
     message:      unknown,
-    _sender:      chrome.runtime.MessageSender,
+    sender:       chrome.runtime.MessageSender,
     sendResponse: (response: unknown) => void,
   ): true | undefined => {
-    // Handle REQUEST_REFRESH — other internal messages handled separately.
+
+    // ── 1. AUTH_BRIDGE_TOKEN ───────────────────────────────────────────────
     if (isAuthBridgeMessage(message)) {
       // Auth bridge (inert under current architecture but kept).
-      if (_sender.origin !== ALLOWED_ORIGIN) {
+      if (sender.origin !== ALLOWED_ORIGIN) {
         sendResponse({ ok: false, error: 'origin_not_allowed' });
         return undefined;
       }
@@ -212,82 +219,86 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
-    if (!isRequestRefresh(message)) return undefined;
-
-    // Read current token then call the refresh endpoint.
-    void (async (): Promise<void> => {
-      const result = await new Promise<Record<string, unknown>>((resolve) => {
-        chrome.storage.local.get(
-          [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
-          resolve as (items: Record<string, unknown>) => void,
-        );
-      });
-
-      const token = result[STORAGE_KEYS.EXTENSION_TOKEN];
-
-      if (typeof token !== 'string' || token.length === 0) {
-        console.warn('[DVantage SW] REQUEST_REFRESH — no token in storage, skipping');
-        sendResponse({ ok: false, error: 'no_token' });
-        return;
-      }
-
-      try {
-        const response = await fetch(REFRESH_URL, {
-          method:  'POST',
-          body: '{}',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
+    // ── 2. REQUEST_REFRESH ─────────────────────────────────────────────────
+    if (isRequestRefresh(message)) {
+      // Read current token then call the refresh endpoint.
+      void (async (): Promise<void> => {
+        const result = await new Promise<Record<string, unknown>>((resolve) => {
+          chrome.storage.local.get(
+            [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
+            resolve as (items: Record<string, unknown>) => void,
+          );
         });
 
-        if (response.status === 401) {
-          console.warn('[DVantage SW] Refresh returned 401 — token revoked or expired on server');
-          clearTokenStorage('401 on refresh');
-          sendResponse({ ok: false, error: 'unauthorized' });
+        const token = result[STORAGE_KEYS.EXTENSION_TOKEN];
+
+        if (typeof token !== 'string' || token.length === 0) {
+          console.warn('[DVantage SW] REQUEST_REFRESH — no token in storage, skipping');
+          sendResponse({ ok: false, error: 'no_token' });
           return;
         }
 
-        if (!response.ok) {
-          console.error('[DVantage SW] Refresh failed — HTTP', response.status);
-          sendResponse({ ok: false, error: `http_${response.status}` });
-          return;
+        try {
+          const response = await fetch(REFRESH_URL, {
+            method:  'POST',
+            body: '{}',
+            headers: {
+              'Content-Type':  'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (response.status === 401) {
+            console.warn('[DVantage SW] Refresh returned 401 — token revoked or expired on server');
+            clearTokenStorage('401 on refresh');
+            sendResponse({ ok: false, error: 'unauthorized' });
+            return;
+          }
+
+          if (!response.ok) {
+            console.error('[DVantage SW] Refresh failed — HTTP', response.status);
+            sendResponse({ ok: false, error: `http_${response.status}` });
+            return;
+          }
+
+          const data = await response.json() as unknown;
+
+          if (
+            typeof data !== 'object' || data === null ||
+            typeof (data as Record<string, unknown>)['expiresAt'] !== 'string'
+          ) {
+            console.error('[DVantage SW] Invalid refresh response shape:', data);
+            sendResponse({ ok: false, error: 'invalid_response' });
+            return;
+          }
+
+          const { expiresAt } = data as { expiresAt: string };
+
+          // Write new expiresAt — AuthGate.onChanged will re-evaluate.
+          chrome.storage.local.set(
+            { [STORAGE_KEYS.TOKEN_EXPIRES_AT]: expiresAt },
+            () => {
+              if (chrome.runtime.lastError) {
+                console.error('[DVantage SW] ExpiresAt write failed:', chrome.runtime.lastError.message);
+                sendResponse({ ok: false, error: 'storage_write_failed' });
+                return;
+              }
+              console.log('[DVantage SW] Token refreshed — new expiresAt:', expiresAt);
+              sendResponse({ ok: true, expiresAt });
+            },
+          );
+        } catch (err: unknown) {
+          console.error('[DVantage SW] Refresh threw:', err);
+          sendResponse({ ok: false, error: 'network_error' });
         }
+      })();
 
-        const data = await response.json() as unknown;
+      return true; // async sendResponse
+    }
 
-        if (
-          typeof data !== 'object' || data === null ||
-          typeof (data as Record<string, unknown>)['expiresAt'] !== 'string'
-        ) {
-          console.error('[DVantage SW] Invalid refresh response shape:', data);
-          sendResponse({ ok: false, error: 'invalid_response' });
-          return;
-        }
-
-        const { expiresAt } = data as { expiresAt: string };
-
-        // Write new expiresAt — AuthGate.onChanged will re-evaluate.
-        chrome.storage.local.set(
-          { [STORAGE_KEYS.TOKEN_EXPIRES_AT]: expiresAt },
-          () => {
-            if (chrome.runtime.lastError) {
-              console.error('[DVantage SW] ExpiresAt write failed:', chrome.runtime.lastError.message);
-              sendResponse({ ok: false, error: 'storage_write_failed' });
-              return;
-            }
-            console.log('[DVantage SW] Token refreshed — new expiresAt:', expiresAt);
-            sendResponse({ ok: true, expiresAt });
-          },
-        );
-      } catch (err: unknown) {
-        console.error('[DVantage SW] Refresh threw:', err);
-        sendResponse({ ok: false, error: 'network_error' });
-      }
-    })();
-
-    // Return true — async sendResponse.
-    return true;
+    // ── 3. Message router — JOB_DETECTED, REQUEST_SCORE, etc. (D6+) ───────
+    const routerResult = routeMessage(message, sender, sendResponse);
+    return routerResult === true ? true : undefined;
   },
 );
 
