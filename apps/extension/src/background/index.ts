@@ -45,7 +45,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 // ---------------------------------------------------------------------------
 
 const ALLOWED_ORIGIN   = 'https://dvantage.ca' as const;
-const DONE_URL_PREFIX  = `${APP_BASE}/extension/done` as const;
+const DONE_URL_SUFFIX  = '/extension/done' as const;
 const EXCHANGE_URL     = `${API_BASE}/v1/extension/auth/exchange` as const;
 
 // ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ chrome.tabs.onUpdated.addListener(
 
     // Only act on our auth callback URL.
     const url = tab.url ?? '';
-    if (!url.startsWith(DONE_URL_PREFIX)) return;
+    if (!url.includes(DONE_URL_SUFFIX)) return;
 
     console.log('[DVantage SW] Auth callback detected at:', url);
 
