@@ -1,23 +1,47 @@
 'use client';
 
-import { useState }   from 'react';
-import Link           from 'next/link';
-import { useRouter }  from 'next/navigation';
-import { authClient } from '@/lib/auth-client';
+// ---------------------------------------------------------------------------
+// D'Vantage — Sign-in page
+//
+// Next.js 15 requires useSearchParams() inside a Suspense boundary.
+// Pattern: SignInPage (outer, exported) wraps SignInContent (inner) in
+// <Suspense fallback={null}>. The fallback is null — the auth card renders
+// client-side only and the transition is imperceptible.
+//
+// D3 addition: reads ?callbackURL= query param so the extension auth bridge
+// can redirect here and land back at /extension/auth after sign-in.
+// Security: only relative paths (starting with '/') are accepted — absolute
+// URLs are silently discarded to prevent open-redirect attacks.
+// ---------------------------------------------------------------------------
+
+import { Suspense, useState }             from 'react';
+import Link                               from 'next/link';
+import { useRouter, useSearchParams }     from 'next/navigation';
+import { authClient }                     from '@/lib/auth-client';
 import {
   AuthCard, AuthField, AuthButton, AuthError, AuthDivider, AuthLink,
 } from '@/components/auth/auth-ui';
 
-export default function SignInPage() {
-  const router = useRouter();
+// ---------------------------------------------------------------------------
+// Inner content — consumes useSearchParams (must be inside Suspense)
+// ---------------------------------------------------------------------------
 
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [error,    setError]    = useState('');
-  const [loading,  setLoading]  = useState(false);
+function SignInContent() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+
+  const [email,        setEmail]        = useState('');
+  const [password,     setPassword]     = useState('');
+  const [error,        setError]        = useState('');
+  const [loading,      setLoading]      = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'microsoft' | null>(null);
 
   const appUrl = process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
+
+  // Validated post-sign-in destination.
+  // Only relative paths accepted — guards against open-redirect attacks.
+  const rawCallback = searchParams.get('callbackURL') ?? '';
+  const callbackURL = rawCallback.startsWith('/') ? rawCallback : '/dashboard';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,7 +50,7 @@ export default function SignInPage() {
     const result = await authClient.signIn.email({
       email,
       password,
-      callbackURL: '/dashboard',
+      callbackURL,
     });
 
     if (result.error) {
@@ -39,7 +63,7 @@ export default function SignInPage() {
         setError(result.error.message ?? 'Sign in failed. Check your credentials.');
       }
     } else {
-      router.push('/dashboard');
+      router.push(callbackURL);
     }
 
     setLoading(false);
@@ -49,9 +73,11 @@ export default function SignInPage() {
     setError('');
     setOauthLoading(provider);
     try {
+      // better-auth requires an absolute URL for OAuth callbackURL.
+      // callbackURL is guaranteed to start with '/' (validated above).
       await authClient.signIn.social({
         provider,
-        callbackURL: `${appUrl}/dashboard`,
+        callbackURL: `${appUrl}${callbackURL}`,
       });
       // better-auth redirects the browser — no further handling needed.
     } catch (err) {
@@ -77,7 +103,7 @@ export default function SignInPage() {
           type="password"
           value={password}
           onChange={setPassword}
-          placeholder="••••••••"
+          placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
           autoComplete="current-password"
           required
         />
@@ -100,20 +126,28 @@ export default function SignInPage() {
           type="button"
           onClick={() => void handleOAuth('google')}
           disabled={oauthLoading !== null}
-          style={{ ...styles.oauthBtn, opacity: oauthLoading !== null ? 0.6 : 1, cursor: oauthLoading !== null ? 'not-allowed' : 'pointer' }}
+          style={{
+            ...styles.oauthBtn,
+            opacity: oauthLoading !== null ? 0.6 : 1,
+            cursor:  oauthLoading !== null ? 'not-allowed' : 'pointer',
+          }}
         >
           {oauthLoading === 'google' ? <Spinner /> : <GoogleIcon />}
-          {oauthLoading === 'google' ? 'Redirecting…' : 'Continue with Google'}
+          {oauthLoading === 'google' ? 'Redirecting\u2026' : 'Continue with Google'}
         </button>
 
         <button
           type="button"
           onClick={() => void handleOAuth('microsoft')}
           disabled={oauthLoading !== null}
-          style={{ ...styles.oauthBtn, opacity: oauthLoading !== null ? 0.6 : 1, cursor: oauthLoading !== null ? 'not-allowed' : 'pointer' }}
+          style={{
+            ...styles.oauthBtn,
+            opacity: oauthLoading !== null ? 0.6 : 1,
+            cursor:  oauthLoading !== null ? 'not-allowed' : 'pointer',
+          }}
         >
           {oauthLoading === 'microsoft' ? <Spinner /> : <MicrosoftIcon />}
-          {oauthLoading === 'microsoft' ? 'Redirecting…' : 'Continue with Microsoft'}
+          {oauthLoading === 'microsoft' ? 'Redirecting\u2026' : 'Continue with Microsoft'}
         </button>
       </div>
 
@@ -125,13 +159,32 @@ export default function SignInPage() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Page export — Suspense boundary required by Next.js 15 for useSearchParams
+// ---------------------------------------------------------------------------
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInContent />
+    </Suspense>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
 function Spinner() {
   return (
     <span style={{
-      display: 'inline-block', width: '16px', height: '16px',
-      border: '2px solid var(--vt-surface-border)',
+      display:        'inline-block',
+      width:          '16px',
+      height:         '16px',
+      border:         '2px solid var(--vt-surface-border)',
       borderTopColor: 'var(--vt-brand-400)',
-      borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+      borderRadius:   '50%',
+      animation:      'spin 0.7s linear infinite',
     }} />
   );
 }
@@ -158,6 +211,10 @@ function MicrosoftIcon() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
 const styles = {
   forgotLink: {
     fontFamily:     'var(--vt-font-body)',
@@ -166,20 +223,20 @@ const styles = {
     textDecoration: 'none',
   },
   oauthBtn: {
-    display:         'flex',
-    alignItems:      'center',
-    justifyContent:  'center',
-    gap:             '10px',
-    width:           '100%',
-    padding:         '10px 16px',
-    background:      'transparent',
-    border:          '1px solid var(--vt-surface-border)',
-    borderRadius:    '8px',
-    color:           'var(--vt-text-body)',
-    fontFamily:      'var(--vt-font-body)',
-    fontSize:        'var(--vt-text-base)',
-    textDecoration:  'none',
-    transition:      'border-color 120ms, background 120ms',
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'center',
+    gap:            '10px',
+    width:          '100%',
+    padding:        '10px 16px',
+    background:     'transparent',
+    border:         '1px solid var(--vt-surface-border)',
+    borderRadius:   '8px',
+    color:          'var(--vt-text-body)',
+    fontFamily:     'var(--vt-font-body)',
+    fontSize:       'var(--vt-text-base)',
+    textDecoration: 'none',
+    transition:     'border-color 120ms, background 120ms',
   },
   link: {
     color:          'var(--vt-brand-400)',
