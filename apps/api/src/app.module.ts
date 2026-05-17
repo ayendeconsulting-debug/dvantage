@@ -11,13 +11,13 @@ import { ParsingModule }       from './parsing/parsing.module';
 import { ResumeModule }        from './resume/resume.module';
 import { JobModule }           from './job/job.module';
 import { SubscriptionModule }  from './subscription/subscription.module';
-import { DashboardModule } from './dashboard/dashboard.module';
-import { ApplicationModule } from './application/application.module';
+import { DashboardModule }     from './dashboard/dashboard.module';
+import { ApplicationModule }   from './application/application.module';
+import { ExtensionModule }     from './extension/extension.module';
 
 @Module({
   imports: [
     ThrottlerModule.forRootAsync({
-      
       imports:    [RedisModule],
       inject:     [REDIS_CLIENT],
       useFactory: (redis: Redis) => ({
@@ -39,6 +39,7 @@ import { ApplicationModule } from './application/application.module';
     SubscriptionModule,
     DashboardModule,
     ApplicationModule,
+    ExtensionModule,
   ],
 })
 export class AppModule {}
