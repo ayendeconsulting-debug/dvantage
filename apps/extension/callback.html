@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>D&apos;Vantage — Connecting</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        background: #050505;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #f1f5f9;
+      }
+      #root {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 40px 24px;
+        max-width: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <!-- Initial loading state — replaced by callback/index.ts -->
+      <svg viewBox="0 0 32 24" width="40" height="30" fill="none" style="margin-bottom:24px">
+        <path d="M 2 20 L 11 4 L 30 20" stroke="#3b82f6" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter"/>
+      </svg>
+      <p style="font-size:14px;font-weight:500;color:#94a3b8">Connecting&hellip;</p>
+    </div>
+    <script type="module" src="./src/callback/index.ts"></script>
+  </body>
+</html>
