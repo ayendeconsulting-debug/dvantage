@@ -45,6 +45,17 @@
   --vt-warning: #F59E0B;
   --vt-info:    #3B82F6; /* brand-500 alias — no separate info hue in Atlas */
 
+  /* ── Semantic aliases ─────────────────────────────────────────────────
+   * ProfilePanel and ScorePanel reference these names.
+   * Resolved to Atlas primitive tokens above.
+   * Introduced: D6 UI reskin (Direction 2).
+   * ------------------------------------------------------------------- */
+  --vt-surface-raised:  var(--vt-surface-1);
+  --vt-surface-border:  var(--vt-border-2);
+  --vt-text-primary:    var(--vt-text-1);
+  --vt-text-secondary:  var(--vt-text-3);
+  --vt-text-disabled:   var(--vt-text-5);
+
   /* Typography */
   font-family:              'Outfit', system-ui, -apple-system, sans-serif;
   font-size:                16px;
@@ -61,15 +72,16 @@ body {
   min-height:       100vh;
 }
 
-/* ── Primary button ──────────────────────────────────────────────────────── */
+/* ── Primary button ─────────────────────────────────────────────────────── */
 /*
- * Used by AuthGate's "Sign in" CTA and any future primary action.
- * Hover/focus states require a class — inline styles cannot express pseudo-classes.
+ * Used by AuthGate's "Sign in" CTA and ScorePanel's score action.
+ * max-width is intentionally absent here — callers set width via inline style.
  */
 .dvantage-btn-primary {
   display:          inline-flex;
   align-items:      center;
   justify-content:  center;
+  gap:              6px;
   font-family:      'Outfit', sans-serif;
   font-size:        14px;
   font-weight:      600;
@@ -78,22 +90,51 @@ body {
   background-color: var(--vt-brand-500);
   border:           none;
   border-radius:    8px;
-  padding:          12px 24px;
+  padding:          11px 24px;
   width:            100%;
   max-width:        240px;
   cursor:           pointer;
   transition:       background-color 0.15s ease;
 }
 
-.dvantage-btn-primary:hover {
+.dvantage-btn-primary:hover:not(:disabled) {
   background-color: var(--vt-brand-600);
 }
 
-.dvantage-btn-primary:active {
+.dvantage-btn-primary:active:not(:disabled) {
   background-color: var(--vt-brand-700);
+}
+
+.dvantage-btn-primary:disabled {
+  opacity: 0.5;
+  cursor:  not-allowed;
 }
 
 .dvantage-btn-primary:focus-visible {
   outline:        2px solid var(--vt-brand-400);
   outline-offset: 2px;
+}
+
+/* ── Ghost button ───────────────────────────────────────────────────────── */
+/*
+ * Used by ScorePanel in the persistent footer when no job is detected.
+ * Communicates what the action will be without enabling it prematurely.
+ */
+.dvantage-btn-ghost {
+  display:          inline-flex;
+  align-items:      center;
+  justify-content:  center;
+  gap:              6px;
+  font-family:      'Outfit', sans-serif;
+  font-size:        13px;
+  font-weight:      500;
+  letter-spacing:   -0.01em;
+  color:            var(--vt-text-5);
+  background:       transparent;
+  border:           0.5px solid var(--vt-border-2);
+  border-radius:    8px;
+  padding:          11px 24px;
+  width:            100%;
+  cursor:           not-allowed;
+  transition:       none;
 }
