@@ -9,19 +9,16 @@
 // Auth check: single chrome.storage.local.get on mount.
 //
 // D3 addition: chrome.storage.onChanged listener — when the background SW
-// writes the token after the /extension/auth exchange, the side panel (if
-// open) transitions unauthenticated → authenticated without a reload.
-// The listener also handles the reverse (token cleared → unauthenticated),
-// which prepares for D4 revoke / expiry enforcement.
+// writes the token after the exchange, the side panel (if open) transitions
+// unauthenticated → authenticated without a reload.
 //
-// Token storage key and APP_BASE are centralised in shared/constants — never
-// duplicate them here.
+// D4 FINAL: Sign-in opens dvantage.ca/auth/sign-in?callbackURL=/extension/done.
+// The BG SW detects the /extension/done URL via chrome.tabs.onUpdated and
+// calls the exchange endpoint directly — no web→extension communication.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
 import { APP_BASE, STORAGE_KEYS } from '../shared/constants';
-
-// ── Types ──────────────────────────────────────────────────────────────────
 
 type AuthState = 'checking' | 'unauthenticated' | 'authenticated';
 
@@ -29,15 +26,11 @@ interface AuthGateProps {
   children: ReactNode;
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
-
 export default function AuthGate({ children }: AuthGateProps) {
   const [authState, setAuthState] = useState<AuthState>('checking');
 
   useEffect(() => {
-    // ── Initial check ───────────────────────────────────────────────────
-    // Runs once on mount. Resolves 'checking' immediately so there is no
-    // flash of the sign-in screen for already-authenticated users.
+    // — Initial check —————————————————————————————————————————————————————
     chrome.storage.local.get(STORAGE_KEYS.EXTENSION_TOKEN, (result) => {
       const token: unknown = result[STORAGE_KEYS.EXTENSION_TOKEN];
       setAuthState(
@@ -47,16 +40,8 @@ export default function AuthGate({ children }: AuthGateProps) {
       );
     });
 
-    // ── Live update ─────────────────────────────────────────────────────
-    // Fires when any context writes to chrome.storage.local. We only act
-    // on changes to EXTENSION_TOKEN:
-    //   • newValue populated  → background SW stored the token after exchange
-    //   • newValue absent     → token was cleared (revoke / D4 expiry)
-    //
-    // The listener is registered after the initial get to avoid a race where
-    // the storage write fires between the get call and the listener attach —
-    // in practice the initial get resolves in <1 ms and the exchange takes
-    // a full network round trip, so the window is negligible.
+    // — Live update ————————————————————————————————————————————————————————
+    // Fires when the BG SW writes the token after the direct exchange.
     function handleStorageChange(
       changes: Record<string, chrome.storage.StorageChange>,
       area:    string,
@@ -73,32 +58,30 @@ export default function AuthGate({ children }: AuthGateProps) {
     }
 
     chrome.storage.onChanged.addListener(handleStorageChange);
-
-    return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChange);
-    };
+    return () => { chrome.storage.onChanged.removeListener(handleStorageChange); };
   }, []);
 
   if (authState === 'checking')      return null;
   if (authState === 'authenticated') return <>{children}</>;
-
   return <SignInScreen />;
 }
 
-// ── SignInScreen ────────────────────────────────────────────────────────────
+// — SignInScreen ——————————————————————————————————————————————————————————
 
 function SignInScreen() {
   function handleSignIn(): void {
-    // chrome.runtime.id is the extension's assigned ID — only resolvable at runtime.
-    const returnUrl = encodeURIComponent(`chrome-extension://${chrome.runtime.id}`);
-    const authUrl   = `${APP_BASE}/extension/auth?return=${returnUrl}`;
-    chrome.tabs.create({ url: authUrl });
+    // Open sign-in page with callbackURL=/extension/done.
+    // The BG SW monitors chrome.tabs.onUpdated for that URL and calls the
+    // exchange endpoint directly once sign-in is complete.
+    const callbackUrl = `${APP_BASE}/extension/done`;
+    const signInUrl   = `${APP_BASE}/auth/sign-in?callbackURL=${encodeURIComponent(callbackUrl)}`;
+    chrome.tabs.create({ url: signInUrl });
   }
 
   return (
     <div style={styles.container}>
 
-      {/* ── D'Vantage mark ──────────────────────────────────────────────── */}
+      {/* — D'Vantage mark ———————————————————————————————————————————————— */}
       <svg
         viewBox="0 0 32 24"
         width="48"
@@ -117,7 +100,7 @@ function SignInScreen() {
         />
       </svg>
 
-      {/* ── Wordmark ─────────────────────────────────────────────────────── */}
+      {/* — Wordmark ——————————————————————————————————————————————————————— */}
       <div style={styles.wordmark} aria-label="D'Vantage">
         <span style={styles.wordmarkD}>D</span>
         <span style={styles.wordmarkApostrophe}>&apos;</span>
@@ -125,14 +108,10 @@ function SignInScreen() {
         <span style={styles.wordmarkAge}>age</span>
       </div>
 
-      {/* ── Tagline ──────────────────────────────────────────────────────── */}
+      {/* — Tagline ———————————————————————————————————————————————————————— */}
       <p style={styles.tagline}>From applied to interview.</p>
 
-      {/* ── CTA ──────────────────────────────────────────────────────────── */}
-      {/*
-       * .dvantage-btn-primary is defined in tokens.css — hover/active/focus-visible
-       * pseudo-classes cannot be expressed via inline styles.
-       */}
+      {/* — CTA ———————————————————————————————————————————————————————————— */}
       <button
         type="button"
         className="dvantage-btn-primary"
@@ -145,7 +124,7 @@ function SignInScreen() {
   );
 }
 
-// ── Styles ──────────────────────────────────────────────────────────────────
+// — Styles ————————————————————————————————————————————————————————————————
 
 const styles = {
   container: {
