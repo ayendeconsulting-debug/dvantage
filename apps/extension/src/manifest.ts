@@ -57,7 +57,7 @@ export default defineManifest({
     // Bridges CustomEvent from the web page to chrome.runtime.sendMessage
     // so the background SW can store the extension token reliably.
     {
-      matches: ['https://dvantage.ca/extension/auth*'],
+      matches: ['https://dvantage.ca/*'],
       js:      ['src/content/auth-bridge.ts'],
       run_at:  'document_idle',
     },
