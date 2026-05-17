@@ -2,10 +2,12 @@
 // ExtensionAuthService
 //
 // Owns the full lifecycle of extension bearer tokens:
-//   exchange  → mint (called once per install from BG SW after /extension/done)
-//   refresh   → slide last_seen_at + return new expiresAt (called by BG SW)
-//   revoke    → soft-delete (called on sign-out or from /settings/devices)
-//   validate  → hash lookup (called by ExtensionAuthGuard on every request)
+//   exchange         → mint (called once per install from BG SW after /extension/done)
+//   refresh          → slide last_seen_at + return new expiresAt (called by BG SW)
+//   revoke           → soft-delete one token (called on extension sign-out)
+//   revokeAllForUser → soft-delete all active tokens (called on web app sign-out)
+//   validate         → hash lookup (called by ExtensionAuthGuard on every request)
+//   getProfile       → user identity + plan (called by GET /profile, cached in extension)
 //
 // Token hashing: SHA-256 via Node.js built-in `node:crypto`.
 // Rationale: tokens are 32 bytes of CSPRNG output (256 bits of entropy),
@@ -14,18 +16,25 @@
 // user tokens and calling compare() in a serial loop.)
 // ---------------------------------------------------------------------------
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, isNull }            from 'drizzle-orm';
-import { createHash, randomBytes }    from 'node:crypto';
-import { uuidv7 }                     from 'uuidv7';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { and, eq, isNull }                               from 'drizzle-orm';
+import { createHash, randomBytes }                       from 'node:crypto';
+import { uuidv7 }                                        from 'uuidv7';
 
-import { extensionTokens, type DatabaseClient, type ExtensionToken } from '@vantage/database';
-import type { AuthUser }              from '../auth/auth.service';
-import { DATABASE_CLIENT }            from '../database/database.module';
+import {
+  extensionTokens,
+  users,
+  subscriptions,
+  type DatabaseClient,
+  type ExtensionToken,
+} from '@vantage/database';
+import type { AuthUser }    from '../auth/auth.service';
+import { DATABASE_CLIENT }  from '../database/database.module';
 import type {
   ExchangeResponseDto,
   RefreshResponseDto,
-}                                     from './dto/extension-auth-response.dto';
+  UserProfileDto,
+}                           from './dto/extension-auth-response.dto';
 
 /** 30-day sliding window in milliseconds. Matches TOKEN_LIFETIME_MS in the extension. */
 const TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -89,7 +98,7 @@ export class ExtensionAuthService {
   }
 
   // ---------------------------------------------------------------------------
-  // revoke — soft-delete (immediate, per-device)
+  // revoke — soft-delete one token (called on extension sign-out)
   // ---------------------------------------------------------------------------
 
   async revoke(token: ExtensionToken): Promise<void> {
@@ -99,6 +108,28 @@ export class ExtensionAuthService {
       .where(eq(extensionTokens.id, token.id));
 
     this.logger.log(`Extension token revoked — tokenId=${token.id} user=${token.userId}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // revokeAllForUser — soft-delete all active tokens for a user
+  //
+  // Called when the user signs out of the web app. Ensures any connected
+  // extension installations are immediately invalidated across all devices.
+  // Only active tokens (revokedAt IS NULL) are updated — idempotent.
+  // ---------------------------------------------------------------------------
+
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.db
+      .update(extensionTokens)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(extensionTokens.userId, userId),
+          isNull(extensionTokens.revokedAt),
+        ),
+      );
+
+    this.logger.log(`All active extension tokens revoked — userId=${userId}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -120,6 +151,41 @@ export class ExtensionAuthService {
       .limit(1);
 
     return row ?? null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // getProfile — user identity + subscription plan
+  //
+  // Joins users → subscriptions (left join — free users have no subscription row).
+  // Defaults plan to 'free' when no subscription row exists.
+  // Called by GET /v1/extension/auth/profile on every side-panel open.
+  // The extension caches the result in chrome.storage.local[USER_PROFILE]
+  // and revalidates in the background (stale-while-revalidate).
+  // ---------------------------------------------------------------------------
+
+  async getProfile(token: ExtensionToken): Promise<UserProfileDto> {
+    const [row] = await this.db
+      .select({
+        name:  users.name,
+        email: users.email,
+        plan:  subscriptions.plan,
+      })
+      .from(users)
+      .leftJoin(subscriptions, eq(subscriptions.userId, users.id))
+      .where(eq(users.id, token.userId))
+      .limit(1);
+
+    if (!row) {
+      // Should never occur — ExtensionAuthGuard validates the token FK exists.
+      throw new NotFoundException(`User not found for tokenId=${token.id}`);
+    }
+
+    return {
+      name:  row.name,
+      email: row.email,
+      // Left join: plan is null when no subscription row exists → default free.
+      plan:  row.plan ?? 'free',
+    };
   }
 
   // ---------------------------------------------------------------------------

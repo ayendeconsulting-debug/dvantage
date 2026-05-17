@@ -5,7 +5,18 @@ import { usePathname, useRouter } from 'next/navigation';
 import { X, FileText, Briefcase, LayoutDashboard, SendHorizontal, Settings, LogOut } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DVantageLogo } from '@/components/logo/dvantage-logo';
-import { signOut } from '@/lib/auth-client';
+import { signOut }      from '@/lib/auth-client';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const API_BASE           = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.dvantage.ca';
+const REVOKE_SESSION_URL = `${API_BASE}/v1/extension/auth/revoke-session`;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface NavItem {
   label:   string;
@@ -26,11 +37,26 @@ interface MobileDrawerProps {
   onClose: () => void;
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
   const pathname = usePathname();
   const router   = useRouter();
 
   async function handleSignOut() {
+    // Fire-and-forget: revoke all extension tokens for this user.
+    // Non-blocking — signOut() proceeds even if the network call fails.
+    void fetch(REVOKE_SESSION_URL, {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        '{}',
+    }).catch(() => {
+      // Intentionally swallowed — sign-out must never be blocked by this call.
+    });
+
     await signOut();
     router.push('/auth/sign-in');
   }
@@ -46,13 +72,13 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
         onClick={onClose}
         aria-hidden="true"
         style={{
-          position:         'fixed',
-          inset:            0,
-          backgroundColor:  'rgba(0, 0, 0, 0.55)',
-          zIndex:           40,
-          opacity:          open ? 1 : 0,
-          pointerEvents:    open ? 'auto' : 'none',
-          transition:       'opacity 250ms cubic-bezier(0.4, 0, 0.2, 1)',
+          position:        'fixed',
+          inset:           0,
+          backgroundColor: 'rgba(0, 0, 0, 0.55)',
+          zIndex:          40,
+          opacity:         open ? 1 : 0,
+          pointerEvents:   open ? 'auto' : 'none',
+          transition:      'opacity 250ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       />
 
@@ -96,17 +122,17 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
             aria-label="Close navigation menu"
             type="button"
             style={{
-              display:         'flex',
-              alignItems:      'center',
-              justifyContent:  'center',
-              width:           '32px',
-              height:          '32px',
-              borderRadius:    '6px',
-              border:          '1px solid var(--vt-surface-border)',
-              background:      'transparent',
-              color:           'var(--vt-text-muted)',
-              cursor:          'pointer',
-              flexShrink:      0,
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              width:          '32px',
+              height:         '32px',
+              borderRadius:   '6px',
+              border:         '1px solid var(--vt-surface-border)',
+              background:     'transparent',
+              color:          'var(--vt-text-muted)',
+              cursor:         'pointer',
+              flexShrink:     0,
             }}
           >
             <X size={15} strokeWidth={1.5} />
@@ -169,6 +195,10 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
     </>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = {
   navItem: {

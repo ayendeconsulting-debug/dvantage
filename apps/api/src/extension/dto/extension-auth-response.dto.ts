@@ -2,9 +2,11 @@
 // Extension Auth — Response DTOs
 //
 // TypeScript interfaces only. Zod validation not required for these endpoints:
-//   exchange → no request body (user comes from session, userAgent from header)
-//   refresh  → no request body (token comes from Authorization header via guard)
-//   revoke   → no request body (token comes from Authorization header via guard)
+//   exchange       → no request body (user comes from session, userAgent from header)
+//   refresh        → no request body (token comes from Authorization header via guard)
+//   revoke         → no request body (token comes from Authorization header via guard)
+//   revoke-session → no request body (user comes from session)
+//   profile        → no request body (token comes from Authorization header via guard)
 // ---------------------------------------------------------------------------
 
 /**
@@ -33,4 +35,21 @@ export interface RefreshResponseDto {
 /** Returned from POST /v1/extension/auth/revoke. */
 export interface ExtensionAuthAckDto {
   ok: true;
+}
+
+/**
+ * Returned from GET /v1/extension/auth/profile.
+ * Cached in chrome.storage.local[STORAGE_KEYS.USER_PROFILE].
+ * Fetched on side-panel mount (stale-while-revalidate).
+ */
+export interface UserProfileDto {
+  /** Display name from the users table. */
+  name:  string;
+  /** Email address from the users table. */
+  email: string;
+  /**
+   * Current subscription plan.
+   * Defaults to 'free' when no subscription row exists for the user.
+   */
+  plan:  'free' | 'premium';
 }

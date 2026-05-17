@@ -4,18 +4,20 @@
 // Mounted at /v1/extension/auth (global prefix 'v1' set in main.ts).
 //
 // Route protection model:
-//   POST /exchange — global session AuthGuard (user must be logged into web app)
-//   POST /refresh  — @Public() + ExtensionAuthGuard (Bearer token)
-//   POST /revoke   — @Public() + ExtensionAuthGuard (Bearer token)
+//   POST /exchange        — global session AuthGuard (user must be logged into web app)
+//   POST /refresh         — @Public() + ExtensionAuthGuard (Bearer token)
+//   POST /revoke          — @Public() + ExtensionAuthGuard (Bearer token)
+//   POST /revoke-session  — global session AuthGuard (web app signs out → revokes all tokens)
+//   GET  /profile         — @Public() + ExtensionAuthGuard (Bearer token)
 //
-// The global AuthGuard runs first on every request. @Public() signals it to
-// pass through without a session check; ExtensionAuthGuard then validates the
-// Bearer token. Without @Public(), both guards would run — rejecting any
-// request that lacks a session cookie, even with a valid Bearer token.
+// Without @Public(), the global AuthGuard runs first and rejects requests that
+// lack a session cookie — even with a valid Bearer token. @Public() bypasses
+// the session check; ExtensionAuthGuard then validates the Bearer token.
 // ---------------------------------------------------------------------------
 
 import {
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
@@ -32,6 +34,7 @@ import type {
   ExchangeResponseDto,
   RefreshResponseDto,
   ExtensionAuthAckDto,
+  UserProfileDto,
 } from './dto/extension-auth-response.dto';
 
 @Controller('extension/auth')
@@ -65,10 +68,6 @@ export class ExtensionAuthController {
   // extension's BG SW when AuthGate detects the token is within 7 days of
   // expiry. The extension updates TOKEN_EXPIRES_AT in chrome.storage.local
   // using the server-returned value — the server is the authoritative clock.
-  //
-  // last_seen_at slide is also performed fire-and-forget in ExtensionAuthGuard
-  // on every authenticated request; the explicit update here is belt-and-
-  // suspenders and returns the authoritative new window start time.
   // ---------------------------------------------------------------------------
 
   @Post('refresh')
@@ -84,9 +83,9 @@ export class ExtensionAuthController {
   // ---------------------------------------------------------------------------
   // POST /v1/extension/auth/revoke
   //
-  // Revokes the current device token. Subsequent requests with this token
-  // return 401. The extension clears chrome.storage.local on receipt.
-  // Also called from the web app's /settings/devices page (D14).
+  // Revokes the current device token (called from the extension sign-out button).
+  // Subsequent requests with this token return 401. The extension clears
+  // chrome.storage.local on receipt. Also callable from /settings/devices (D14).
   // ---------------------------------------------------------------------------
 
   @Post('revoke')
@@ -98,5 +97,56 @@ export class ExtensionAuthController {
   ): Promise<ExtensionAuthAckDto> {
     await this.extensionAuthService.revoke(token);
     return { ok: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /v1/extension/auth/revoke-session
+  //
+  // Revokes ALL active extension tokens for the currently signed-in web user.
+  // Called fire-and-forget from sidebar.tsx and mobile-drawer.tsx immediately
+  // before better-auth's signOut(). Uses the existing web session cookie —
+  // no Bearer token required or accepted on this route.
+  //
+  // Design rationale:
+  //   The web app does not hold a Bearer token — it holds a session cookie.
+  //   The existing /revoke route requires a Bearer token (ExtensionAuthGuard).
+  //   This route uses the global session AuthGuard to identify the user, then
+  //   revokes all their active extension tokens in one DB write.
+  //
+  //   Non-blocking from the caller's perspective: sidebar calls this then
+  //   immediately calls signOut() without awaiting. If the network fails,
+  //   the token expires naturally after 30 days. This is acceptable because
+  //   the token is also invalidated on the next authenticated request via
+  //   ExtensionAuthGuard (it will find no valid session for the user).
+  // ---------------------------------------------------------------------------
+
+  @Post('revoke-session')
+  @HttpCode(HttpStatus.OK)
+  async revokeSession(
+    @CurrentUser() user: AuthUser,
+  ): Promise<ExtensionAuthAckDto> {
+    await this.extensionAuthService.revokeAllForUser(user.id);
+    return { ok: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /v1/extension/auth/profile
+  //
+  // Returns the authenticated user's display name, email, and subscription plan.
+  // Called by the extension's ProfilePanel on mount (stale-while-revalidate).
+  // The cached result is stored in chrome.storage.local[USER_PROFILE] and
+  // refreshed in the background on every side-panel open.
+  //
+  // plan defaults to 'free' when no subscription row exists for the user.
+  // ---------------------------------------------------------------------------
+
+  @Get('profile')
+  @HttpCode(HttpStatus.OK)
+  @Public()
+  @UseGuards(ExtensionAuthGuard)
+  async getProfile(
+    @CurrentExtensionToken() token: ExtensionToken,
+  ): Promise<UserProfileDto> {
+    return this.extensionAuthService.getProfile(token);
   }
 }

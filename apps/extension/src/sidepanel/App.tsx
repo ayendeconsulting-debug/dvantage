@@ -1,77 +1,25 @@
 // ---------------------------------------------------------------------------
-// D'Vantage — Side Panel App (D2)
+// D'Vantage — Side Panel App
 //
 // Fonts + Atlas tokens are loaded in index.tsx before this module executes.
 // All colour values reference CSS custom properties — no inline hex literals.
 //
 // Structure:
 //   App
-//   └── AuthGate          (unauthenticated → sign-in screen)
-//       └── ReadyState    (authenticated placeholder — replaced in D5 with
-//                          the real profile + job-detection panel)
+//   └── AuthGate            (unauthenticated → sign-in screen)
+//       └── ProfilePanel    (D5: profile header — name, email, plan, sign-out)
 //
-// D1 hello-world scaffold is fully removed.
+// D2: ReadyState placeholder removed. ProfilePanel is the authenticated view.
+// M14 will add JobDetectionPanel below ProfilePanel for content-script scoring.
 // ---------------------------------------------------------------------------
 
-import type { CSSProperties } from 'react';
-import AuthGate from './AuthGate';
-
-// ── ReadyState ─────────────────────────────────────────────────────────────
-// Minimal "Connected" chip shown once the user is authenticated.
-// D5 replaces this with ProfilePanel + JobDetectionPanel.
-
-function ReadyState() {
-  return (
-    <div style={styles.container}>
-      <div style={styles.chip}>
-        <span style={styles.dot} aria-hidden="true" />
-        Connected
-      </div>
-    </div>
-  );
-}
-
-// ── App ────────────────────────────────────────────────────────────────────
+import AuthGate    from './AuthGate';
+import ProfilePanel from './ProfilePanel';
 
 export default function App() {
   return (
     <AuthGate>
-      <ReadyState />
+      <ProfilePanel />
     </AuthGate>
   );
 }
-
-// ── Styles ─────────────────────────────────────────────────────────────────
-
-const styles = {
-  container: {
-    backgroundColor: 'var(--vt-surface-0)',
-    minHeight:       '100vh',
-    display:         'flex',
-    flexDirection:   'column',
-    alignItems:      'center',
-    justifyContent:  'center',
-    padding:         '32px 24px',
-  },
-  chip: {
-    display:         'inline-flex',
-    alignItems:      'center',
-    gap:             '8px',
-    padding:         '6px 14px',
-    backgroundColor: 'var(--vt-surface-2)',
-    border:          '1px solid var(--vt-border-1)',
-    borderRadius:    '20px',
-    fontFamily:      "'DM Sans', sans-serif",
-    fontSize:        '12px',
-    fontWeight:      500,
-    color:           'var(--vt-text-3)',
-    letterSpacing:   '0.01em',
-  },
-  dot: {
-    width:           '6px',
-    height:          '6px',
-    borderRadius:    '50%',
-    backgroundColor: 'var(--vt-success)',
-    flexShrink:      0,
-  },
-} satisfies Record<string, CSSProperties>;

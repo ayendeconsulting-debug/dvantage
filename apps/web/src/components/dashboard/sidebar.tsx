@@ -12,7 +12,18 @@ import {
   LogOut,
 } from 'lucide-react';
 import { DVantageLogo } from '@/components/logo/dvantage-logo';
-import { signOut } from '@/lib/auth-client';
+import { signOut }      from '@/lib/auth-client';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const API_BASE          = process.env['NEXT_PUBLIC_API_URL'] ?? 'https://api.dvantage.ca';
+const REVOKE_SESSION_URL = `${API_BASE}/v1/extension/auth/revoke-session`;
+
+// ---------------------------------------------------------------------------
+// Nav items
+// ---------------------------------------------------------------------------
 
 interface NavItem {
   label:   string;
@@ -28,11 +39,27 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Applications', href: '/dashboard/applications', icon: SendHorizontal,  enabled: true },
 ];
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
 
   async function handleSignOut() {
+    // Fire-and-forget: revoke all extension tokens for this user.
+    // Non-blocking — signOut() proceeds even if the network call fails.
+    // The extension token expires naturally after 30 days in the worst case.
+    void fetch(REVOKE_SESSION_URL, {
+      method:      'POST',
+      credentials: 'include',
+      headers:     { 'Content-Type': 'application/json' },
+      body:        '{}',
+    }).catch(() => {
+      // Intentionally swallowed — sign-out must never be blocked by this call.
+    });
+
     await signOut();
     router.push('/auth/sign-in');
   }
@@ -88,6 +115,10 @@ export function Sidebar() {
     </aside>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = {
   sidebar: {
