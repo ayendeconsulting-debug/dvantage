@@ -38,6 +38,7 @@ export default defineManifest({
   },
   permissions: ['storage', 'activeTab', 'scripting', 'sidePanel', 'cookies'],
   host_permissions: [
+    'https://dvantage.ca/*',
     'https://api.dvantage.ca/*',
     'https://*.linkedin.com/jobs/*',
     'https://*.indeed.com/*',
