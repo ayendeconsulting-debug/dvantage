@@ -16,7 +16,7 @@ export default defineManifest({
   action: { default_title: "D'Vantage" },
   side_panel: { default_path: 'sidepanel.html' },
   background: { service_worker: 'src/background/index.ts', type: 'module' },
-  permissions: ['storage', 'activeTab', 'scripting', 'sidePanel', 'cookies'],
+  permissions: ['storage', 'activeTab', 'tabs', 'scripting', 'sidePanel', 'cookies'],
   host_permissions: [
     'https://dvantage.ca/*',
     'https://api.dvantage.ca/*',
