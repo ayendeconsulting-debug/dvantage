@@ -234,6 +234,7 @@ chrome.runtime.onMessage.addListener(
       try {
         const response = await fetch(REFRESH_URL, {
           method:  'POST',
+          body: '{}',
           headers: {
             'Content-Type':  'application/json',
             'Authorization': `Bearer ${token}`,
