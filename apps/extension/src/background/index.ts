@@ -1,21 +1,15 @@
 // ---------------------------------------------------------------------------
 // D'Vantage — Service Worker (Manifest V3)
 //
-// D3: onMessageExternal — externally_connectable bridge (kept, belt-and-suspenders).
-// D4: onMessage — content script bridge (kept, inert).
-// D4: cookies.onChanged — cookie handoff attempt (kept, inert).
-// D4 FINAL: tabs.onUpdated — PRIMARY token delivery.
+// D4: tabs.onUpdated — PRIMARY token delivery.
+//   Detects /extension/done URL, calls exchange endpoint directly.
 //
-//   When the user completes sign-in, the web app redirects to
-//   dvantage.ca/extension/done. This SW detects that URL via
-//   chrome.tabs.onUpdated, then calls the exchange endpoint directly.
-//
-//   Why this works:
-//   - Chrome extensions with host_permissions make fetch() without CORS.
-//   - credentials:'include' sends the api.dvantage.ca session cookie
-//     (set by better-auth during sign-in) automatically.
-//   - No web→extension communication required at all.
-//   - tabs.onUpdated is guaranteed to wake the SW.
+// D5: REQUEST_REFRESH handler.
+//   When AuthGate detects TOKEN_EXPIRES_AT is within 7 days, it sends
+//   REQUEST_REFRESH via chrome.runtime.sendMessage. This SW calls
+//   POST /v1/extension/auth/refresh with the current Bearer token.
+//   On 200: writes new TOKEN_EXPIRES_AT to storage (AuthGate.onChanged fires).
+//   On 401/error: clears both token keys (AuthGate transitions to unauthed).
 // ---------------------------------------------------------------------------
 
 import { STORAGE_KEYS, API_BASE, APP_BASE }                           from '../shared/constants';
@@ -44,12 +38,13 @@ chrome.runtime.onInstalled.addListener((details) => {
 // Shared constants
 // ---------------------------------------------------------------------------
 
-const ALLOWED_ORIGIN   = 'https://dvantage.ca' as const;
-const DONE_URL_SUFFIX  = '/extension/done' as const;
-const EXCHANGE_URL     = `${API_BASE}/v1/extension/auth/exchange` as const;
+const ALLOWED_ORIGIN  = 'https://dvantage.ca' as const;
+const DONE_URL_SUFFIX = '/extension/done'      as const;
+const EXCHANGE_URL    = `${API_BASE}/v1/extension/auth/exchange` as const;
+const REFRESH_URL     = `${API_BASE}/v1/extension/auth/refresh`  as const;
 
 // ---------------------------------------------------------------------------
-// Shared storage write
+// Shared storage helpers
 // ---------------------------------------------------------------------------
 
 function storeExtensionToken(
@@ -74,8 +69,18 @@ function storeExtensionToken(
   );
 }
 
+/** Clear both token keys — called on 401 from refresh or on explicit revoke. */
+function clearTokenStorage(reason: string): void {
+  chrome.storage.local.remove(
+    [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
+    () => {
+      console.log('[DVantage SW] Token storage cleared —', reason);
+    },
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Type guards
+// Validation helpers
 // ---------------------------------------------------------------------------
 
 function isValidToken(value: string): boolean {
@@ -106,25 +111,21 @@ function isAuthBridgeMessage(
          typeof p['expiresAt'] === 'string' && p['expiresAt'].length > 0;
 }
 
+function isRequestRefresh(msg: unknown): boolean {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as Record<string, unknown>)['type'] === 'REQUEST_REFRESH'
+  );
+}
+
 // ---------------------------------------------------------------------------
-// D4 FINAL — Direct exchange via tabs.onUpdated
-//
-// Fires when any tab completes navigation. We filter for our auth callback
-// URL (dvantage.ca/extension/done). On match, we call the exchange endpoint
-// directly using credentials:'include'. Chrome extensions with host_permissions
-// are exempt from CORS and automatically include session cookies for the
-// target domain in fetch() requests.
-//
-// The session cookie was set on api.dvantage.ca by better-auth during
-// sign-in. credentials:'include' sends it in this SW fetch automatically.
+// D4 PRIMARY — tabs.onUpdated direct exchange
 // ---------------------------------------------------------------------------
 
 chrome.tabs.onUpdated.addListener(
   (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab): void => {
-    // Only act when navigation is fully complete.
     if (changeInfo.status !== 'complete') return;
-
-    // Only act on our auth callback URL.
     const url = tab.url ?? '';
     if (!url.includes(DONE_URL_SUFFIX)) return;
 
@@ -132,9 +133,6 @@ chrome.tabs.onUpdated.addListener(
 
     void (async (): Promise<void> => {
       try {
-        // Fetch the exchange endpoint directly.
-        // - credentials:'include' sends api.dvantage.ca session cookies.
-        // - Extension host_permissions exempt this from CORS.
         const response = await fetch(EXCHANGE_URL, {
           method:      'POST',
           credentials: 'include',
@@ -170,13 +168,9 @@ chrome.tabs.onUpdated.addListener(
             console.error('[DVantage SW] Storage failed after exchange:', ack);
             return;
           }
-
           console.log('[DVantage SW] Direct exchange complete — closing auth tab');
-
-          // Close the auth tab — AuthGate transitions via storage.onChanged.
           chrome.tabs.remove(tabId, () => {
             if (chrome.runtime.lastError) {
-              // Tab may have already been closed — not fatal.
               console.warn('[DVantage SW] Tab close skipped:', chrome.runtime.lastError.message);
             }
           });
@@ -185,6 +179,114 @@ chrome.tabs.onUpdated.addListener(
         console.error('[DVantage SW] Direct exchange threw:', err);
       }
     })();
+  },
+);
+
+// ---------------------------------------------------------------------------
+// D5 — REQUEST_REFRESH handler
+//
+// AuthGate sends this when TOKEN_EXPIRES_AT is within 7 days. We read
+// the current token from storage, call the refresh endpoint, and write
+// the new expiresAt. On 401 we clear storage — the AuthGate onChanged
+// listener will transition to unauthenticated automatically.
+// ---------------------------------------------------------------------------
+
+chrome.runtime.onMessage.addListener(
+  (
+    message:      unknown,
+    _sender:      chrome.runtime.MessageSender,
+    sendResponse: (response: unknown) => void,
+  ): true | undefined => {
+    // Handle REQUEST_REFRESH — other internal messages handled separately.
+    if (isAuthBridgeMessage(message)) {
+      // Auth bridge (inert under current architecture but kept).
+      if (_sender.origin !== ALLOWED_ORIGIN) {
+        sendResponse({ ok: false, error: 'origin_not_allowed' });
+        return undefined;
+      }
+      storeExtensionToken(
+        message.payload.token,
+        message.payload.expiresAt,
+        sendResponse as (r: ExternalAck) => void,
+      );
+      return true;
+    }
+
+    if (!isRequestRefresh(message)) return undefined;
+
+    // Read current token then call the refresh endpoint.
+    void (async (): Promise<void> => {
+      const result = await new Promise<Record<string, unknown>>((resolve) => {
+        chrome.storage.local.get(
+          [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
+          resolve as (items: Record<string, unknown>) => void,
+        );
+      });
+
+      const token = result[STORAGE_KEYS.EXTENSION_TOKEN];
+
+      if (typeof token !== 'string' || token.length === 0) {
+        console.warn('[DVantage SW] REQUEST_REFRESH — no token in storage, skipping');
+        sendResponse({ ok: false, error: 'no_token' });
+        return;
+      }
+
+      try {
+        const response = await fetch(REFRESH_URL, {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (response.status === 401) {
+          console.warn('[DVantage SW] Refresh returned 401 — token revoked or expired on server');
+          clearTokenStorage('401 on refresh');
+          sendResponse({ ok: false, error: 'unauthorized' });
+          return;
+        }
+
+        if (!response.ok) {
+          console.error('[DVantage SW] Refresh failed — HTTP', response.status);
+          sendResponse({ ok: false, error: `http_${response.status}` });
+          return;
+        }
+
+        const data = await response.json() as unknown;
+
+        if (
+          typeof data !== 'object' || data === null ||
+          typeof (data as Record<string, unknown>)['expiresAt'] !== 'string'
+        ) {
+          console.error('[DVantage SW] Invalid refresh response shape:', data);
+          sendResponse({ ok: false, error: 'invalid_response' });
+          return;
+        }
+
+        const { expiresAt } = data as { expiresAt: string };
+
+        // Write new expiresAt — AuthGate.onChanged will re-evaluate.
+        chrome.storage.local.set(
+          { [STORAGE_KEYS.TOKEN_EXPIRES_AT]: expiresAt },
+          () => {
+            if (chrome.runtime.lastError) {
+              console.error('[DVantage SW] ExpiresAt write failed:', chrome.runtime.lastError.message);
+              sendResponse({ ok: false, error: 'storage_write_failed' });
+              return;
+            }
+            console.log('[DVantage SW] Token refreshed — new expiresAt:', expiresAt);
+            sendResponse({ ok: true, expiresAt });
+          },
+        );
+      } catch (err: unknown) {
+        console.error('[DVantage SW] Refresh threw:', err);
+        sendResponse({ ok: false, error: 'network_error' });
+      }
+    })();
+
+    // Return true — async sendResponse.
+    return true;
   },
 );
 
@@ -204,26 +306,6 @@ chrome.runtime.onMessageExternal.addListener(
     }
     if (!isExtTokenMessage(message)) {
       sendResponse({ ok: false, error: 'malformed_message' });
-      return undefined;
-    }
-    storeExtensionToken(message.payload.token, message.payload.expiresAt, sendResponse);
-    return true;
-  },
-);
-
-// ---------------------------------------------------------------------------
-// D4 — onMessage (content script bridge, inert)
-// ---------------------------------------------------------------------------
-
-chrome.runtime.onMessage.addListener(
-  (
-    message:      unknown,
-    sender:       chrome.runtime.MessageSender,
-    sendResponse: (response: ExternalAck) => void,
-  ): true | undefined => {
-    if (!isAuthBridgeMessage(message)) return undefined;
-    if (sender.origin !== ALLOWED_ORIGIN) {
-      sendResponse({ ok: false, error: 'origin_not_allowed' });
       return undefined;
     }
     storeExtensionToken(message.payload.token, message.payload.expiresAt, sendResponse);

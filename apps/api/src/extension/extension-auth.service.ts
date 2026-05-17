@@ -2,8 +2,8 @@
 // ExtensionAuthService
 //
 // Owns the full lifecycle of extension bearer tokens:
-//   exchange  → mint (called once per install from web app /extension/auth page)
-//   refresh   → slide last_seen_at (called by background SW periodically)
+//   exchange  → mint (called once per install from BG SW after /extension/done)
+//   refresh   → slide last_seen_at + return new expiresAt (called by BG SW)
 //   revoke    → soft-delete (called on sign-out or from /settings/devices)
 //   validate  → hash lookup (called by ExtensionAuthGuard on every request)
 //
@@ -22,7 +22,10 @@ import { uuidv7 }                     from 'uuidv7';
 import { extensionTokens, type DatabaseClient, type ExtensionToken } from '@vantage/database';
 import type { AuthUser }              from '../auth/auth.service';
 import { DATABASE_CLIENT }            from '../database/database.module';
-import type { ExchangeResponseDto }   from './dto/extension-auth-response.dto';
+import type {
+  ExchangeResponseDto,
+  RefreshResponseDto,
+}                                     from './dto/extension-auth-response.dto';
 
 /** 30-day sliding window in milliseconds. Matches TOKEN_LIFETIME_MS in the extension. */
 const TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -64,14 +67,25 @@ export class ExtensionAuthService {
   }
 
   // ---------------------------------------------------------------------------
-  // refresh — slide last_seen_at (extends the 30-day window)
+  // refresh — slide last_seen_at + return new expiresAt
+  //
+  // The server is the authoritative clock for token expiry. Returns the new
+  // expiresAt so the extension can update chrome.storage.local without
+  // computing the window independently (which would create two sources of truth).
   // ---------------------------------------------------------------------------
 
-  async refresh(token: ExtensionToken): Promise<void> {
+  async refresh(token: ExtensionToken): Promise<RefreshResponseDto> {
+    const now = new Date();
+
     await this.db
       .update(extensionTokens)
-      .set({ lastSeenAt: new Date() })
+      .set({ lastSeenAt: now })
       .where(eq(extensionTokens.id, token.id));
+
+    this.logger.log(`Extension token refreshed — tokenId=${token.id} user=${token.userId}`);
+
+    const expiresAt = new Date(now.getTime() + TOKEN_LIFETIME_MS);
+    return { expiresAt: expiresAt.toISOString() };
   }
 
   // ---------------------------------------------------------------------------

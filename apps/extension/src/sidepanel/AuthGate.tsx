@@ -6,19 +6,39 @@
 //   unauthenticated → logo + "Sign in to D'Vantage" CTA
 //   authenticated   → passes children through unchanged
 //
-// Auth check: single chrome.storage.local.get on mount.
+// Auth check: reads EXTENSION_TOKEN + TOKEN_EXPIRES_AT from storage on mount.
 //
-// D3 addition: chrome.storage.onChanged listener — when the background SW
-// writes the token after the exchange, the side panel (if open) transitions
-// unauthenticated → authenticated without a reload.
+// D3: chrome.storage.onChanged listener — transitions on token write/clear.
+// D4: tabs.onUpdated direct exchange — BG SW writes token after /extension/done.
+// D5: Token expiry enforcement + silent refresh trigger.
 //
-// D4 FINAL: Sign-in opens dvantage.ca/auth/sign-in?callbackURL=/extension/done.
-// The BG SW detects the /extension/done URL via chrome.tabs.onUpdated and
-// calls the exchange endpoint directly — no web→extension communication.
+// Expiry logic (on mount):
+//   expired (expiresAt in past)    → clear storage → unauthenticated
+//   near-expiry (< 7 days left)    → authenticated + send REQUEST_REFRESH to BG SW
+//   valid (>= 7 days remaining)    → authenticated (no action)
+//   no expiresAt stored            → authenticated (legacy — refreshes on next cycle)
+//
+// Refresh flow:
+//   AuthGate sends REQUEST_REFRESH to BG SW via chrome.runtime.sendMessage.
+//   BG SW calls POST /v1/extension/auth/refresh (Bearer token).
+//   On 200: BG SW writes new TOKEN_EXPIRES_AT to storage → onChanged fires.
+//   On 401: BG SW clears EXTENSION_TOKEN + TOKEN_EXPIRES_AT → onChanged fires
+//           → AuthGate transitions to unauthenticated.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
-import { APP_BASE, STORAGE_KEYS } from '../shared/constants';
+import { APP_BASE, STORAGE_KEYS }                                   from '../shared/constants';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Trigger a silent refresh when fewer than this many ms remain. */
+const REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type AuthState = 'checking' | 'unauthenticated' | 'authenticated';
 
@@ -26,22 +46,102 @@ interface AuthGateProps {
   children: ReactNode;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Evaluate token + expiry from storage values.
+ * Returns the resolved auth state and whether a refresh should be triggered.
+ */
+function evaluateToken(
+  token:     unknown,
+  expiresAt: unknown,
+): { state: 'unauthenticated' | 'authenticated'; shouldRefresh: boolean } {
+  // No token → unauthenticated immediately.
+  if (typeof token !== 'string' || token.length === 0) {
+    return { state: 'unauthenticated', shouldRefresh: false };
+  }
+
+  // No expiresAt stored (legacy tokens pre-D3) → treat as authenticated.
+  // Will refresh on next cycle once the server writes a new expiresAt.
+  if (typeof expiresAt !== 'string' || expiresAt.length === 0) {
+    return { state: 'authenticated', shouldRefresh: true };
+  }
+
+  const expiryMs   = Date.parse(expiresAt);
+  const remainingMs = expiryMs - Date.now();
+
+  // Expired → unauthenticated.
+  if (remainingMs <= 0) {
+    return { state: 'unauthenticated', shouldRefresh: false };
+  }
+
+  // Near-expiry → authenticated but trigger refresh.
+  if (remainingMs < REFRESH_THRESHOLD_MS) {
+    return { state: 'authenticated', shouldRefresh: true };
+  }
+
+  // Valid, plenty of time left.
+  return { state: 'authenticated', shouldRefresh: false };
+}
+
+/**
+ * Clear both token keys from storage.
+ * Called when the token is expired or the BG SW receives a 401 on refresh.
+ */
+function clearTokenStorage(): void {
+  chrome.storage.local.remove([
+    STORAGE_KEYS.EXTENSION_TOKEN,
+    STORAGE_KEYS.TOKEN_EXPIRES_AT,
+  ]);
+}
+
+/**
+ * Send REQUEST_REFRESH to the BG SW.
+ * Fire-and-forget from AuthGate's perspective — the BG SW handles
+ * the response and writes to storage; onChanged propagates the result.
+ */
+function requestRefresh(): void {
+  chrome.runtime.sendMessage({ type: 'REQUEST_REFRESH' }, () => {
+    // Consume lastError to suppress "unchecked runtime.lastError" warning.
+    // The BG SW handles the actual refresh and storage write independently.
+    void chrome.runtime.lastError;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function AuthGate({ children }: AuthGateProps) {
   const [authState, setAuthState] = useState<AuthState>('checking');
 
   useEffect(() => {
-    // — Initial check —————————————————————————————————————————————————————
-    chrome.storage.local.get(STORAGE_KEYS.EXTENSION_TOKEN, (result) => {
-      const token: unknown = result[STORAGE_KEYS.EXTENSION_TOKEN];
-      setAuthState(
-        typeof token === 'string' && token.length > 0
-          ? 'authenticated'
-          : 'unauthenticated',
-      );
-    });
+    // — Initial check — reads token + expiresAt together ——————————————————
+    chrome.storage.local.get(
+      [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
+      (result) => {
+        const token     = result[STORAGE_KEYS.EXTENSION_TOKEN];
+        const expiresAt = result[STORAGE_KEYS.TOKEN_EXPIRES_AT];
+        const { state, shouldRefresh } = evaluateToken(token, expiresAt);
+
+        if (state === 'unauthenticated') {
+          // Clear any stale keys (e.g. expired token with no expiresAt).
+          clearTokenStorage();
+        }
+
+        setAuthState(state);
+
+        if (shouldRefresh) {
+          requestRefresh();
+        }
+      },
+    );
 
     // — Live update ————————————————————————————————————————————————————————
-    // Fires when the BG SW writes the token after the direct exchange.
+    // Fires when the BG SW writes after exchange, refresh, or revoke.
+    // Re-evaluates both keys on any EXTENSION_TOKEN change.
     function handleStorageChange(
       changes: Record<string, chrome.storage.StorageChange>,
       area:    string,
@@ -49,11 +149,24 @@ export default function AuthGate({ children }: AuthGateProps) {
       if (area !== 'local') return;
       if (!(STORAGE_KEYS.EXTENSION_TOKEN in changes)) return;
 
-      const newValue: unknown = changes[STORAGE_KEYS.EXTENSION_TOKEN]?.newValue;
-      setAuthState(
-        typeof newValue === 'string' && newValue.length > 0
-          ? 'authenticated'
-          : 'unauthenticated',
+      const newToken = changes[STORAGE_KEYS.EXTENSION_TOKEN]?.newValue;
+
+      // If token was cleared → unauthenticated immediately.
+      if (typeof newToken !== 'string' || newToken.length === 0) {
+        setAuthState('unauthenticated');
+        return;
+      }
+
+      // Token written → re-read both keys to get the latest expiresAt.
+      chrome.storage.local.get(
+        [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
+        (result) => {
+          const token     = result[STORAGE_KEYS.EXTENSION_TOKEN];
+          const expiresAt = result[STORAGE_KEYS.TOKEN_EXPIRES_AT];
+          const { state, shouldRefresh } = evaluateToken(token, expiresAt);
+          setAuthState(state);
+          if (shouldRefresh) requestRefresh();
+        },
       );
     }
 
@@ -66,13 +179,12 @@ export default function AuthGate({ children }: AuthGateProps) {
   return <SignInScreen />;
 }
 
-// — SignInScreen ——————————————————————————————————————————————————————————
+// ---------------------------------------------------------------------------
+// SignInScreen
+// ---------------------------------------------------------------------------
 
 function SignInScreen() {
   function handleSignIn(): void {
-    // Open sign-in page with callbackURL=/extension/done.
-    // The BG SW monitors chrome.tabs.onUpdated for that URL and calls the
-    // exchange endpoint directly once sign-in is complete.
     const callbackUrl = '/extension/done';
     const signInUrl   = `${APP_BASE}/auth/sign-in?callbackURL=${encodeURIComponent(callbackUrl)}`;
     chrome.tabs.create({ url: signInUrl });
@@ -80,8 +192,6 @@ function SignInScreen() {
 
   return (
     <div style={styles.container}>
-
-      {/* — D'Vantage mark ———————————————————————————————————————————————— */}
       <svg
         viewBox="0 0 32 24"
         width="48"
@@ -100,7 +210,6 @@ function SignInScreen() {
         />
       </svg>
 
-      {/* — Wordmark ——————————————————————————————————————————————————————— */}
       <div style={styles.wordmark} aria-label="D'Vantage">
         <span style={styles.wordmarkD}>D</span>
         <span style={styles.wordmarkApostrophe}>&apos;</span>
@@ -108,10 +217,8 @@ function SignInScreen() {
         <span style={styles.wordmarkAge}>age</span>
       </div>
 
-      {/* — Tagline ———————————————————————————————————————————————————————— */}
       <p style={styles.tagline}>From applied to interview.</p>
 
-      {/* — CTA ———————————————————————————————————————————————————————————— */}
       <button
         type="button"
         className="dvantage-btn-primary"
@@ -119,12 +226,13 @@ function SignInScreen() {
       >
         Sign in to D&apos;Vantage
       </button>
-
     </div>
   );
 }
 
-// — Styles ————————————————————————————————————————————————————————————————
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = {
   container: {
@@ -148,22 +256,10 @@ const styles = {
     marginBottom:  '12px',
     userSelect:    'none',
   },
-  wordmarkD: {
-    fontWeight: 900,
-    color:      'var(--vt-brand-500)',
-  },
-  wordmarkApostrophe: {
-    fontWeight: 200,
-    color:      'var(--vt-text-1)',
-  },
-  wordmarkVant: {
-    fontWeight: 900,
-    color:      'var(--vt-text-1)',
-  },
-  wordmarkAge: {
-    fontWeight: 200,
-    color:      'var(--vt-brand-400)',
-  },
+  wordmarkD:          { fontWeight: 900, color: 'var(--vt-brand-500)' },
+  wordmarkApostrophe: { fontWeight: 200, color: 'var(--vt-text-1)'    },
+  wordmarkVant:       { fontWeight: 900, color: 'var(--vt-text-1)'    },
+  wordmarkAge:        { fontWeight: 200, color: 'var(--vt-brand-400)' },
   tagline: {
     fontFamily:    "'DM Sans', sans-serif",
     fontSize:      '12px',

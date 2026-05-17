@@ -14,12 +14,23 @@
  */
 export interface ExchangeResponseDto {
   /** Raw 64-char hex bearer token. */
-  token: string;
-  /** ISO timestamp — informational. Window slides on each refresh. */
+  token:     string;
+  /** ISO 8601 timestamp — 30-day window from time of exchange. */
   expiresAt: string;
 }
 
-/** Returned from POST /v1/extension/auth/refresh and /revoke. */
+/**
+ * Returned from POST /v1/extension/auth/refresh.
+ * Contains the new expiresAt so the extension can update its local copy
+ * without computing the window client-side. The server is the authoritative
+ * clock — TOKEN_LIFETIME_MS is a server-side constant.
+ */
+export interface RefreshResponseDto {
+  /** Updated ISO 8601 expiry timestamp — 30-day window from time of refresh. */
+  expiresAt: string;
+}
+
+/** Returned from POST /v1/extension/auth/revoke. */
 export interface ExtensionAuthAckDto {
   ok: true;
 }

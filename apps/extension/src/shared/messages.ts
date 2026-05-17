@@ -4,14 +4,7 @@
 // All cross-context communication (content ↔ background ↔ sidepanel)
 // uses these typed messages via chrome.runtime.sendMessage / onMessage.
 //
-// ExternalToBackground covers messages arriving via onMessageExternal —
-// i.e. sent from dvantage.ca (permitted by externally_connectable in the
-// manifest). These are structurally identical to internal messages but
-// travel through a different runtime channel.
-//
 // Convention: message type strings are SCREAMING_SNAKE_CASE.
-// Payload shapes are minimal — only what the receiver needs.
-// Full message handlers implemented in Week 2.
 // ---------------------------------------------------------------------------
 
 import type { ExtractedJob, ScoreResult, UserProfile } from './types';
@@ -33,10 +26,6 @@ export type ContentToBackground =
       type:    'FORM_SUBMITTED';
       payload: { company: string | null; role: string | null; pageUrl: string; jdSnapshot: string | null };
     }
-  // D4: Auth bridge — sent by auth-bridge.ts content script on dvantage.ca/extension/auth.
-  // The content script receives a CustomEvent from the web page and relays it
-  // here via the internal chrome.runtime.sendMessage channel (always available
-  // in content scripts, unlike externally_connectable which is unreliable).
   | {
       type:    'AUTH_BRIDGE_TOKEN';
       payload: { token: string; expiresAt: string };
@@ -60,6 +49,13 @@ export type SidepanelToBackground =
     }
   | {
       type: 'REQUEST_AUTH_STATUS';
+    }
+  // D5: Sent by AuthGate when TOKEN_EXPIRES_AT is within 7 days.
+  // BG SW calls POST /v1/extension/auth/refresh and writes the new
+  // expiresAt to storage. On 401, BG SW clears storage → AuthGate
+  // transitions to unauthenticated.
+  | {
+      type: 'REQUEST_REFRESH';
     };
 
 // ---------------------------------------------------------------------------
@@ -98,23 +94,17 @@ export type BackgroundToSidepanel =
 
 // ---------------------------------------------------------------------------
 // External → Background  (dvantage.ca → chrome.runtime.onMessageExternal)
-//
-// These messages arrive from the web app after the user completes the
-// /extension/auth callback flow. The background SW validates origin and
-// message shape before writing to chrome.storage.local.
 // ---------------------------------------------------------------------------
 
 export type ExternalToBackground = {
   type:    'DVANTAGE_EXT_TOKEN';
   payload: {
-    /** Raw 64-char hex bearer token — must be stored as-is. */
     token:     string;
-    /** ISO 8601 expiry timestamp — persisted for D4 client-side expiry check. */
     expiresAt: string;
   };
 };
 
-/** Ack sent back to the web app via sendResponse. */
+/** Ack sent back via sendResponse. */
 export type ExternalAck = { ok: true } | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------

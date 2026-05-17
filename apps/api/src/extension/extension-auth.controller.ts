@@ -30,6 +30,7 @@ import { ExtensionAuthService }      from './extension-auth.service';
 import { ExtensionAuthGuard, CurrentExtensionToken } from './extension-auth.guard';
 import type {
   ExchangeResponseDto,
+  RefreshResponseDto,
   ExtensionAuthAckDto,
 } from './dto/extension-auth-response.dto';
 
@@ -40,9 +41,10 @@ export class ExtensionAuthController {
   // ---------------------------------------------------------------------------
   // POST /v1/extension/auth/exchange
   //
-  // Called by the web app's /extension/auth callback page after user auth.
-  // Mints a new 30-day extension token. Raw token returned ONCE — the client
-  // must store it in chrome.storage.local[STORAGE_KEYS.EXTENSION_TOKEN].
+  // Called by the extension's BG SW via tabs.onUpdated after the user lands
+  // on /extension/done. The BG SW uses credentials:'include' — the session
+  // cookie is forwarded automatically. Mints a new 30-day extension token.
+  // Raw token returned ONCE — stored immediately in chrome.storage.local.
   //
   // Protected by global session AuthGuard — user must have a valid session.
   // ---------------------------------------------------------------------------
@@ -59,9 +61,14 @@ export class ExtensionAuthController {
   // ---------------------------------------------------------------------------
   // POST /v1/extension/auth/refresh
   //
-  // Slides the 30-day window. Called by the extension's background service
-  // worker on a periodic schedule (e.g. daily). The actual last_seen_at update
-  // is handled as fire-and-forget inside ExtensionAuthGuard to avoid latency.
+  // Slides the 30-day window and returns the new expiresAt. Called by the
+  // extension's BG SW when AuthGate detects the token is within 7 days of
+  // expiry. The extension updates TOKEN_EXPIRES_AT in chrome.storage.local
+  // using the server-returned value — the server is the authoritative clock.
+  //
+  // last_seen_at slide is also performed fire-and-forget in ExtensionAuthGuard
+  // on every authenticated request; the explicit update here is belt-and-
+  // suspenders and returns the authoritative new window start time.
   // ---------------------------------------------------------------------------
 
   @Post('refresh')
@@ -69,17 +76,16 @@ export class ExtensionAuthController {
   @Public()
   @UseGuards(ExtensionAuthGuard)
   async refresh(
-    @CurrentExtensionToken() _token: ExtensionToken,
-  ): Promise<ExtensionAuthAckDto> {
-    // last_seen_at slide is performed fire-and-forget in ExtensionAuthGuard.
-    return { ok: true };
+    @CurrentExtensionToken() token: ExtensionToken,
+  ): Promise<RefreshResponseDto> {
+    return this.extensionAuthService.refresh(token);
   }
 
   // ---------------------------------------------------------------------------
   // POST /v1/extension/auth/revoke
   //
   // Revokes the current device token. Subsequent requests with this token
-  // return 401. The extension must clear chrome.storage.local on receipt.
+  // return 401. The extension clears chrome.storage.local on receipt.
   // Also called from the web app's /settings/devices page (D14).
   // ---------------------------------------------------------------------------
 
