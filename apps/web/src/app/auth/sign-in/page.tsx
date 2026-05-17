@@ -12,12 +12,16 @@
 // can redirect here and land back at /extension/auth after sign-in.
 // Security: only relative paths (starting with '/') are accepted — absolute
 // URLs are silently discarded to prevent open-redirect attacks.
+//
+// D4 addition: if the user already has an active session when arriving at
+// this page (e.g. the extension sign-in flow with an already-authenticated
+// user), redirect immediately to callbackURL without showing the form.
 // ---------------------------------------------------------------------------
 
-import { Suspense, useState }             from 'react';
+import { Suspense, useState, useEffect }  from 'react';
 import Link                               from 'next/link';
 import { useRouter, useSearchParams }     from 'next/navigation';
-import { authClient }                     from '@/lib/auth-client';
+import { authClient, useSession }         from '@/lib/auth-client';
 import {
   AuthCard, AuthField, AuthButton, AuthError, AuthDivider, AuthLink,
 } from '@/components/auth/auth-ui';
@@ -42,6 +46,17 @@ function SignInContent() {
   // Only relative paths accepted — guards against open-redirect attacks.
   const rawCallback = searchParams.get('callbackURL') ?? '';
   const callbackURL = rawCallback.startsWith('/') ? rawCallback : '/dashboard';
+
+  // D4: If the user is already authenticated (e.g. extension sign-in flow
+  // triggered while the user has an active web session), skip the form and
+  // redirect directly to callbackURL so the BG SW receives the done signal.
+  const { data: session, isPending } = useSession();
+  useEffect(() => {
+    if (!isPending && session) {
+      router.replace(callbackURL);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPending, session]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
