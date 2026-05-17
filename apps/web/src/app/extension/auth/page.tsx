@@ -212,7 +212,10 @@ function ExtensionAuthContent() {
 
     setPageState('sending');
 
-    // Set up ack listener BEFORE dispatching to eliminate any race condition.
+    // Register the ack listener and dispatch the token event inside a single
+    // Promise executor so there is no await gap between them. Dispatching
+    // outside (after await) would deadlock: the Promise would never resolve
+    // because the dispatch never fires until the Promise is already settled.
     const ack = await new Promise<BridgeAck>((resolve) => {
       const timer = setTimeout(() => {
         resolve({ ok: false, error: 'timeout' });
@@ -227,12 +230,14 @@ function ExtensionAuthContent() {
         },
         { once: true },
       );
-    });
 
-    // Dispatch after listener is registered.
-    window.dispatchEvent(
-      new CustomEvent(TOKEN_EVENT, { detail: { token, expiresAt } }),
-    );
+      // Dispatch INSIDE the executor, after the listener is registered.
+      // The content script (auth-bridge.ts) picks this up synchronously and
+      // relays it to the background SW via chrome.runtime.sendMessage.
+      window.dispatchEvent(
+        new CustomEvent(TOKEN_EVENT, { detail: { token, expiresAt } }),
+      );
+    });
 
     if (!ack.ok) {
       const isTimeout = ack.error === 'timeout';
