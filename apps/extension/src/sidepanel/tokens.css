@@ -1,0 +1,99 @@
+/* ===========================================================================
+   D'Vantage Extension — Atlas Design Tokens
+   Canonical source: Vantage_Brand_Codex.html
+   Imported once in sidepanel/index.tsx — applies to the full side panel.
+   =========================================================================== */
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin:     0;
+  padding:    0;
+}
+
+/* ── Token root ─────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --vt-surface-0: #050505;
+  --vt-surface-1: #0A0A0A;
+  --vt-surface-2: #141414;
+  --vt-surface-3: #1F1F1F;
+
+  /* Borders */
+  --vt-border-1: #1F1F1F;
+  --vt-border-2: #2A2A2A;
+
+  /* Text */
+  --vt-text-1: #FFFFFF;
+  --vt-text-2: #D4D4D8;
+  --vt-text-3: #A1A1AA;
+  --vt-text-4: #71717A;
+  --vt-text-5: #52525B;
+
+  /* Brand */
+  --vt-brand-300: #93C5FD;
+  --vt-brand-400: #60A5FA;
+  --vt-brand-500: #3B82F6;
+  --vt-brand-600: #2563EB;
+  --vt-brand-700: #1D4ED8;
+
+  /* Status */
+  --vt-success: #10B981;
+  --vt-danger:  #EF4444;
+  --vt-warning: #F59E0B;
+  --vt-info:    #3B82F6; /* brand-500 alias — no separate info hue in Atlas */
+
+  /* Typography */
+  font-family:              'Outfit', system-ui, -apple-system, sans-serif;
+  font-size:                16px;
+  line-height:              1.5;
+  -webkit-font-smoothing:   antialiased;
+  -moz-osx-font-smoothing:  grayscale;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+html,
+body {
+  background-color: var(--vt-surface-0);
+  color:            var(--vt-text-2);
+  min-height:       100vh;
+}
+
+/* ── Primary button ──────────────────────────────────────────────────────── */
+/*
+ * Used by AuthGate's "Sign in" CTA and any future primary action.
+ * Hover/focus states require a class — inline styles cannot express pseudo-classes.
+ */
+.dvantage-btn-primary {
+  display:          inline-flex;
+  align-items:      center;
+  justify-content:  center;
+  font-family:      'Outfit', sans-serif;
+  font-size:        14px;
+  font-weight:      600;
+  letter-spacing:   -0.01em;
+  color:            var(--vt-text-1);
+  background-color: var(--vt-brand-500);
+  border:           none;
+  border-radius:    8px;
+  padding:          12px 24px;
+  width:            100%;
+  max-width:        240px;
+  cursor:           pointer;
+  transition:       background-color 0.15s ease;
+}
+
+.dvantage-btn-primary:hover {
+  background-color: var(--vt-brand-600);
+}
+
+.dvantage-btn-primary:active {
+  background-color: var(--vt-brand-700);
+}
+
+.dvantage-btn-primary:focus-visible {
+  outline:        2px solid var(--vt-brand-400);
+  outline-offset: 2px;
+}

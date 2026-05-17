@@ -12,9 +12,11 @@ export const APP_BASE = 'https://dvantage.ca' as const;
 
 /** chrome.storage.local key names. Centralised to prevent typo mismatches. */
 export const STORAGE_KEYS = {
-  EXTENSION_TOKEN: 'dvantage_ext_token',
-  USER_PROFILE:    'dvantage_user_profile',
-  ACTIVE_JOB:      'dvantage_active_job',
+  EXTENSION_TOKEN:  'dvantage_ext_token',
+  /** ISO 8601 expiry timestamp for the extension token. Read in D4. */
+  TOKEN_EXPIRES_AT: 'dvantage_ext_token_expires_at',
+  USER_PROFILE:     'dvantage_user_profile',
+  ACTIVE_JOB:       'dvantage_active_job',
 } as const;
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

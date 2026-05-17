@@ -103,7 +103,7 @@ function SignInContent() {
           type="password"
           value={password}
           onChange={setPassword}
-          placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+          placeholder="••••••••"
           autoComplete="current-password"
           required
         />

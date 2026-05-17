@@ -1,103 +1,77 @@
 // ---------------------------------------------------------------------------
-// D'Vantage — Side Panel App (D1 hello-world)
+// D'Vantage — Side Panel App (D2)
 //
-// Atlas dark theme inlined as style attributes.
-// Full AuthGate, ScorePanel, AutofillPanel components built in D2–D5.
+// Fonts + Atlas tokens are loaded in index.tsx before this module executes.
+// All colour values reference CSS custom properties — no inline hex literals.
 //
-// Atlas tokens reference (Vantage_Brand_Codex.html):
-//   surface-base:  #050505   page background
-//   surface-1:     #0A0A0A   cards
-//   surface-3:     #1F1F1F   borders
-//   text-primary:  #FFFFFF
-//   text-muted:    #71717A
-//   brand-500:     #3B82F6   mark, D glyph
-//   brand-400:     #60A5FA   "age" glyph, interactive
+// Structure:
+//   App
+//   └── AuthGate          (unauthenticated → sign-in screen)
+//       └── ReadyState    (authenticated placeholder — replaced in D5 with
+//                          the real profile + job-detection panel)
 //
-// Logo system (locked 13 May 2026):
-//   Mark path: M 2 20 L 11 4 L 30 20 on 32×24 viewBox
-//   Stroke: 3, strokeLinecap square, strokeLinejoin miter
-//   Wordmark: D(900,#3B82F6) + '(200,#FFF) + vant(900,#FFF) + age(200,#60A5FA)
+// D1 hello-world scaffold is fully removed.
 // ---------------------------------------------------------------------------
 
-export default function App() {
+import type { CSSProperties } from 'react';
+import AuthGate from './AuthGate';
+
+// ── ReadyState ─────────────────────────────────────────────────────────────
+// Minimal "Connected" chip shown once the user is authenticated.
+// D5 replaces this with ProfilePanel + JobDetectionPanel.
+
+function ReadyState() {
   return (
-    <div
-      style={{
-        backgroundColor: '#050505',
-        minHeight:       '100vh',
-        display:         'flex',
-        flexDirection:   'column',
-        alignItems:      'center',
-        justifyContent:  'center',
-        padding:         '32px 24px',
-        fontFamily:      'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
-        boxSizing:       'border-box',
-      }}
-    >
-      {/* ── D'Vantage mark ─────────────────────────────────────── */}
-      <svg
-        viewBox="0 0 32 24"
-        width="48"
-        height="36"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-label="D'Vantage mark"
-        style={{ marginBottom: '20px' }}
-      >
-        <path
-          d="M 2 20 L 11 4 L 30 20"
-          stroke="#3B82F6"
-          strokeWidth="3"
-          strokeLinecap="square"
-          strokeLinejoin="miter"
-        />
-      </svg>
-
-      {/* ── Wordmark ────────────────────────────────────────────── */}
-      <div
-        style={{
-          fontSize:      '26px',
-          letterSpacing: '-0.03em',
-          lineHeight:    1,
-          marginBottom:  '14px',
-          userSelect:    'none',
-        }}
-      >
-        <span style={{ fontWeight: 900, color: '#3B82F6' }}>D</span>
-        <span style={{ fontWeight: 200, color: '#FFFFFF' }}>&apos;</span>
-        <span style={{ fontWeight: 900, color: '#FFFFFF' }}>vant</span>
-        <span style={{ fontWeight: 200, color: '#60A5FA' }}>age</span>
-      </div>
-
-      {/* ── Tagline ─────────────────────────────────────────────── */}
-      <p
-        style={{
-          fontFamily:    'system-ui, -apple-system, BlinkMacSystemFont, sans-serif',
-          fontSize:      '12px',
-          fontWeight:    400,
-          color:         '#71717A',
-          margin:        0,
-          letterSpacing: '0.01em',
-        }}
-      >
-        From applied to interview.
-      </p>
-
-      {/* ── D1 build marker ─────────────────────────────────────── */}
-      <div
-        style={{
-          marginTop:       '40px',
-          padding:         '6px 14px',
-          backgroundColor: '#1F1F1F',
-          borderRadius:    '6px',
-          fontFamily:      'monospace',
-          fontSize:        '10px',
-          color:           '#71717A',
-          letterSpacing:   '0.04em',
-        }}
-      >
-        SCAFFOLD D1 \u00b7 AUTH SHELL NEXT
+    <div style={styles.container}>
+      <div style={styles.chip}>
+        <span style={styles.dot} aria-hidden="true" />
+        Connected
       </div>
     </div>
   );
 }
+
+// ── App ────────────────────────────────────────────────────────────────────
+
+export default function App() {
+  return (
+    <AuthGate>
+      <ReadyState />
+    </AuthGate>
+  );
+}
+
+// ── Styles ─────────────────────────────────────────────────────────────────
+
+const styles = {
+  container: {
+    backgroundColor: 'var(--vt-surface-0)',
+    minHeight:       '100vh',
+    display:         'flex',
+    flexDirection:   'column',
+    alignItems:      'center',
+    justifyContent:  'center',
+    padding:         '32px 24px',
+  },
+  chip: {
+    display:         'inline-flex',
+    alignItems:      'center',
+    gap:             '8px',
+    padding:         '6px 14px',
+    backgroundColor: 'var(--vt-surface-2)',
+    border:          '1px solid var(--vt-border-1)',
+    borderRadius:    '20px',
+    fontFamily:      "'DM Sans', sans-serif",
+    fontSize:        '12px',
+    fontWeight:      500,
+    color:           'var(--vt-text-3)',
+    letterSpacing:   '0.01em',
+  },
+  dot: {
+    width:           '6px',
+    height:          '6px',
+    borderRadius:    '50%',
+    backgroundColor: 'var(--vt-success)',
+    flexShrink:      0,
+  },
+} satisfies Record<string, CSSProperties>;

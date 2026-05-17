@@ -4,6 +4,11 @@
 // All cross-context communication (content ↔ background ↔ sidepanel)
 // uses these typed messages via chrome.runtime.sendMessage / onMessage.
 //
+// ExternalToBackground covers messages arriving via onMessageExternal —
+// i.e. sent from dvantage.ca (permitted by externally_connectable in the
+// manifest). These are structurally identical to internal messages but
+// travel through a different runtime channel.
+//
 // Convention: message type strings are SCREAMING_SNAKE_CASE.
 // Payload shapes are minimal — only what the receiver needs.
 // Full message handlers implemented in Week 2.
@@ -82,6 +87,27 @@ export type BackgroundToSidepanel =
       type:    'CAPTURE_CONFIRMED';
       payload: { applicationId: string };
     };
+
+// ---------------------------------------------------------------------------
+// External → Background  (dvantage.ca → chrome.runtime.onMessageExternal)
+//
+// These messages arrive from the web app after the user completes the
+// /extension/auth callback flow. The background SW validates origin and
+// message shape before writing to chrome.storage.local.
+// ---------------------------------------------------------------------------
+
+export type ExternalToBackground = {
+  type:    'DVANTAGE_EXT_TOKEN';
+  payload: {
+    /** Raw 64-char hex bearer token — must be stored as-is. */
+    token:     string;
+    /** ISO 8601 expiry timestamp — persisted for D4 client-side expiry check. */
+    expiresAt: string;
+  };
+};
+
+/** Ack sent back to the web app via sendResponse. */
+export type ExternalAck = { ok: true } | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
 // Union — used in onMessage listeners that receive any message

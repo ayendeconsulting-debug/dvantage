@@ -10,6 +10,8 @@
     "clean": "rimraf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@fontsource/dm-sans": "^5.2.8",
+    "@fontsource/outfit": "^5.2.8",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },

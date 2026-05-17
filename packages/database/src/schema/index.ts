@@ -4,3 +4,4 @@ export * from './job';
 export * from './ats-score';
 export * from './subscription';
 export * from './application';
+export * from './extension';
