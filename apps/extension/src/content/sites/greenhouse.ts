@@ -2,20 +2,25 @@
 // D'Vantage – Greenhouse Site Adapter
 //
 // Real DOM selectors implemented in D7 (detectJD) and D10 (detectForm + fillFields).
-// D12: Fixed autofill crash caused by <input type="file"> in form (resume upload).
-//      Three-layer defense: probe() early-exit + correct type mapping + fillFields() guard.
+//
+// D12 changes:
+//   1. File input guard (crash fix, D12 initial): Layer 1 early-exit removed
+//      from probe(). File inputs now correctly enter fields[] as type:'file'
+//      and are routed by content/index.ts to ActiveForm.manualFields, where
+//      they appear in AutofillPanel with a 📎 "Manual upload required" label.
+//   2. Layer 2 (correct type mapping to 'file') retained in probe().
+//   3. Layer 3 (fillFields() guard before fillInput()) retained – defense-in-depth.
+//      If a file input ever reaches the fill loop (e.g. via a future code path
+//      that bypasses probe()), it is skipped with a console.warn.
+//   4. Explicit resume probe added: '#resume', 'input[name*="resume"]',
+//      'input[accept*="pdf" i]', 'input[type="file"]' (last resort).
+//      Ensures resume upload always surfaces as 📎 rather than being silently omitted.
 //
 // Supported paths:
 //   https://boards.greenhouse.io/*       ← classic layout
 //   https://job-boards.greenhouse.io/*   ← new layout (data-qa attributes)
 //
 // Both subdomains render server-side HTML – no SPA concerns.
-//
-// Autofill (D10):
-//   The application form appears on the same page as the job description
-//   (new board) or on a linked /application page (classic board).
-//   Standard HTML inputs with stable id attributes – most reliable selectors
-//   across all Greenhouse customers.
 //
 // Field map (classic + new board share the same ids):
 //   #first_name                              → firstName
@@ -24,11 +29,7 @@
 //   #phone                                   → phone
 //   #job_application_linkedin_profile_url    → linkedinUrl
 //   #cover_letter (textarea)                 → summary
-//
-// Fallback selectors for customers with custom field names:
-//   input[name*="first"]   input[name*="last"]
-//   input[type="email"]    input[type="tel"]
-//   input[name*="linkedin"]
+//   #resume / input[type="file"]             → resume (📎 manual)
 // ---------------------------------------------------------------------------
 
 import type {
@@ -101,9 +102,6 @@ function firstMatch(...selectors: string[]): string | null {
  * Write a value to an input or textarea while triggering React's synthetic
  * event system. Plain `el.value = x` bypasses React's internal state and the
  * component never registers the change.
- *
- * Technique: call the native HTMLInputElement prototype setter directly, then
- * dispatch 'input' + 'change' events with bubbles:true so React's onChange fires.
  */
 const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
 const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
@@ -120,10 +118,6 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-/**
- * Find an input/textarea by a list of selectors in priority order.
- * Returns the first matching element.
- */
 function findInput(
   ...selectors: string[]
 ): HTMLInputElement | HTMLTextAreaElement | null {
@@ -203,18 +197,21 @@ function extractNewBoard(): ExtractedJob | null {
 
 /**
  * Detect whether an application form is present on the current page.
- * Returns FormField[] describing each detected input.
+ * Returns FormField[] describing each detected input, including file inputs.
  *
- * Greenhouse uses stable HTML id attributes across all customers.
- * We probe in priority order – id-based first, then attribute-based fallbacks.
+ * D12 change: file inputs are NO LONGER excluded at the probe() level.
+ * They enter fields[] as type:'file' and are routed by content/index.ts
+ * into ActiveForm.manualFields → shown as 📎 in AutofillPanel.
+ * fillFields() still has a Layer 3 guard that prevents any fill attempt.
  *
- * D12 fix: probe() now skips <input type="file"> elements entirely.
- * Browsers throw InvalidStateError when JS attempts to set value on a file
- * input (security restriction – file inputs can only be cleared, never set
- * programmatically). Resume upload fields must never enter the fields[] array.
+ * probe() type mapping (Layer 2 – retained):
+ *   textarea           → 'textarea'
+ *   input[type=email]  → 'email'
+ *   input[type=tel]    → 'tel'
+ *   input[type=file]   → 'file'   ← content script routes to manualFields
+ *   anything else      → 'text'
  */
 function detectGreenhouseForm(): FormField[] {
-  // Quick guard: if there's no form or no Greenhouse-specific input, bail.
   const hasForm = !!document.querySelector(
     '#application-form, #application_form, form.application--form, form[action*="greenhouse"], #apply-form',
   );
@@ -231,26 +228,13 @@ function detectGreenhouseForm(): FormField[] {
     for (const sel of selectors) {
       const el = document.querySelector<HTMLElement>(sel);
       if (el) {
-        // ---------------------------------------------------------------------------
-        // LAYER 1 — D12 fix: never include file inputs.
-        // Browsers throw InvalidStateError when JS attempts to set .value on
-        // <input type="file"> (e.g. resume upload). Exclude at probe time so
-        // the element never reaches fillFields() at all.
-        // ---------------------------------------------------------------------------
-        if (el instanceof HTMLInputElement && el.type === 'file') {
-          console.debug(`[DVantage][${ADAPTER_NAME}] probe(): skipping file input (selector: ${sel})`);
-          return;
-        }
-
+        // Layer 2 (D12): correct type mapping — file inputs are type:'file',
+        // not 'text'. content/index.ts routes them to manualFields[].
+        // Note: Layer 1 (early-exit for file inputs) intentionally removed in D12
+        // so that file fields flow through the pipeline to the 📎 indicator.
         const tag = el.tagName.toLowerCase();
         fields.push({
           name:        profileKey,
-          // ---------------------------------------------------------------------------
-          // LAYER 2 — D12 fix: correct type mapping includes 'file' case.
-          // Previously the ternary chain fell through to 'text' for file inputs,
-          // making them indistinguishable from text fields. Kept as a belt-and-
-          // suspenders measure even though Layer 1 exits before reaching here.
-          // ---------------------------------------------------------------------------
           type:        tag === 'textarea'                          ? 'textarea'
                      : (el as HTMLInputElement).type === 'email'  ? 'email'
                      : (el as HTMLInputElement).type === 'tel'    ? 'tel'
@@ -266,19 +250,30 @@ function detectGreenhouseForm(): FormField[] {
     }
   }
 
-  probe('firstName',   'First name',    true,  '#first_name',  'input[name*="first"][type="text"]');
-  probe('lastName',    'Last name',     true,  '#last_name',   'input[name*="last"][type="text"]');
-  probe('email',       'Email',         true,  '#email',       'input[type="email"]');
-  probe('phone',       'Phone',         false, '#phone',       'input[type="tel"]', 'input[name*="phone"]');
-  probe('linkedinUrl', 'LinkedIn URL',  false,
+  probe('firstName',   'First name',   true,  '#first_name',  'input[name*="first"][type="text"]');
+  probe('lastName',    'Last name',    true,  '#last_name',   'input[name*="last"][type="text"]');
+  probe('email',       'Email',        true,  '#email',       'input[type="email"]');
+  probe('phone',       'Phone',        false, '#phone',       'input[type="tel"]', 'input[name*="phone"]');
+  probe('linkedinUrl', 'LinkedIn URL', false,
     '#job_application_linkedin_profile_url',
     'input[name*="linkedin"]',
     'input[placeholder*="LinkedIn"]',
   );
-  probe('summary',     'Cover letter',  false,
+  probe('summary', 'Cover letter', false,
     '#cover_letter',
     '#job_application_cover_letter',
     'textarea[name*="cover"]',
+  );
+  // Resume upload – always type:'file' → routed to manualFields → 📎 in panel.
+  // Selectors in specificity order; 'input[type="file"]' is last-resort broad fallback.
+  probe('resume', 'Resume', false,
+    '#resume',
+    'input[name="resume"]',
+    'input[name*="resume"]',
+    '#job_application_resume',
+    'input[accept*="pdf" i]',
+    'input[accept*="doc" i]',
+    'input[type="file"]',
   );
 
   return fields;
@@ -315,7 +310,6 @@ export const greenhouseAdapter: SiteAdapter = {
   },
 
   extractFields(): Record<string, string> {
-    // Future: read current form values for capture.
     return {};
   },
 
@@ -326,6 +320,7 @@ export const greenhouseAdapter: SiteAdapter = {
     let filled = 0;
     const skipped: string[] = [];
 
+    // Only auto-fill non-file, non-unknown fields.
     const previewFields: AutofillPreviewField[] = fields
       .filter(f => f.type !== 'unknown' && f.type !== 'file')
       .map(f => ({
@@ -347,13 +342,15 @@ export const greenhouseAdapter: SiteAdapter = {
       }
 
       // ---------------------------------------------------------------------------
-      // LAYER 3 — D12 fix: defense-in-depth guard before fillInput().
-      // Protects against any future code path that bypasses probe()'s Layer 1
-      // check (e.g. a new probe() call added without the file guard).
+      // Layer 3 – defense-in-depth: skip file inputs before fillInput().
+      // Protects against any future code path that bypasses the type:'file' filter
+      // above (e.g. a new probe added without the Layer 2 type mapping).
       // Browsers throw InvalidStateError on .value assignment for file inputs.
       // ---------------------------------------------------------------------------
       if (el instanceof HTMLInputElement && el.type === 'file') {
-        console.warn(`[DVantage][${ADAPTER_NAME}] fillFields(): file input reached fill loop — skipping (${preview.label})`);
+        console.warn(
+          `[DVantage][${ADAPTER_NAME}] fillFields(): file input reached fill loop — skipping (${preview.label})`,
+        );
         skipped.push(preview.label);
         continue;
       }
@@ -361,15 +358,15 @@ export const greenhouseAdapter: SiteAdapter = {
       let value: string | null = null;
 
       switch (preview.profileKey) {
-        case 'firstName':   value = profile.firstName || null;                              break;
-        case 'lastName':    value = profile.lastName  || null;                              break;
+        case 'firstName':   value = profile.firstName || null;                               break;
+        case 'lastName':    value = profile.lastName  || null;                               break;
         case 'fullName':    value = `${profile.firstName} ${profile.lastName}`.trim() || null; break;
-        case 'email':       value = profile.email     || null;                              break;
-        case 'phone':       value = profile.phone;                                          break;
-        case 'linkedinUrl': value = profile.linkedinUrl;                                    break;
-        case 'summary':     value = profile.summary;                                        break;
-        case 'topSkills':   value = profile.topSkills.join(', ') || null;                  break;
-        case 'currentRole': value = profile.currentRole;                                    break;
+        case 'email':       value = profile.email     || null;                               break;
+        case 'phone':       value = profile.phone;                                           break;
+        case 'linkedinUrl': value = profile.linkedinUrl;                                     break;
+        case 'summary':     value = profile.summary;                                         break;
+        case 'topSkills':   value = profile.topSkills.join(', ') || null;                   break;
+        case 'currentRole': value = profile.currentRole;                                     break;
         default:            value = null;
       }
 

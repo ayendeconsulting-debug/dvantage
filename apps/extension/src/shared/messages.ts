@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// D'Vantage Extension — Runtime Message Bus
+// D'Vantage Extension – Runtime Message Bus
 //
 // All cross-context communication (content ↔ background ↔ sidepanel)
 // uses these typed messages via chrome.runtime.sendMessage / onMessage.
@@ -8,20 +8,25 @@
 //
 // D10 additions:
 //   ContentToBackground:
-//     FORM_DETECTED — payload extended with unknownFieldCount + fillableFields
-//     FORM_CLEARED  — new; sent when detectForm() returns empty on navigation
+//     FORM_DETECTED – payload extended with unknownFieldCount + fillableFields
+//     FORM_CLEARED  – new; sent when detectForm() returns empty on navigation
 //   BackgroundToSidepanel:
-//     AUTOFILL_COMPLETE — payload extended with skipped: string[]
+//     AUTOFILL_COMPLETE – payload extended with skipped: string[]
 //   BackgroundToContent (new union):
-//     EXECUTE_AUTOFILL — background SW → content script via chrome.tabs.sendMessage
+//     EXECUTE_AUTOFILL – background SW → content script via chrome.tabs.sendMessage
 //
 // D11 additions:
 //   SidepanelToBackground:
-//     REQUEST_PROFILE_UPDATE — settings form → PATCH /v1/extension/profile
-//     REQUEST_CAPTURE        — fire-and-forget after autofill complete
+//     REQUEST_PROFILE_UPDATE – settings form → PATCH /v1/extension/profile
+//     REQUEST_CAPTURE        – fire-and-forget after autofill complete
 //                              → POST /v1/extension/applications
-//                              Payload: company, role, pageUrl (all nullable safe).
-//                              BG SW logs result; AutofillPanel never awaits it.
+//
+// D12 additions:
+//   ContentToBackground:
+//     FORM_DETECTED payload extended with manualFields:
+//       Array<{ label: string; required: boolean }>
+//       File inputs (type='file') are routed here by content/index.ts.
+//       Stored in ActiveForm.manualFields; rendered as 📎 in AutofillPanel.
 // ---------------------------------------------------------------------------
 
 import type {
@@ -48,6 +53,12 @@ export type ContentToBackground =
         unknownFieldCount: number;
         pageUrl:           string;
         fillableFields:    AutofillPreviewField[];
+        /**
+         * D12: file upload fields requiring manual user action.
+         * Populated by content/index.ts from FormField[type='file'].
+         * Rendered in AutofillPanel with 📎 "Manual upload required" label.
+         */
+        manualFields:      Array<{ label: string; required: boolean }>;
       };
     }
   | {
@@ -106,7 +117,7 @@ export type SidepanelToBackground =
        * Fire-and-forget capture after autofill complete.
        * AutofillPanel sends this immediately after receiving AUTOFILL_COMPLETE.
        * BG SW calls POST /v1/extension/applications and logs the result.
-       * No response is awaited — capture failure is silent at the UI level.
+       * No response is awaited – capture failure is silent at the UI level.
        *
        * company and role are nullable because JD detection may have failed.
        * pageUrl is always present (from ACTIVE_FORM.pageUrl).
@@ -189,7 +200,7 @@ export type AutofillExecutionResponse =
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
-// Union — used in onMessage listeners that receive any message
+// Union – used in onMessage listeners that receive any message
 // ---------------------------------------------------------------------------
 
 export type ExtensionMessage =

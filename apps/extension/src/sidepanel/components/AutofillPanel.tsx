@@ -17,14 +17,27 @@
 //   This is fire-and-forget – the complete state renders immediately, the
 //   capture POST happens asynchronously, and failures are silent.
 //
+// D12 – manualFields addition:
+//   ActiveForm.manualFields (file upload fields) are rendered in the ready
+//   state below fillableFields with a 📎 "Manual upload required" label.
+//   These fields are never attempted by fillFields() — the user must upload
+//   their resume/file manually after autofill completes.
+//   fieldCount now includes both fillable + manual fields (combined total).
+//
 // D12 – dead link fix:
-//   Replaced broken dvantage.ca/settings/profile link with gear-button copy.
+//   Replaced broken dvantage.ca/settings/profile link with ⚙ button copy.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties }           from 'react';
 import { STORAGE_KEYS }                from '../../shared/constants';
-import type { ActiveForm, UserProfile, AutofillPreviewField, AutofillFieldKey, ExtractedJob } from '../../shared/types';
+import type {
+  ActiveForm,
+  AutofillFieldKey,
+  AutofillPreviewField,
+  ExtractedJob,
+  UserProfile,
+} from '../../shared/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,7 +88,7 @@ function getProfileValue(
 function fireCapture(pageUrl: string): void {
   void (async (): Promise<void> => {
     try {
-      const stored   = await chrome.storage.local.get([STORAGE_KEYS.ACTIVE_JOB]);
+      const stored    = await chrome.storage.local.get([STORAGE_KEYS.ACTIVE_JOB]);
       const activeJob = stored[STORAGE_KEYS.ACTIVE_JOB] as ExtractedJob | null | undefined;
 
       const company = activeJob?.company ?? null;
@@ -94,7 +107,6 @@ function fireCapture(pageUrl: string): void {
         `role="${role ?? '(null)'}" url=${pageUrl}`,
       );
     } catch (err) {
-      // Non-fatal – log and swallow.
       console.warn('[DVantage AutofillPanel] REQUEST_CAPTURE prep failed:', err);
     }
   })();
@@ -104,6 +116,9 @@ function fireCapture(pageUrl: string): void {
 // Sub-components
 // ---------------------------------------------------------------------------
 
+/**
+ * Auto-fillable field row: shows the profile value (or "– not set" if empty).
+ */
 function FieldRow({ field, profile }: { field: AutofillPreviewField; profile: UserProfile }) {
   const value = getProfileValue(field.profileKey, profile);
 
@@ -141,6 +156,50 @@ function FieldRow({ field, profile }: { field: AutofillPreviewField; profile: Us
   );
 }
 
+/**
+ * D12: Manual upload field row.
+ * Shown for file inputs (e.g. resume) that the autofill engine cannot fill.
+ * Browsers block programmatic value setting on <input type="file">.
+ * The user must upload manually after the autofill button is clicked.
+ */
+function ManualFieldRow({ field }: { field: { label: string; required: boolean } }) {
+  return (
+    <div style={{
+      display:             'grid',
+      gridTemplateColumns: '110px 1fr',
+      gap:                 '0 8px',
+      alignItems:          'baseline',
+      padding:             '5px 0',
+      borderBottom:        '1px solid var(--vt-border)',
+    }}>
+      <span style={{
+        fontSize:      '11px',
+        color:         'var(--vt-text-muted)',
+        fontWeight:    500,
+        letterSpacing: '0.02em',
+        textTransform: 'uppercase',
+        lineHeight:    '1.4',
+      }}>
+        {field.label}
+        {field.required && <span style={{ color: 'var(--vt-danger)', marginLeft: 2 }}>*</span>}
+      </span>
+
+      <span style={{
+        fontSize:   '12px',
+        color:      'var(--vt-warning)',
+        fontStyle:  'normal',
+        lineHeight: '1.4',
+        display:    'flex',
+        alignItems: 'center',
+        gap:        '4px',
+      }}>
+        <span>📎</span>
+        <span>Manual upload required</span>
+      </span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -149,7 +208,7 @@ export default function AutofillPanel() {
   const [state, setState] = useState<PanelState>({ status: 'idle' });
   const activeFormRef     = useRef<ActiveForm | null>(null);
 
-  // ── Bootstrap: read ACTIVE_FORM from storage on mount ──────────────────────
+  // ── Bootstrap: read ACTIVE_FORM from storage on mount ──────────────────
   useEffect(() => {
     chrome.storage.local.get([STORAGE_KEYS.ACTIVE_FORM], (result) => {
       const form = result[STORAGE_KEYS.ACTIVE_FORM] as ActiveForm | null | undefined;
@@ -160,7 +219,7 @@ export default function AutofillPanel() {
     });
   }, []);
 
-  // ── React to ACTIVE_FORM changes ───────────────────────────────────────────
+  // ── React to ACTIVE_FORM changes ────────────────────────────────────────
   useEffect(() => {
     function handleStorageChange(
       changes: Record<string, chrome.storage.StorageChange>,
@@ -184,7 +243,7 @@ export default function AutofillPanel() {
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
-  // ── Profile fetch ──────────────────────────────────────────────────────────
+  // ── Profile fetch ───────────────────────────────────────────────────────
   function loadProfile(form: ActiveForm): void {
     setState({ status: 'loading' });
 
@@ -210,7 +269,7 @@ export default function AutofillPanel() {
     });
   }
 
-  // ── Autofill trigger ───────────────────────────────────────────────────────
+  // ── Autofill trigger ────────────────────────────────────────────────────
   function handleAutofill(): void {
     const form = activeFormRef.current;
     if (!form) return;
@@ -255,14 +314,14 @@ export default function AutofillPanel() {
     );
   }
 
-  // ── Retry ──────────────────────────────────────────────────────────────────
+  // ── Retry ───────────────────────────────────────────────────────────────
   function handleRetry(): void {
     const form = activeFormRef.current;
     if (form) loadProfile(form);
     else setState({ status: 'idle' });
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────
 
   if (state.status === 'idle') return null;
 
@@ -285,14 +344,14 @@ export default function AutofillPanel() {
       {/* Loading */}
       {state.status === 'loading' && (
         <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
-          Loading your profile\u2026
+          Loading your profile&hellip;
         </p>
       )}
 
       {/* Filling */}
       {state.status === 'filling' && (
         <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
-          Filling fields\u2026
+          Filling fields&hellip;
         </p>
       )}
 
@@ -309,53 +368,64 @@ export default function AutofillPanel() {
       )}
 
       {/* Ready – field-value preview */}
-      {state.status === 'ready' && (
-        <div>
-          <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: '0 0 8px' }}>
-            <strong style={{ color: 'var(--vt-text)' }}>
-              {state.form.fieldCount} field{state.form.fieldCount !== 1 ? 's' : ''} detected
-            </strong>
-            {state.form.unknownFieldCount > 0 && (
-              <span style={{ color: 'var(--vt-warning)', marginLeft: 6 }}>
-                &middot; ⚠ {state.form.unknownFieldCount} need{state.form.unknownFieldCount === 1 ? 's' : ''} review
-              </span>
-            )}
-          </p>
+      {state.status === 'ready' && (() => {
+        // Defensive: manualFields may be undefined in cached ACTIVE_FORM
+        // written by an older content script version before D12.
+        const manualFields = state.form.manualFields ?? [];
 
-          <div style={{ marginBottom: '12px' }}>
-            {state.form.fillableFields.map((field) => (
-              <FieldRow key={field.profileKey} field={field} profile={state.profile} />
-            ))}
-          </div>
-
-          {state.form.fillableFields.some(
-            (f) => !getProfileValue(f.profileKey, state.profile),
-          ) && (
-            <p style={{
-              fontSize:     '11px',
-              color:        'var(--vt-text-muted)',
-              margin:       '0 0 10px',
-              padding:      '6px 8px',
-              background:   'var(--vt-bg)',
-              borderRadius: '6px',
-              borderLeft:   '3px solid var(--vt-warning)',
-            }}>
-              {/* D12 fix: replaced broken dvantage.ca/settings/profile link with gear-button copy */}
-              Some fields are empty. Use the ⚙ button above to add them.
+        return (
+          <div>
+            <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: '0 0 8px' }}>
+              <strong style={{ color: 'var(--vt-text)' }}>
+                {state.form.fieldCount} field{state.form.fieldCount !== 1 ? 's' : ''} detected
+              </strong>
+              {state.form.unknownFieldCount > 0 && (
+                <span style={{ color: 'var(--vt-warning)', marginLeft: 6 }}>
+                  &middot; &#9888; {state.form.unknownFieldCount} need{state.form.unknownFieldCount === 1 ? 's' : ''} review
+                </span>
+              )}
             </p>
-          )}
 
-          <button onClick={handleAutofill} style={btnStyle('primary')}>
-            Autofill
-          </button>
-        </div>
-      )}
+            <div style={{ marginBottom: '12px' }}>
+              {/* Auto-fillable fields */}
+              {state.form.fillableFields.map((field) => (
+                <FieldRow key={field.profileKey} field={field} profile={state.profile} />
+              ))}
+              {/* Manual upload fields (📎) – D12 */}
+              {manualFields.map((field) => (
+                <ManualFieldRow key={field.label} field={field} />
+              ))}
+            </div>
+
+            {/* "Empty fields" warning — only checks fillableFields, not manual */}
+            {state.form.fillableFields.some(
+              (f) => !getProfileValue(f.profileKey, state.profile),
+            ) && (
+              <p style={{
+                fontSize:     '11px',
+                color:        'var(--vt-text-muted)',
+                margin:       '0 0 10px',
+                padding:      '6px 8px',
+                background:   'var(--vt-bg)',
+                borderRadius: '6px',
+                borderLeft:   '3px solid var(--vt-warning)',
+              }}>
+                Some fields are empty. Use the &#9881; button above to add them.
+              </p>
+            )}
+
+            <button onClick={handleAutofill} style={btnStyle('primary')}>
+              Autofill
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Complete */}
       {state.status === 'complete' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-            <span style={{ fontSize: '16px' }}>\u2705</span>
+            <span style={{ fontSize: '16px' }}>✅</span>
             <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--vt-success)' }}>
               {state.filled} field{state.filled !== 1 ? 's' : ''} filled
             </span>
@@ -370,7 +440,7 @@ export default function AutofillPanel() {
               borderLeft:   '3px solid var(--vt-warning)',
             }}>
               <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--vt-text)', margin: '0 0 4px' }}>
-                \u26a0 {state.skipped.length} field{state.skipped.length !== 1 ? 's' : ''} need{state.skipped.length === 1 ? 's' : ''} review:
+                &#9888; {state.skipped.length} field{state.skipped.length !== 1 ? 's' : ''} need{state.skipped.length === 1 ? 's' : ''} review:
               </p>
               {state.skipped.map((label) => (
                 <p key={label} style={{ fontSize: '11px', color: 'var(--vt-text-muted)', margin: '2px 0 0' }}>

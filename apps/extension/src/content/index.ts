@@ -1,26 +1,33 @@
 // ---------------------------------------------------------------------------
-// D'Vantage — Content Script Entry
+// D'Vantage – Content Script Entry
 //
 // Runs on matched job board pages at document_idle (see manifest.ts).
 // Dispatches to the correct site adapter based on the current URL.
 //
-// Architecture (D11 — LinkedIn observe() hook added):
-//   1. resolveAdapter()   — URL → site adapter (hostname matching)
-//   2. runDetection()     — detectJD() + detectForm() → sendMessage as appropriate
-//   3. SPA nav handling   — history.pushState / popstate intercept + debounce
-//   4. observe() hook     — adapter-installed MutationObserver for modal detection
-//                           (LinkedIn Easy Apply: modal appears without URL change)
-//   5. onMessage listener — handles EXECUTE_AUTOFILL from background SW
+// Architecture (D12 – manualFields routing added):
+//   1. resolveAdapter()   – URL → site adapter (hostname matching)
+//   2. runDetection()     – detectJD() + detectForm() → sendMessage as appropriate
+//   3. SPA nav handling   – history.pushState / popstate intercept + debounce
+//   4. observe() hook     – adapter-installed MutationObserver for modal detection
+//                           (LinkedIn Easy Apply, Indeed Apply: modal appears
+//                           without URL change)
+//   5. onMessage listener – handles EXECUTE_AUTOFILL from background SW
 //
-// Message flow (JD path — unchanged from D6):
+// Message flow (JD path – unchanged from D6):
 //   detectJD() found job
 //   → chrome.runtime.sendMessage(JOB_DETECTED)
 //   → BG SW writes ACTIVE_JOB
 //   → ScorePanel reacts via storage.onChanged
 //
-// Message flow (form path — D10 new):
+// Message flow (form path – D10, extended D12):
 //   detectForm() found fields
-//   → chrome.runtime.sendMessage(FORM_DETECTED { fieldCount, fillableFields, ... })
+//   → content/index.ts partitions:
+//       fillableFields  – type !== 'unknown' && type !== 'file'  → auto-filled
+//       manualFields    – type === 'file'                        → 📎 indicator
+//       unknownFields   – type === 'unknown'                     → ⚠ count
+//   → fieldCount = fillableFields.length + manualFields.length (D12: combined)
+//   → chrome.runtime.sendMessage(FORM_DETECTED { fieldCount, fillableFields,
+//                                                manualFields, ... })
 //   → BG SW writes ACTIVE_FORM
 //   → AutofillPanel reacts via storage.onChanged
 //
@@ -29,25 +36,23 @@
 //   → BG SW sets ACTIVE_FORM = null
 //   → AutofillPanel hides
 //
-// Message flow (autofill execution — D10 new):
+// Message flow (autofill execution – D10):
 //   Side panel: user clicks "Autofill" → REQUEST_AUTOFILL → BG SW
-//   BG SW: resolves profile → chrome.tabs.sendMessage(tabId, EXECUTE_AUTOFILL)
+//   BG SW: resolves profile → chrome.tabs.sendMessage(EXECUTE_AUTOFILL)
 //   Content script: adapter.fillFields(profile) → sendResponse(AutofillResult)
 //   BG SW: forwards AUTOFILL_COMPLETE to side panel
 //
-// observe() hook (D11 new):
-//   LinkedIn Easy Apply opens as a modal without a pushState event.
-//   The LinkedIn adapter implements observe(), which installs a MutationObserver
-//   on document.body to detect modal mount/unmount.
-//   When the modal state changes, observe() calls scheduleDetection() —
-//   exactly the same debounce path as SPA navigation events.
-//   This means detectForm() / FORM_DETECTED / FORM_CLEARED all work identically
-//   for LinkedIn as for every other adapter. Zero new architecture.
+// observe() hook (D11, extended D12):
+//   LinkedIn Easy Apply and Indeed Apply open as modals without a pushState.
+//   Adapters that implement observe() install a MutationObserver on
+//   document.body to detect modal mount/unmount. When modal state changes,
+//   observe() calls scheduleDetection() – the same 1000ms debounce path as
+//   SPA navigation events. Zero new architecture.
 //
 // SPA navigation:
 //   LinkedIn, Indeed, Ashby, and Workday are SPAs. URL changes do not trigger
-//   a new document load — runDetection() is re-triggered on every nav event.
-//   1 000 ms debounce — do not reduce below 800 ms (DOM hydration time).
+//   a new document load – runDetection() is re-triggered on every nav event.
+//   1 000 ms debounce – do not reduce below 800 ms (DOM hydration time).
 //
 // This file intentionally contains no DOM selectors.
 // All site-specific logic lives in content/sites/*.ts.
@@ -115,17 +120,26 @@ function sendToBackground(msg: ContentToBackground): void {
  *   adapter.detectJD() non-null → send JOB_DETECTED.
  *   null → no message (ACTIVE_JOB retains the last detected job).
  *
- * Form detection:
- *   adapter.detectForm() non-empty → send FORM_DETECTED.
+ * Form detection (D12 field partitioning):
+ *   adapter.detectForm() non-empty → partition into three buckets:
+ *     fillableFields  – type !== 'unknown' && type !== 'file'
+ *                       Sent in FORM_DETECTED; auto-filled on user request.
+ *     manualFields    – type === 'file'
+ *                       Sent in FORM_DETECTED; shown with 📎 label in panel.
+ *                       Never attempted by fillFields() (browser security restriction).
+ *     unknownFields   – type === 'unknown'
+ *                       Counted in unknownFieldCount; shown as ⚠ in panel header.
+ *   fieldCount = fillableFields.length + manualFields.length (combined total).
+ *
  *   empty → send FORM_CLEARED so AutofillPanel hides on navigation away.
  *
- * Both run on every navigation event — adapters use their own path guards
+ * Both run on every navigation event – adapters use their own path guards
  * to return null / empty on pages where they don't apply.
  */
 function runDetection(): void {
   const adapter = resolveAdapter();
 
-  // ── JD detection ────────────────────────────────────────────────────────
+  // ── JD detection ───────────────────────────────────────────────────────
   const job = adapter.detectJD();
 
   if (job) {
@@ -139,13 +153,14 @@ function runDetection(): void {
     );
   }
 
-  // ── Form detection ───────────────────────────────────────────────────────
+  // ── Form detection ─────────────────────────────────────────────────────
   const fields = adapter.detectForm();
 
   if (fields.length > 0) {
-    // Build the fillable-fields preview list for AutofillPanel display.
-    // Unknown-type fields are excluded from fillableFields but counted separately.
-    const fillableFields  = fields
+    // ── Bucket 1: auto-fillable fields ──────────────────────────────────
+    // type !== 'unknown' && type !== 'file'
+    // Mapped to AutofillPreviewField[] for panel value preview.
+    const fillableFields = fields
       .filter((f) => f.type !== 'unknown' && f.type !== 'file')
       .map((f) => ({
         label:      f.label ?? f.name,
@@ -153,24 +168,40 @@ function runDetection(): void {
         required:   f.required,
       }));
 
-    const unknownFieldCount = fields.filter(
-      (f) => f.type === 'unknown',
-    ).length;
+    // ── Bucket 2: manual upload fields (D12) ────────────────────────────
+    // type === 'file' – browsers block programmatic value setting on file inputs.
+    // Shown in AutofillPanel with 📎 "Manual upload required" label.
+    const manualFields = fields
+      .filter((f) => f.type === 'file')
+      .map((f) => ({
+        label:    f.label ?? 'File upload',
+        required: f.required,
+      }));
+
+    // ── Bucket 3: unknown fields ─────────────────────────────────────────
+    // Detected but not mappable to a profile key.
+    // Counted for the ⚠ indicator in the panel header.
+    const unknownFieldCount = fields.filter((f) => f.type === 'unknown').length;
+
+    // fieldCount = fillable + manual (combined). unknownFieldCount is separate.
+    const fieldCount = fillableFields.length + manualFields.length;
 
     sendToBackground({
       type:    'FORM_DETECTED',
       payload: {
-        fieldCount:        fillableFields.length,
+        fieldCount,
         unknownFieldCount,
-        pageUrl:           window.location.href,
+        pageUrl: window.location.href,
         fillableFields,
+        manualFields,
       },
     });
     console.log(
-      `[DVantage Content] FORM_DETECTED — fields:${fillableFields.length} unknown:${unknownFieldCount}`,
+      `[DVantage Content] FORM_DETECTED – fillable:${fillableFields.length} ` +
+      `manual:${manualFields.length} unknown:${unknownFieldCount}`,
     );
   } else {
-    // No form on this page — clear so AutofillPanel doesn't show stale state.
+    // No form on this page – clear so AutofillPanel doesn't show stale state.
     sendToBackground({
       type:    'FORM_CLEARED',
       payload: { pageUrl: window.location.href },
@@ -224,7 +255,7 @@ chrome.runtime.onMessage.addListener(
 
       sendResponse({ ok: true, filled: result.filled, skipped: result.skipped });
       console.log(
-        `[DVantage Content] EXECUTE_AUTOFILL complete — filled:${result.filled} skipped:${result.skipped.length}`,
+        `[DVantage Content] EXECUTE_AUTOFILL complete – filled:${result.filled} skipped:${result.skipped.length}`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'fill_error';
@@ -266,12 +297,13 @@ history.replaceState = function (...args: Parameters<typeof history.replaceState
 window.addEventListener('popstate', scheduleDetection);
 
 // ---------------------------------------------------------------------------
-// Adapter observe() hook — D11
+// Adapter observe() hook – D11, extended D12
 //
 // Install the adapter's MutationObserver (if any) once at page load.
 // The adapter fires scheduleDetection() when its watched DOM state changes.
 // For LinkedIn: fires when Easy Apply modal appears or disappears.
-// For all other adapters: observe is undefined — no-op.
+// For Indeed:   fires when Indeed Apply modal appears or disappears.
+// For all other adapters: observe is undefined – no-op.
 // ---------------------------------------------------------------------------
 
 const adapter = resolveAdapter();
