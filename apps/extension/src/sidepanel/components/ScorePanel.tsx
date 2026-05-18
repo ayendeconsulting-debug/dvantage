@@ -16,6 +16,14 @@
 //       ├── [scoring]   primary button — spinner + "Scoring…"
 //       └── [scored]    rescore text link
 //
+// Score cache (D9):
+//   On mount, reads ACTIVE_JOB + CACHED_SCORE in one storage call.
+//   If CACHED_SCORE.sourceUrl === ACTIVE_JOB.sourceUrl, the result is
+//   restored immediately — no API call, no token consumption.
+//   Cache is written by message-router after every successful score.
+//   Cache is invalidated automatically when ACTIVE_JOB.sourceUrl changes
+//   (i.e. user navigates to a different job posting).
+//
 // Token usage: Atlas primitives (--vt-surface-*, --vt-border-*, --vt-text-*)
 // Imports: ../../shared/* (ScorePanel lives in sidepanel/components/)
 // ---------------------------------------------------------------------------
@@ -75,10 +83,11 @@ function ScoreRing({ score }: { score: number }) {
   const circumference = 2 * Math.PI * r;
   const dashOffset    = circumference * (1 - score / 100);
 
+  // RAG scale: Green = Excellent (75–100), Amber = Good (50–74), Red = Poor (0–49)
   const color =
-    score >= 80 ? 'var(--vt-success)' :
-    score >= 60 ? 'var(--vt-brand-400)' :
-                  'var(--vt-warning)';
+    score >= 75 ? 'var(--vt-success)' :
+    score >= 50 ? 'var(--vt-warning)' :
+                  'var(--vt-danger)';
 
   return (
     <div style={ringStyles.wrapper} aria-label={`ATS score: ${score} out of 100`}>
@@ -185,9 +194,9 @@ function ScoreResultCard({ result }: { result: ScoreResult }) {
         <div style={styles.resultMeta}>
           <span style={styles.atsLabel}>ATS match score</span>
           <span style={styles.atsHint}>
-            {result.score >= 80 ? 'Strong match — ready to apply.' :
-             result.score >= 60 ? 'Good match — a few gaps to close.' :
-                                  'Gaps found — optimise your resume.'}
+            {result.score >= 75 ? 'Excellent match — ready to apply.' :
+             result.score >= 50 ? 'Good match — a few gaps to close.' :
+                                  'Poor match — optimise your resume first.'}
           </span>
           <a
             href={result.optimizationUrl}
@@ -221,16 +230,48 @@ export default function ScorePanel() {
   const [scoreResult, setScoreResult] = useState<ScoreResult | null>(null);
   const [scoring,     setScoring]     = useState(false);
   const [scoreError,  setScoreError]  = useState<string | null>(null);
-  const mountedRef = useRef(true);
+  const mountedRef    = useRef(true);
+  /**
+   * Tracks the sourceUrl of the currently displayed job.
+   * Used inside handleStorageChange to distinguish between:
+   *   (a) same job re-detected after a page refresh → keep score
+   *   (b) navigation to a different posting → clear score
+   * A ref is required because the closure over `activeJob` state would
+   * capture a stale value from the time the effect ran.
+   */
+  const activeUrlRef  = useRef<string | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
 
-    chrome.storage.local.get([STORAGE_KEYS.ACTIVE_JOB], (result) => {
-      if (!mountedRef.current) return;
-      const job = result[STORAGE_KEYS.ACTIVE_JOB];
-      if (isValidJob(job)) setActiveJob(job);
-    });
+    // Read ACTIVE_JOB and CACHED_SCORE in a single storage call.
+    // If the cached score belongs to the current job (sourceUrl match),
+    // restore it immediately — no API call, no token consumption.
+    chrome.storage.local.get(
+      [STORAGE_KEYS.ACTIVE_JOB, STORAGE_KEYS.CACHED_SCORE],
+      (stored) => {
+        if (!mountedRef.current) return;
+
+        const job    = stored[STORAGE_KEYS.ACTIVE_JOB];
+        const cached = stored[STORAGE_KEYS.CACHED_SCORE];
+
+        if (!isValidJob(job)) return;
+
+        activeUrlRef.current = job.sourceUrl;
+        setActiveJob(job);
+
+        // Cache hit: restore score instantly without an API call.
+        if (
+          typeof cached === 'object' && cached !== null &&
+          (cached as Record<string, unknown>)['sourceUrl'] === job.sourceUrl
+        ) {
+          const cachedResult = (cached as Record<string, unknown>)['result'];
+          if (isValidScoreResult(cachedResult)) {
+            setScoreResult(cachedResult);
+          }
+        }
+      },
+    );
 
     function handleStorageChange(
       changes: Record<string, chrome.storage.StorageChange>,
@@ -242,10 +283,18 @@ export default function ScorePanel() {
 
       const newJob = changes[STORAGE_KEYS.ACTIVE_JOB]?.newValue;
       if (isValidJob(newJob)) {
+        const isSameJob = newJob.sourceUrl === activeUrlRef.current;
+        activeUrlRef.current = newJob.sourceUrl;
         setActiveJob(newJob);
-        setScoreResult(null);
-        setScoreError(null);
+
+        if (!isSameJob) {
+          // Navigated to a different posting — clear score and error.
+          // Same job re-detected (page refresh) keeps the existing result.
+          setScoreResult(null);
+          setScoreError(null);
+        }
       } else {
+        activeUrlRef.current = null;
         setActiveJob(null);
         setScoreResult(null);
         setScoreError(null);
@@ -295,7 +344,7 @@ export default function ScorePanel() {
     });
   }
 
-  // ── Spinner SVG ───────────────────────────────────────────────────────────
+  // —— Spinner SVG ———————————————————————————————————————————————————————————
   const spinner = (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
@@ -308,7 +357,7 @@ export default function ScorePanel() {
   return (
     <div style={styles.container}>
 
-      {/* ── Content zone ───────────────────────────────────────────────── */}
+      {/* —— Content zone ————————————————————————————————————————————————————— */}
       {!activeJob ? (
         <EmptyContent />
       ) : (
@@ -321,7 +370,7 @@ export default function ScorePanel() {
         </div>
       )}
 
-      {/* ── Persistent footer CTA ──────────────────────────────────────── */}
+      {/* —— Persistent footer CTA ———————————————————————————————————————————— */}
       <div style={styles.footer}>
         {scoreResult ? (
           /* Scored — rescore as a quiet text link */
@@ -372,7 +421,7 @@ const styles = {
     flexDirection: 'column' as const,
   },
 
-  /* ── Empty state ─────────────────────────────────────────────────────── */
+  /* —— Empty state ———————————————————————————————————————————————————————————*/
   emptyContent: {
     display:        'flex',
     flexDirection:  'column' as const,
@@ -409,7 +458,7 @@ const styles = {
     maxWidth:   '200px',
   },
 
-  /* ── Job zone ────────────────────────────────────────────────────────── */
+  /* —— Job zone ——————————————————————————————————————————————————————————————*/
   jobZone: {
     display:       'flex',
     flexDirection: 'column' as const,
@@ -460,7 +509,7 @@ const styles = {
     whiteSpace:   'nowrap' as const,
   },
 
-  /* ── Score result card ───────────────────────────────────────────────── */
+  /* —— Score result card ——————————————————————————————————————————————————— */
   resultCard: {
     backgroundColor: 'var(--vt-surface-1)',
     border:          '0.5px solid var(--vt-border-2)',
@@ -536,7 +585,7 @@ const styles = {
     borderRadius:    '4px',
   },
 
-  /* ── Error ───────────────────────────────────────────────────────────── */
+  /* —— Error ————————————————————————————————————————————————————————————————*/
   errorBanner: {
     fontFamily:      "'DM Sans', sans-serif",
     fontSize:        '11.5px',
@@ -548,7 +597,7 @@ const styles = {
     margin:          '0',
   },
 
-  /* ── Persistent footer ───────────────────────────────────────────────── */
+  /* —— Persistent footer ———————————————————————————————————————————————————*/
   footer: {
     padding: '10px 14px 14px',
   },

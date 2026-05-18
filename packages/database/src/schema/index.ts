@@ -5,3 +5,5 @@ export * from './ats-score';
 export * from './subscription';
 export * from './application';
 export * from './extension';
+
+export * from './user-profiles';
