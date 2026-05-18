@@ -14,6 +14,7 @@ import { SubscriptionModule }  from './subscription/subscription.module';
 import { DashboardModule }     from './dashboard/dashboard.module';
 import { ApplicationModule }   from './application/application.module';
 import { ExtensionModule }     from './extension/extension.module';
+import { UsersModule }         from './users/users.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ExtensionModule }     from './extension/extension.module';
     DashboardModule,
     ApplicationModule,
     ExtensionModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

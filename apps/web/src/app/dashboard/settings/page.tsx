@@ -9,8 +9,20 @@ import { CreditCard, User } from 'lucide-react';
 // ---------------------------------------------------------------------------
 
 const SETTINGS_NAV = [
-  { label: 'Billing',  href: '/dashboard/settings/billing', icon: CreditCard, description: 'Manage your plan and usage' },
-  { label: 'Account',  href: '/dashboard/settings/account', icon: User,        description: 'Coming soon', disabled: true },
+  {
+    label:       'Profile',
+    href:        '/dashboard/settings/profile',
+    icon:        User,
+    description: 'Phone number and LinkedIn URL for autofill',
+    disabled:    false,
+  },
+  {
+    label:       'Billing',
+    href:        '/dashboard/settings/billing',
+    icon:        CreditCard,
+    description: 'Manage your plan and usage',
+    disabled:    false,
+  },
 ];
 
 export default function SettingsPage() {
@@ -28,7 +40,10 @@ export default function SettingsPage() {
           const isActive = pathname.startsWith(item.href);
           if (item.disabled) {
             return (
-              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', border: '1px solid var(--vt-surface-border)', borderRadius: '8px', backgroundColor: 'var(--vt-surface-raised)', opacity: 0.5, cursor: 'not-allowed' }}>
+              <div
+                key={item.label}
+                style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', border: '1px solid var(--vt-surface-border)', borderRadius: '8px', backgroundColor: 'var(--vt-surface-raised)', opacity: 0.5, cursor: 'not-allowed' }}
+              >
                 <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'var(--vt-surface-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <item.icon size={16} strokeWidth={1.5} style={{ color: 'var(--vt-text-disabled)' }} />
                 </div>
@@ -40,7 +55,11 @@ export default function SettingsPage() {
             );
           }
           return (
-            <Link key={item.label} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', border: `1px solid ${isActive ? 'var(--vt-brand-600)' : 'var(--vt-surface-border)'}`, borderRadius: '8px', backgroundColor: 'var(--vt-surface-raised)', textDecoration: 'none', transition: 'border-color 120ms' }}>
+            <Link
+              key={item.label}
+              href={item.href}
+              style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', border: `1px solid ${isActive ? 'var(--vt-brand-600)' : 'var(--vt-surface-border)'}`, borderRadius: '8px', backgroundColor: 'var(--vt-surface-raised)', textDecoration: 'none', transition: 'border-color 120ms' }}
+            >
               <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: isActive ? '#1e3a5f' : 'var(--vt-surface-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <item.icon size={16} strokeWidth={1.5} style={{ color: isActive ? 'var(--vt-brand-400)' : 'var(--vt-text-secondary)' }} />
               </div>
