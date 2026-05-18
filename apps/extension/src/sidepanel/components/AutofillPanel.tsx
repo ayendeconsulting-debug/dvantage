@@ -4,18 +4,21 @@
 // Renders the autofill UI inside the side panel. Sits below ScorePanel in App.tsx.
 //
 // States:
-//   idle      — no application form detected. Renders nothing.
-//   loading   — fetching profile from background SW.
-//   ready     — form detected; profile loaded; field-value preview shown.
-//   filling   — autofill in progress.
-//   complete  — fields filled; capture fired; review reminder shown.
-//   error     — profile fetch or fill failed; retryable.
+//   idle      – no application form detected. Renders nothing.
+//   loading   – fetching profile from background SW.
+//   ready     – form detected; profile loaded; field-value preview shown.
+//   filling   – autofill in progress.
+//   complete  – fields filled; capture fired; review reminder shown.
+//   error     – profile fetch or fill failed; retryable.
 //
-// D11 — M19 addition:
+// D11 – M19 addition:
 //   On transition to 'complete', reads ACTIVE_JOB from chrome.storage.local
 //   and fires REQUEST_CAPTURE { company, role, pageUrl } to the background SW.
-//   This is fire-and-forget — the complete state renders immediately, the
+//   This is fire-and-forget – the complete state renders immediately, the
 //   capture POST happens asynchronously, and failures are silent.
+//
+// D12 – dead link fix:
+//   Replaced broken dvantage.ca/settings/profile link with gear-button copy.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef, useState } from 'react';
@@ -55,19 +58,19 @@ function getProfileValue(
     case 'summary': {
       const s = profile.summary;
       if (!s) return null;
-      return s.length > 80 ? s.slice(0, 80) + '…' : s;
+      return s.length > 80 ? s.slice(0, 80) + '\u2026' : s;
     }
     default: return null;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Capture helper — fire-and-forget
+// Capture helper – fire-and-forget
 // ---------------------------------------------------------------------------
 
 /**
  * Read ACTIVE_JOB from storage and fire REQUEST_CAPTURE to the background SW.
- * Never awaited — capture failure must not affect the complete state render.
+ * Never awaited – capture failure must not affect the complete state render.
  */
 function fireCapture(pageUrl: string): void {
   void (async (): Promise<void> => {
@@ -81,17 +84,17 @@ function fireCapture(pageUrl: string): void {
       chrome.runtime.sendMessage(
         { type: 'REQUEST_CAPTURE', payload: { company, role, pageUrl } },
         () => {
-          // Consume lastError — fire-and-forget; router returns undefined (no response).
+          // Consume lastError – fire-and-forget; router returns undefined (no response).
           void chrome.runtime.lastError;
         },
       );
 
       console.log(
-        `[DVantage AutofillPanel] REQUEST_CAPTURE fired — company="${company ?? '(null)'}" ` +
+        `[DVantage AutofillPanel] REQUEST_CAPTURE fired – company="${company ?? '(null)'}" ` +
         `role="${role ?? '(null)'}" url=${pageUrl}`,
       );
     } catch (err) {
-      // Non-fatal — log and swallow.
+      // Non-fatal – log and swallow.
       console.warn('[DVantage AutofillPanel] REQUEST_CAPTURE prep failed:', err);
     }
   })();
@@ -132,7 +135,7 @@ function FieldRow({ field, profile }: { field: AutofillPreviewField; profile: Us
         lineHeight: '1.4',
         wordBreak:  'break-word',
       }}>
-        {value ?? '— not set'}
+        {value ?? '\u2013 not set'}
       </span>
     </div>
   );
@@ -239,14 +242,14 @@ export default function AutofillPanel() {
           return;
         }
 
-        // Transition to complete immediately — DO NOT await capture
+        // Transition to complete immediately – DO NOT await capture
         setState({
           status:  'complete',
           filled:  resp.fieldsFilled ?? 0,
           skipped: resp.skipped      ?? [],
         });
 
-        // Fire-and-forget capture — runs after state update, no blocking
+        // Fire-and-forget capture – runs after state update, no blocking
         fireCapture(form.pageUrl);
       },
     );
@@ -282,14 +285,14 @@ export default function AutofillPanel() {
       {/* Loading */}
       {state.status === 'loading' && (
         <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
-          Loading your profile…
+          Loading your profile\u2026
         </p>
       )}
 
       {/* Filling */}
       {state.status === 'filling' && (
         <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
-          Filling fields…
+          Filling fields\u2026
         </p>
       )}
 
@@ -305,7 +308,7 @@ export default function AutofillPanel() {
         </div>
       )}
 
-      {/* Ready — field-value preview */}
+      {/* Ready – field-value preview */}
       {state.status === 'ready' && (
         <div>
           <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: '0 0 8px' }}>
@@ -314,7 +317,7 @@ export default function AutofillPanel() {
             </strong>
             {state.form.unknownFieldCount > 0 && (
               <span style={{ color: 'var(--vt-warning)', marginLeft: 6 }}>
-                · ⚠ {state.form.unknownFieldCount} need{state.form.unknownFieldCount === 1 ? 's' : ''} review
+                &middot; ⚠ {state.form.unknownFieldCount} need{state.form.unknownFieldCount === 1 ? 's' : ''} review
               </span>
             )}
           </p>
@@ -337,16 +340,8 @@ export default function AutofillPanel() {
               borderRadius: '6px',
               borderLeft:   '3px solid var(--vt-warning)',
             }}>
-              Some fields are empty. Add them in{' '}
-              <a
-                href="https://dvantage.ca/settings/profile"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'var(--vt-primary)', textDecoration: 'none' }}
-              >
-                Settings
-              </a>
-              .
+              {/* D12 fix: replaced broken dvantage.ca/settings/profile link with gear-button copy */}
+              Some fields are empty. Use the ⚙ button above to add them.
             </p>
           )}
 
@@ -360,7 +355,7 @@ export default function AutofillPanel() {
       {state.status === 'complete' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-            <span style={{ fontSize: '16px' }}>✅</span>
+            <span style={{ fontSize: '16px' }}>\u2705</span>
             <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--vt-success)' }}>
               {state.filled} field{state.filled !== 1 ? 's' : ''} filled
             </span>
@@ -375,17 +370,17 @@ export default function AutofillPanel() {
               borderLeft:   '3px solid var(--vt-warning)',
             }}>
               <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--vt-text)', margin: '0 0 4px' }}>
-                ⚠ {state.skipped.length} field{state.skipped.length !== 1 ? 's' : ''} need{state.skipped.length === 1 ? 's' : ''} review:
+                \u26a0 {state.skipped.length} field{state.skipped.length !== 1 ? 's' : ''} need{state.skipped.length === 1 ? 's' : ''} review:
               </p>
               {state.skipped.map((label) => (
                 <p key={label} style={{ fontSize: '11px', color: 'var(--vt-text-muted)', margin: '2px 0 0' }}>
-                  · {label}
+                  &middot; {label}
                 </p>
               ))}
             </div>
           )}
 
-          {/* Review reminder — always shown */}
+          {/* Review reminder – always shown */}
           <div style={{
             padding:      '8px 10px',
             background:   'var(--vt-bg)',
