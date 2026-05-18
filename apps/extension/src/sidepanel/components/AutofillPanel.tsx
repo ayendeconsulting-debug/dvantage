@@ -1,4 +1,4 @@
-// AutofillPanel — D13 Tier B: ai-filling state + REQUEST_AI_FILL
+// AutofillPanel — D13 Tier C: confirming-submit, submitting, submitted states
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { STORAGE_KEYS } from '../../shared/constants';
@@ -10,7 +10,10 @@ type PanelState =
   | { status: 'ready'; form: ActiveForm; profile: UserProfile }
   | { status: 'filling' }
   | { status: 'ai-filling' }
-  | { status: 'complete'; filled: number; aiFilled: number; skipped: SkippedField[] }
+  | { status: 'complete';           filled: number; aiFilled: number; skipped: SkippedField[] }
+  | { status: 'confirming-submit';  filled: number; aiFilled: number; skipped: SkippedField[] }
+  | { status: 'submitting' }
+  | { status: 'submitted' }
   | { status: 'error'; message: string };
 
 function getProfileValue(profileKey: AutofillFieldKey, profile: UserProfile): string | null {
@@ -150,6 +153,32 @@ export default function AutofillPanel() {
     );
   }
 
+  // D13 Tier C: first click on Submit → confirming-submit state
+  function handleSubmitRequest(): void {
+    if (state.status !== 'complete') return;
+    setState({ status: 'confirming-submit', filled: state.filled, aiFilled: state.aiFilled, skipped: state.skipped });
+  }
+
+  // D13 Tier C: second click → actually submit
+  function handleSubmitConfirm(): void {
+    setState({ status: 'submitting' });
+    chrome.runtime.sendMessage({ type: 'REQUEST_SUBMIT' }, (response: unknown) => {
+      void chrome.runtime.lastError;
+      const resp = response as { ok: boolean; error?: string } | null | undefined;
+      if (resp?.ok) {
+        setState({ status: 'submitted' });
+      } else {
+        // Submit button not found or click failed — degrade gracefully
+        setState({ status: 'error', message: 'Could not find the submit button. Please submit the form manually.' });
+      }
+    });
+  }
+
+  function handleSubmitCancel(): void {
+    if (state.status !== 'confirming-submit') return;
+    setState({ status: 'complete', filled: state.filled, aiFilled: state.aiFilled, skipped: state.skipped });
+  }
+
   function handleRetry(): void { const form = activeFormRef.current; if (form) loadProfile(form); else setState({ status: 'idle' }); }
 
   if (state.status === 'idle') return null;
@@ -164,6 +193,20 @@ export default function AutofillPanel() {
       {state.status === 'loading'     && <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>Loading your profile&hellip;</p>}
       {state.status === 'filling'     && <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>Filling fields&hellip;</p>}
       {state.status === 'ai-filling'  && <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>✨ AI filling remaining fields&hellip;</p>}
+      {state.status === 'submitting'  && <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>Submitting application&hellip;</p>}
+
+      {state.status === 'submitted' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <span style={{ fontSize: '18px' }}>🎉</span>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--vt-success)' }}>Application submitted!</span>
+          </div>
+          <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: '0 0 12px' }}>
+            Your application has been recorded in your dashboard.
+          </p>
+          <button onClick={() => setState({ status: 'idle' })} style={btnStyle('secondary')}>Done</button>
+        </div>
+      )}
 
       {state.status === 'error' && (
         <div>
@@ -194,27 +237,61 @@ export default function AutofillPanel() {
         );
       })()}
 
-      {state.status === 'complete' && (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-            <span style={{ fontSize: '16px' }}>✅</span>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--vt-success)' }}>
-              {state.filled} field{state.filled !== 1 ? 's' : ''} filled
-              {state.aiFilled > 0 && <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--vt-text-muted)', marginLeft: 6 }}>({state.aiFilled} by AI ✨)</span>}
-            </span>
-          </div>
-          {state.skipped.length > 0 && (
-            <div style={{ marginBottom: '10px', padding: '8px 10px', background: 'var(--vt-bg)', borderRadius: '6px', borderLeft: '3px solid var(--vt-warning)' }}>
-              <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--vt-text)', margin: '0 0 4px' }}>&#9888; {state.skipped.length} field{state.skipped.length !== 1 ? 's' : ''} need{state.skipped.length === 1 ? 's' : ''} review:</p>
-              {state.skipped.map((s) => <p key={s.label} style={{ fontSize: '11px', color: 'var(--vt-text-muted)', margin: '2px 0 0' }}>&middot; {s.label}</p>)}
+      {(state.status === 'complete' || state.status === 'confirming-submit') && (() => {
+        const isConfirming = state.status === 'confirming-submit';
+        return (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+              <span style={{ fontSize: '16px' }}>✅</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--vt-success)' }}>
+                {state.filled} field{state.filled !== 1 ? 's' : ''} filled
+                {state.aiFilled > 0 && <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--vt-text-muted)', marginLeft: 6 }}>({state.aiFilled} by AI ✨)</span>}
+              </span>
             </div>
-          )}
-          <div style={{ padding: '8px 10px', background: 'var(--vt-bg)', borderRadius: '6px', borderLeft: '3px solid var(--vt-primary)', marginBottom: '10px' }}>
-            <p style={{ fontSize: '11px', color: 'var(--vt-text)', margin: 0, lineHeight: 1.5 }}><strong>Review your answers before submitting.</strong>{' '}D&apos;Vantage never clicks submit for you.</p>
+
+            {state.skipped.length > 0 && (
+              <div style={{ marginBottom: '10px', padding: '8px 10px', background: 'var(--vt-bg)', borderRadius: '6px', borderLeft: '3px solid var(--vt-warning)' }}>
+                <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--vt-text)', margin: '0 0 4px' }}>&#9888; {state.skipped.length} field{state.skipped.length !== 1 ? 's' : ''} need{state.skipped.length === 1 ? 's' : ''} review:</p>
+                {state.skipped.map((s) => <p key={s.label} style={{ fontSize: '11px', color: 'var(--vt-text-muted)', margin: '2px 0 0' }}>&middot; {s.label}</p>)}
+              </div>
+            )}
+
+            {/* D13 Tier C: inline confirmation banner */}
+            {isConfirming ? (
+              <div style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', marginBottom: '10px' }}>
+                <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--vt-text)', margin: '0 0 4px' }}>Submit this application?</p>
+                <p style={{ fontSize: '11px', color: 'var(--vt-text-muted)', margin: '0 0 10px', lineHeight: 1.5 }}>
+                  This will click the submit button on the form. Make sure you&apos;ve reviewed all answers first.
+                </p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={handleSubmitConfirm} style={{ flex: 1, padding: '8px 0', borderRadius: '6px', border: 'none', background: 'var(--vt-danger)', color: '#fff', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer' }}>
+                    Confirm — Submit Now
+                  </button>
+                  <button onClick={handleSubmitCancel} style={{ flex: 1, padding: '8px 0', borderRadius: '6px', border: '1px solid var(--vt-border)', background: 'transparent', color: 'var(--vt-text)', fontSize: '12.5px', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ padding: '8px 10px', background: 'var(--vt-bg)', borderRadius: '6px', borderLeft: '3px solid var(--vt-primary)', marginBottom: '10px' }}>
+                  <p style={{ fontSize: '11px', color: 'var(--vt-text)', margin: 0, lineHeight: 1.5 }}>
+                    <strong>Review your answers in the form before submitting.</strong>
+                  </p>
+                </div>
+                {/* D13 Tier C: Submit Application button */}
+                <button onClick={handleSubmitRequest} style={{ ...btnStyle('primary'), marginBottom: '8px' }}>
+                  Submit Application
+                </button>
+              </>
+            )}
+
+            {!isConfirming && (
+              <button onClick={handleAutofill} style={btnStyle('secondary')}>Re-fill</button>
+            )}
           </div>
-          <button onClick={handleAutofill} style={btnStyle('secondary')}>Re-fill</button>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

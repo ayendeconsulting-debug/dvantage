@@ -1,5 +1,5 @@
 // D'Vantage Content Script — D13 Tier B: EXECUTE_AI_FILL handler added
-import type { ContentToBackground, AutofillExecutionResponse, AiFillExecutionResponse } from '../shared/messages';
+import type { ContentToBackground, AutofillExecutionResponse, AiFillExecutionResponse, SubmitExecutionResponse } from '../shared/messages';
 import type { SiteAdapter, AutofillFieldKey, UserProfile } from '../shared/types';
 import { linkedinAdapter }   from './sites/linkedin';
 import { indeedAdapter }     from './sites/indeed';
@@ -76,7 +76,7 @@ function runDetection(): void {
 }
 
 chrome.runtime.onMessage.addListener(
-  (message: unknown, _sender: chrome.runtime.MessageSender, sendResponse: (response: AutofillExecutionResponse | AiFillExecutionResponse) => void): boolean | undefined => {
+  (message: unknown, _sender: chrome.runtime.MessageSender, sendResponse: (response: AutofillExecutionResponse | AiFillExecutionResponse | SubmitExecutionResponse) => void): boolean | undefined => {
     if (typeof message !== 'object' || message === null) return undefined;
     const msg  = message as Record<string, unknown>;
     const type = msg['type'];
@@ -121,6 +121,32 @@ chrome.runtime.onMessage.addListener(
       }
       (sendResponse as (r: AiFillExecutionResponse) => void)({ ok: true, aiFilled });
       console.log(`[DVantage Content] EXECUTE_AI_FILL — aiFilled:${aiFilled}/${answers.length}`);
+      return true;
+    }
+
+
+    if (type === 'EXECUTE_SUBMIT') {
+      const submitSelectors = [
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'button[aria-label*="submit" i]',
+        'button[aria-label*="apply" i]',
+        'button[aria-label*="Submit application" i]',
+        'button[data-control-name="submit_unify_btn_enabled"]',
+      ];
+      let submitEl: HTMLButtonElement | HTMLInputElement | null = null;
+      for (const sel of submitSelectors) {
+        const el = document.querySelector<HTMLButtonElement | HTMLInputElement>(sel);
+        if (el && !el.disabled) { submitEl = el; break; }
+      }
+      if (!submitEl) {
+        (sendResponse as (r: SubmitExecutionResponse) => void)({ ok: false, error: 'submit_button_not_found' });
+        console.warn('[DVantage Content] EXECUTE_SUBMIT — no submit button found');
+        return true;
+      }
+      submitEl.click();
+      (sendResponse as (r: SubmitExecutionResponse) => void)({ ok: true });
+      console.log('[DVantage Content] EXECUTE_SUBMIT — clicked:', submitEl.textContent?.trim().slice(0, 30));
       return true;
     }
 

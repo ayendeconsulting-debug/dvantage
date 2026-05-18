@@ -83,6 +83,10 @@ export type SidepanelToBackground =
       /** D13 Tier B: sent after Tier A autofill returns skipped fields */
       type:    'REQUEST_AI_FILL';
       payload: { resumeId: string | null; fields: SkippedField[] };
+    }
+  | {
+      /** D13 Tier C: user-initiated form submission from review panel */
+      type: 'REQUEST_SUBMIT';
     };
 
 // ---------------------------------------------------------------------------
@@ -145,6 +149,10 @@ export type BackgroundToContent =
       payload: {
         answers: Array<{ label: string; value: string; selector: string; fieldType: string }>;
       };
+    }
+  | {
+      /** D13 Tier C: click the form submit button */
+      type: 'EXECUTE_SUBMIT';
     };
 
 // ---------------------------------------------------------------------------
@@ -172,6 +180,11 @@ export type AutofillExecutionResponse =
 /** D13 Tier B: content script response to EXECUTE_AI_FILL */
 export type AiFillExecutionResponse =
   | { ok: true;  aiFilled: number }
+  | { ok: false; error: string };
+
+/** D13 Tier C: content script response to EXECUTE_SUBMIT */
+export type SubmitExecutionResponse =
+  | { ok: true }
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------

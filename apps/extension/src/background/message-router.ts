@@ -10,7 +10,7 @@
 
 import { STORAGE_KEYS, API_BASE, PROFILE_CACHE_TTL_MS } from '../shared/constants';
 import type { ScoreResult, ActiveForm, UserProfile, CachedProfile, SkippedField } from '../shared/types';
-import type { AutofillExecutionResponse, AiFillExecutionResponse } from '../shared/messages';
+import type { AutofillExecutionResponse, AiFillExecutionResponse, SubmitExecutionResponse } from '../shared/messages';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -581,6 +581,40 @@ function handleRequestAiFill(
   })();
 }
 
+
+// ---------------------------------------------------------------------------
+// D13 Tier C: REQUEST_SUBMIT handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Forward a user-initiated submit request to the content script.
+ * The content script finds and clicks the form's submit button.
+ * Returns { ok: true } on success or { ok: false, error } on failure.
+ */
+function handleRequestSubmit(sendResponse: (r: unknown) => void): void {
+  void (async (): Promise<void> => {
+    let tabId: number | undefined;
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tabs[0]?.id;
+    } catch { /* ignore */ }
+
+    if (!tabId) { sendResponse({ ok: false, error: 'no_active_tab' }); return; }
+
+    let result: SubmitExecutionResponse;
+    try {
+      result = await chrome.tabs.sendMessage(tabId, { type: 'EXECUTE_SUBMIT' }) as SubmitExecutionResponse;
+    } catch (err) {
+      console.warn('[DVantage Router] REQUEST_SUBMIT — sendMessage failed:', err);
+      sendResponse({ ok: false, error: 'submit_failed' });
+      return;
+    }
+
+    sendResponse(result);
+    if (result.ok) console.log('[DVantage Router] REQUEST_SUBMIT — form submitted');
+  })();
+}
+
 // ---------------------------------------------------------------------------
 // Public router — called from background/index.ts onMessage listener
 // ---------------------------------------------------------------------------
@@ -605,6 +639,7 @@ export function routeMessage(
     case 'REQUEST_PROFILE_UPDATE':  { handleRequestProfileUpdate(m['payload'], sendResponse); return true; }
     case 'REQUEST_CAPTURE':         { handleRequestCapture(m['payload']); return undefined; }
     case 'REQUEST_AI_FILL':         { handleRequestAiFill(m['payload'], sendResponse); return true; }
+    case 'REQUEST_SUBMIT':           { handleRequestSubmit(sendResponse); return true; }
     default: return undefined;
   }
 }
