@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
@@ -76,7 +76,7 @@ function deltaColor(delta: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Baseline score card â€” compact, muted â€” shown PRE-optimization only
+// Baseline score card Ã¢â‚¬â€ compact, muted Ã¢â‚¬â€ shown PRE-optimization only
 // ---------------------------------------------------------------------------
 
 function BaselineScoreCard({ score }: { score: number }) {
@@ -135,7 +135,7 @@ function BaselineScoreCard({ score }: { score: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Score hero â€” full size, colored â€” shown POST-optimization only
+// Score hero Ã¢â‚¬â€ full size, colored Ã¢â‚¬â€ shown POST-optimization only
 // ---------------------------------------------------------------------------
 
 interface ScoreHeroProps {
@@ -315,7 +315,7 @@ function KeywordsSection({
         <div style={{ display: 'flex', flexWrap: 'wrap' }}>
           {keywordGaps?.length
             ? keywordGaps.map(k => <Pill key={k} text={k} variant="gap" />)
-            : <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-disabled)' }}>None \u2014 excellent coverage!</span>
+            : <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-disabled)' }}>None — excellent coverage!</span>
           }
         </div>
       </div>
@@ -413,7 +413,7 @@ function DiffView({
             return (
               <div key={ei} style={{ marginBottom: '16px' }}>
                 <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', fontWeight: 500, color: 'var(--vt-text-secondary)', margin: '0 0 8px' }}>
-                  {exp.title} \u00b7 {exp.company}
+                  {exp.title} · {exp.company}
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -609,7 +609,7 @@ export default function ScoreDetailPage() {
   };
   const btnDisabled: React.CSSProperties = { ...btnBase, opacity: 0.45, cursor: 'not-allowed' };
 
-  // Optimization action controls â€” shared between pre and post layouts.
+  // Optimization action controls Ã¢â‚¬â€ shared between pre and post layouts.
   // Contains no hooks; safe to use as a JSX variable.
   const OptimizeControls = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', flexShrink: 0 }}>
@@ -682,7 +682,7 @@ export default function ScoreDetailPage() {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', paddingTop: '60px' }}>
           <Loader size={28} strokeWidth={1.5} style={{ color: 'var(--vt-brand-400)', animation: 'spin 1s linear infinite' }} />
           <p style={{ fontFamily: 'var(--vt-font-display)', fontSize: '16px', color: 'var(--vt-text-secondary)', margin: 0 }}>Analyzing your resume\u2026</p>
-          <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>This usually takes 20\u201345 seconds.</p>
+          <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>This usually takes 20–45 seconds.</p>
         </div>
       )}
 
@@ -696,17 +696,17 @@ export default function ScoreDetailPage() {
       {/* Scoring complete */}
       {score?.scoringStatus === 'complete' && score.overallScore !== null && (
         <>
-          {/* â”€â”€ PRE-OPTIMIZATION LAYOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          {/* Ã¢â€â‚¬Ã¢â€â‚¬ PRE-OPTIMIZATION LAYOUT Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
               Covers optimizationStatus: 'none' | 'pending' | 'optimizing' | 'failed'
-              Optimize CTA is the primary action â€” shown at top.
-              Score is compact and muted â€” it is not the result, it is the baseline.
-          â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+              Optimize CTA is the primary action Ã¢â‚¬â€ shown at top.
+              Score is compact and muted Ã¢â‚¬â€ it is not the result, it is the baseline.
+          Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
           {!optimizationComplete && (
             <>
               {/* Compact baseline card */}
               <BaselineScoreCard score={score.overallScore} />
 
-              {/* Optimization panel â€” primary action */}
+              {/* Optimization panel Ã¢â‚¬â€ primary action */}
               <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--vt-surface-raised)', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
                   <div>
@@ -714,7 +714,7 @@ export default function ScoreDetailPage() {
                       AI Resume Optimization
                     </h2>
                     <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>
-                      Rewrite your resume to close keyword gaps \u2014 without fabricating anything.
+                      Rewrite your resume to close keyword gaps — without fabricating anything.
                     </p>
                   </div>
                   {OptimizeControls}
@@ -726,7 +726,7 @@ export default function ScoreDetailPage() {
                 )}
               </div>
 
-              {/* Section bars â€” baseline context (single bar, no before/after) */}
+              {/* Section bars Ã¢â‚¬â€ baseline context (single bar, no before/after) */}
               {score.sectionScores && (
                 <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--vt-surface-raised)', marginBottom: '24px' }}>
                   {(['skills', 'experience', 'education', 'keywords'] as const).map(key => (
@@ -743,11 +743,11 @@ export default function ScoreDetailPage() {
             </>
           )}
 
-          {/* â”€â”€ POST-OPTIMIZATION LAYOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          {/* Ã¢â€â‚¬Ã¢â€â‚¬ POST-OPTIMIZATION LAYOUT Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
               optimizationStatus: 'complete'
-              Full score hero with delta is shown â€” this is the result.
+              Full score hero with delta is shown Ã¢â‚¬â€ this is the result.
               Optimization panel moves to bottom showing complete state + diff.
-          â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
           {optimizationComplete && (
             <>
               {/* Full score hero + section bars with before/after */}
@@ -760,7 +760,7 @@ export default function ScoreDetailPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '16px' }}>
                           <TrendingUp size={14} strokeWidth={1.5} style={{ color: 'var(--vt-status-success)' }} />
                           <span style={{ fontFamily: 'var(--vt-font-body)', fontSize: '12px', color: 'var(--vt-text-muted)' }}>
-                            Section scores \u2014 before &amp; after optimization
+                            Section scores — before &amp; after optimization
                           </span>
                         </div>
                       )}
@@ -783,7 +783,7 @@ export default function ScoreDetailPage() {
               {/* Recommendations */}
               <RecommendationsSection recommendations={score.recommendations} />
 
-              {/* Optimization panel â€” complete state with exports and diff view */}
+              {/* Optimization panel Ã¢â‚¬â€ complete state with exports and diff view */}
               <div style={{ border: '1px solid var(--vt-surface-border)', borderRadius: '8px', padding: '20px', backgroundColor: 'var(--vt-surface-raised)', marginBottom: '28px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', gap: '16px' }}>
                   <div>
@@ -791,7 +791,7 @@ export default function ScoreDetailPage() {
                       AI Resume Optimization
                     </h2>
                     <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-muted)', margin: 0 }}>
-                      Rewrite your resume to close keyword gaps \u2014 without fabricating anything.
+                      Rewrite your resume to close keyword gaps — without fabricating anything.
                     </p>
                   </div>
                   {OptimizeControls}
@@ -825,3 +825,6 @@ export default function ScoreDetailPage() {
     </div>
   );
 }
+
+
+
