@@ -1,18 +1,20 @@
 // ---------------------------------------------------------------------------
-// D'Vantage — Greenhouse Site Adapter
+// D'Vantage – Greenhouse Site Adapter
 //
 // Real DOM selectors implemented in D7 (detectJD) and D10 (detectForm + fillFields).
+// D12: Fixed autofill crash caused by <input type="file"> in form (resume upload).
+//      Three-layer defense: probe() early-exit + correct type mapping + fillFields() guard.
 //
 // Supported paths:
 //   https://boards.greenhouse.io/*       ← classic layout
 //   https://job-boards.greenhouse.io/*   ← new layout (data-qa attributes)
 //
-// Both subdomains render server-side HTML — no SPA concerns.
+// Both subdomains render server-side HTML – no SPA concerns.
 //
 // Autofill (D10):
 //   The application form appears on the same page as the job description
 //   (new board) or on a linked /application page (classic board).
-//   Standard HTML inputs with stable id attributes — most reliable selectors
+//   Standard HTML inputs with stable id attributes – most reliable selectors
 //   across all Greenhouse customers.
 //
 // Field map (classic + new board share the same ids):
@@ -65,7 +67,7 @@ const FALLBACK = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Text helpers (canonical pattern — locked Decision 88)
+// Text helpers (canonical pattern – locked Decision 88)
 // ---------------------------------------------------------------------------
 
 function cleanText(raw: string | null | undefined): string | null {
@@ -92,7 +94,7 @@ function firstMatch(...selectors: string[]): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Native input setter — React/Vue controlled-input compatibility
+// Native input setter – React/Vue controlled-input compatibility
 // ---------------------------------------------------------------------------
 
 /**
@@ -120,7 +122,7 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
 
 /**
  * Find an input/textarea by a list of selectors in priority order.
- * Returns the first matching, visible element.
+ * Returns the first matching element.
  */
 function findInput(
   ...selectors: string[]
@@ -139,21 +141,21 @@ function findInput(
 function extractCompanyFromTitle(): string | null {
   const title = document.title;
 
-  const applicationPattern = /\bat\s+(.+?)(?:\s*[|—\-]|\s*$)/i;
+  const applicationPattern = /\bat\s+(.+?)(?:\s*[|–\-]|\s*$)/i;
   const applicationMatch   = title.match(applicationPattern);
   if (applicationMatch?.[1]) {
     const candidate = cleanText(applicationMatch[1]);
     if (candidate) return candidate;
   }
 
-  const jobsAtPattern = /^Jobs\s+at\s+(.+?)(?:\s*[|—\-]|\s*$)/i;
+  const jobsAtPattern = /^Jobs\s+at\s+(.+?)(?:\s*[|–\-]|\s*$)/i;
   const jobsAtMatch   = title.match(jobsAtPattern);
   if (jobsAtMatch?.[1]) {
     const candidate = cleanText(jobsAtMatch[1]);
     if (candidate) return candidate;
   }
 
-  const dashPattern = /^(.+?)\s*[—\-]\s*Jobs?\s*$/i;
+  const dashPattern = /^(.+?)\s*[–\-]\s*Jobs?\s*$/i;
   const dashMatch   = title.match(dashPattern);
   if (dashMatch?.[1]) {
     const candidate = cleanText(dashMatch[1]);
@@ -204,7 +206,12 @@ function extractNewBoard(): ExtractedJob | null {
  * Returns FormField[] describing each detected input.
  *
  * Greenhouse uses stable HTML id attributes across all customers.
- * We probe in priority order — id-based first, then attribute-based fallbacks.
+ * We probe in priority order – id-based first, then attribute-based fallbacks.
+ *
+ * D12 fix: probe() now skips <input type="file"> elements entirely.
+ * Browsers throw InvalidStateError when JS attempts to set value on a file
+ * input (security restriction – file inputs can only be cleared, never set
+ * programmatically). Resume upload fields must never enter the fields[] array.
  */
 function detectGreenhouseForm(): FormField[] {
   // Quick guard: if there's no form or no Greenhouse-specific input, bail.
@@ -224,19 +231,37 @@ function detectGreenhouseForm(): FormField[] {
     for (const sel of selectors) {
       const el = document.querySelector<HTMLElement>(sel);
       if (el) {
-        const tag  = el.tagName.toLowerCase();
+        // ---------------------------------------------------------------------------
+        // LAYER 1 — D12 fix: never include file inputs.
+        // Browsers throw InvalidStateError when JS attempts to set .value on
+        // <input type="file"> (e.g. resume upload). Exclude at probe time so
+        // the element never reaches fillFields() at all.
+        // ---------------------------------------------------------------------------
+        if (el instanceof HTMLInputElement && el.type === 'file') {
+          console.debug(`[DVantage][${ADAPTER_NAME}] probe(): skipping file input (selector: ${sel})`);
+          return;
+        }
+
+        const tag = el.tagName.toLowerCase();
         fields.push({
           name:        profileKey,
-          type:        tag === 'textarea' ? 'textarea'
-                     : (el as HTMLInputElement).type === 'email' ? 'email'
-                     : (el as HTMLInputElement).type === 'tel'   ? 'tel'
+          // ---------------------------------------------------------------------------
+          // LAYER 2 — D12 fix: correct type mapping includes 'file' case.
+          // Previously the ternary chain fell through to 'text' for file inputs,
+          // making them indistinguishable from text fields. Kept as a belt-and-
+          // suspenders measure even though Layer 1 exits before reaching here.
+          // ---------------------------------------------------------------------------
+          type:        tag === 'textarea'                          ? 'textarea'
+                     : (el as HTMLInputElement).type === 'email'  ? 'email'
+                     : (el as HTMLInputElement).type === 'tel'    ? 'tel'
+                     : (el as HTMLInputElement).type === 'file'   ? 'file'
                      : 'text',
           label,
           placeholder: (el as HTMLInputElement).placeholder || null,
           required,
           selector:    sel,
         });
-        return; // found — move to next field
+        return; // found – move to next field
       }
     }
   }
@@ -295,13 +320,12 @@ export const greenhouseAdapter: SiteAdapter = {
   },
 
   fillFields(profile: UserProfile): AutofillResult {
-    const fields  = detectGreenhouseForm();
+    const fields = detectGreenhouseForm();
     if (fields.length === 0) return { filled: 0, skipped: [] };
 
-    let filled  = 0;
+    let filled = 0;
     const skipped: string[] = [];
 
-    // Preview fields for logging
     const previewFields: AutofillPreviewField[] = fields
       .filter(f => f.type !== 'unknown' && f.type !== 'file')
       .map(f => ({
@@ -312,7 +336,6 @@ export const greenhouseAdapter: SiteAdapter = {
 
     for (const preview of previewFields) {
       const el = findInput(
-        // Find the detected element by selector from the field list
         ...fields
           .filter(f => f.name === preview.profileKey)
           .map(f => f.selector),
@@ -323,18 +346,30 @@ export const greenhouseAdapter: SiteAdapter = {
         continue;
       }
 
+      // ---------------------------------------------------------------------------
+      // LAYER 3 — D12 fix: defense-in-depth guard before fillInput().
+      // Protects against any future code path that bypasses probe()'s Layer 1
+      // check (e.g. a new probe() call added without the file guard).
+      // Browsers throw InvalidStateError on .value assignment for file inputs.
+      // ---------------------------------------------------------------------------
+      if (el instanceof HTMLInputElement && el.type === 'file') {
+        console.warn(`[DVantage][${ADAPTER_NAME}] fillFields(): file input reached fill loop — skipping (${preview.label})`);
+        skipped.push(preview.label);
+        continue;
+      }
+
       let value: string | null = null;
 
       switch (preview.profileKey) {
-        case 'firstName':   value = profile.firstName || null;      break;
-        case 'lastName':    value = profile.lastName  || null;      break;
+        case 'firstName':   value = profile.firstName || null;                              break;
+        case 'lastName':    value = profile.lastName  || null;                              break;
         case 'fullName':    value = `${profile.firstName} ${profile.lastName}`.trim() || null; break;
-        case 'email':       value = profile.email     || null;      break;
-        case 'phone':       value = profile.phone;                  break;
-        case 'linkedinUrl': value = profile.linkedinUrl;            break;
-        case 'summary':     value = profile.summary;                break;
-        case 'topSkills':   value = profile.topSkills.join(', ') || null; break;
-        case 'currentRole': value = profile.currentRole;            break;
+        case 'email':       value = profile.email     || null;                              break;
+        case 'phone':       value = profile.phone;                                          break;
+        case 'linkedinUrl': value = profile.linkedinUrl;                                    break;
+        case 'summary':     value = profile.summary;                                        break;
+        case 'topSkills':   value = profile.topSkills.join(', ') || null;                  break;
+        case 'currentRole': value = profile.currentRole;                                    break;
         default:            value = null;
       }
 
@@ -348,7 +383,7 @@ export const greenhouseAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:${skipped.join(', ')}`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete – filled:${filled} skipped:${skipped.join(', ')}`,
     );
 
     return { filled, skipped };
