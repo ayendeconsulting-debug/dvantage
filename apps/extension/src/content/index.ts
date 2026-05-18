@@ -2,34 +2,59 @@
 // D'Vantage — Content Script Entry
 //
 // Runs on matched job board pages at document_idle (see manifest.ts).
-// Dispatches to the correct site adapter based on the current URL,
-// then sends JOB_DETECTED to the background service worker when a JD
-// is successfully extracted.
+// Dispatches to the correct site adapter based on the current URL.
 //
-// Architecture (D6):
+// Architecture (D11 — LinkedIn observe() hook added):
 //   1. resolveAdapter()   — URL → site adapter (hostname matching)
-//   2. runDetection()     — adapter.detectJD() → sendMessage(JOB_DETECTED)
+//   2. runDetection()     — detectJD() + detectForm() → sendMessage as appropriate
 //   3. SPA nav handling   — history.pushState / popstate intercept + debounce
+//   4. observe() hook     — adapter-installed MutationObserver for modal detection
+//                           (LinkedIn Easy Apply: modal appears without URL change)
+//   5. onMessage listener — handles EXECUTE_AUTOFILL from background SW
+//
+// Message flow (JD path — unchanged from D6):
+//   detectJD() found job
+//   → chrome.runtime.sendMessage(JOB_DETECTED)
+//   → BG SW writes ACTIVE_JOB
+//   → ScorePanel reacts via storage.onChanged
+//
+// Message flow (form path — D10 new):
+//   detectForm() found fields
+//   → chrome.runtime.sendMessage(FORM_DETECTED { fieldCount, fillableFields, ... })
+//   → BG SW writes ACTIVE_FORM
+//   → AutofillPanel reacts via storage.onChanged
+//
+//   detectForm() returned empty (navigated away from form)
+//   → chrome.runtime.sendMessage(FORM_CLEARED)
+//   → BG SW sets ACTIVE_FORM = null
+//   → AutofillPanel hides
+//
+// Message flow (autofill execution — D10 new):
+//   Side panel: user clicks "Autofill" → REQUEST_AUTOFILL → BG SW
+//   BG SW: resolves profile → chrome.tabs.sendMessage(tabId, EXECUTE_AUTOFILL)
+//   Content script: adapter.fillFields(profile) → sendResponse(AutofillResult)
+//   BG SW: forwards AUTOFILL_COMPLETE to side panel
+//
+// observe() hook (D11 new):
+//   LinkedIn Easy Apply opens as a modal without a pushState event.
+//   The LinkedIn adapter implements observe(), which installs a MutationObserver
+//   on document.body to detect modal mount/unmount.
+//   When the modal state changes, observe() calls scheduleDetection() —
+//   exactly the same debounce path as SPA navigation events.
+//   This means detectForm() / FORM_DETECTED / FORM_CLEARED all work identically
+//   for LinkedIn as for every other adapter. Zero new architecture.
 //
 // SPA navigation:
 //   LinkedIn, Indeed, Ashby, and Workday are SPAs. URL changes do not trigger
-//   a new document load — this content script runs once per page load.
-//   We intercept history.pushState and history.replaceState plus the popstate
-//   event to re-run detection after client-side navigation settles.
-//   A 1 000 ms debounce ensures DOM hydration is complete before querying.
-//
-// Message flow:
-//   Content script → chrome.runtime.sendMessage(JOB_DETECTED)
-//   → Background SW (message-router.ts) → chrome.storage.local.set(ACTIVE_JOB)
-//   → chrome.storage.onChanged fires in side panel
-//   → ScorePanel re-renders with detected job
+//   a new document load — runDetection() is re-triggered on every nav event.
+//   1 000 ms debounce — do not reduce below 800 ms (DOM hydration time).
 //
 // This file intentionally contains no DOM selectors.
 // All site-specific logic lives in content/sites/*.ts.
 // ---------------------------------------------------------------------------
 
-import type { ContentToBackground } from '../shared/messages';
-import type { SiteAdapter }         from '../shared/types';
+import type { ContentToBackground, AutofillExecutionResponse } from '../shared/messages';
+import type { SiteAdapter, AutofillFieldKey, UserProfile } from '../shared/types';
 
 import { linkedinAdapter }   from './sites/linkedin';
 import { indeedAdapter }     from './sites/indeed';
@@ -43,18 +68,12 @@ import { genericAdapter }    from './sites/generic';
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Delay after a SPA navigation before re-running detection.
- *  Gives the framework time to finish rendering the new page. */
 const SPA_REDETECT_DELAY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
 // Adapter registry
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve the correct site adapter for the current page.
- * Matching order matters — more specific checks before broad ones.
- */
 function resolveAdapter(): SiteAdapter {
   const { hostname } = window.location;
 
@@ -72,53 +91,150 @@ function resolveAdapter(): SiteAdapter {
 }
 
 // ---------------------------------------------------------------------------
+// Messaging helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a fire-and-forget message to the background SW.
+ * Consumes lastError to suppress Chrome's unchecked-error console warning.
+ */
+function sendToBackground(msg: ContentToBackground): void {
+  chrome.runtime.sendMessage(msg, () => {
+    void chrome.runtime.lastError;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Detection + messaging
 // ---------------------------------------------------------------------------
 
 /**
- * Run job detection on the current page using the resolved site adapter.
- * If a job is found, send JOB_DETECTED to the background service worker.
- * The background SW writes ACTIVE_JOB to chrome.storage.local;
- * the ScorePanel in the side panel reacts via storage.onChanged.
+ * Run both JD and form detection on the current page.
+ *
+ * JD detection:
+ *   adapter.detectJD() non-null → send JOB_DETECTED.
+ *   null → no message (ACTIVE_JOB retains the last detected job).
+ *
+ * Form detection:
+ *   adapter.detectForm() non-empty → send FORM_DETECTED.
+ *   empty → send FORM_CLEARED so AutofillPanel hides on navigation away.
+ *
+ * Both run on every navigation event — adapters use their own path guards
+ * to return null / empty on pages where they don't apply.
  */
 function runDetection(): void {
   const adapter = resolveAdapter();
-  const job     = adapter.detectJD();
 
-  if (!job) {
-    // No job found at the current URL — do not send a message.
-    // ACTIVE_JOB retains the last detected job until a new one overwrites it.
-    // Clearing logic (when user navigates away from all job pages) is a D7+ concern.
+  // ── JD detection ────────────────────────────────────────────────────────
+  const job = adapter.detectJD();
+
+  if (job) {
+    sendToBackground({ type: 'JOB_DETECTED', payload: { job } });
+    console.log('[DVantage Content] JOB_DETECTED sent for:', job.title ?? '(untitled)');
+  } else {
     console.log(
       '[DVantage Content] No job detected on',
       window.location.hostname,
       window.location.pathname,
     );
-    return;
   }
 
-  const message: ContentToBackground = {
-    type:    'JOB_DETECTED',
-    payload: { job },
-  };
+  // ── Form detection ───────────────────────────────────────────────────────
+  const fields = adapter.detectForm();
 
-  chrome.runtime.sendMessage(message, () => {
-    // Consume lastError to suppress Chrome's unchecked error console warning.
-    // The background SW handles the storage write; we do not need the ack.
-    void chrome.runtime.lastError;
+  if (fields.length > 0) {
+    // Build the fillable-fields preview list for AutofillPanel display.
+    // Unknown-type fields are excluded from fillableFields but counted separately.
+    const fillableFields  = fields
+      .filter((f) => f.type !== 'unknown' && f.type !== 'file')
+      .map((f) => ({
+        label:      f.label ?? f.name,
+        profileKey: f.name as AutofillFieldKey,
+        required:   f.required,
+      }));
 
-    if (chrome.runtime.lastError) {
-      // Log for debugging but do not crash — the SW may be spinning up.
-      console.warn(
-        '[DVantage Content] JOB_DETECTED sendMessage error:',
-        chrome.runtime.lastError.message,
-      );
-      return;
+    const unknownFieldCount = fields.filter(
+      (f) => f.type === 'unknown',
+    ).length;
+
+    sendToBackground({
+      type:    'FORM_DETECTED',
+      payload: {
+        fieldCount:        fillableFields.length,
+        unknownFieldCount,
+        pageUrl:           window.location.href,
+        fillableFields,
+      },
+    });
+    console.log(
+      `[DVantage Content] FORM_DETECTED — fields:${fillableFields.length} unknown:${unknownFieldCount}`,
+    );
+  } else {
+    // No form on this page — clear so AutofillPanel doesn't show stale state.
+    sendToBackground({
+      type:    'FORM_CLEARED',
+      payload: { pageUrl: window.location.href },
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// EXECUTE_AUTOFILL listener
+// ---------------------------------------------------------------------------
+
+/**
+ * Listen for EXECUTE_AUTOFILL from the background service worker.
+ * Received via chrome.tabs.sendMessage (not chrome.runtime.sendMessage).
+ *
+ * The background SW sends this after the user clicks "Autofill" in the
+ * side panel and the profile has been resolved (from cache or API).
+ * We call adapter.fillFields(profile) which writes to the DOM and returns
+ * { filled, skipped }. The response is forwarded back to the SW synchronously
+ * via sendResponse, which then informs the side panel.
+ */
+chrome.runtime.onMessage.addListener(
+  (
+    message: unknown,
+    _sender: chrome.runtime.MessageSender,
+    sendResponse: (response: AutofillExecutionResponse) => void,
+  ): boolean | undefined => {
+    if (
+      typeof message !== 'object' ||
+      message === null ||
+      (message as Record<string, unknown>)['type'] !== 'EXECUTE_AUTOFILL'
+    ) {
+      return undefined; // not our message
     }
 
-    console.log('[DVantage Content] JOB_DETECTED sent for:', job.title ?? '(untitled)');
-  });
-}
+    const payload = (message as Record<string, unknown>)['payload'];
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      typeof (payload as Record<string, unknown>)['profile'] !== 'object'
+    ) {
+      sendResponse({ ok: false, error: 'invalid_payload' });
+      return true;
+    }
+
+    const profile = (payload as Record<string, unknown>)['profile'] as UserProfile;
+
+    try {
+      const adapter = resolveAdapter();
+      const result  = adapter.fillFields(profile);
+
+      sendResponse({ ok: true, filled: result.filled, skipped: result.skipped });
+      console.log(
+        `[DVantage Content] EXECUTE_AUTOFILL complete — filled:${result.filled} skipped:${result.skipped.length}`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'fill_error';
+      sendResponse({ ok: false, error: msg });
+      console.error('[DVantage Content] EXECUTE_AUTOFILL error:', err);
+    }
+
+    return true; // keep message channel open for sendResponse
+  },
+);
 
 // ---------------------------------------------------------------------------
 // SPA navigation handling
@@ -126,50 +242,48 @@ function runDetection(): void {
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Schedule a detection run after a SPA navigation event.
- * Debounced to avoid redundant checks during rapid history mutations.
- */
 function scheduleDetection(): void {
-  if (debounceTimer !== null) {
-    clearTimeout(debounceTimer);
-  }
+  if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     runDetection();
   }, SPA_REDETECT_DELAY_MS);
 }
 
-/**
- * Intercept history.pushState to detect SPA navigations.
- * This must be done at content-script injection time, before any
- * framework code runs its own pushState calls.
- */
 const originalPushState    = history.pushState.bind(history);
 const originalReplaceState = history.replaceState.bind(history);
 
-history.pushState = function (
-  ...args: Parameters<typeof history.pushState>
-): void {
+history.pushState = function (...args: Parameters<typeof history.pushState>): void {
   originalPushState(...args);
   scheduleDetection();
 };
 
-history.replaceState = function (
-  ...args: Parameters<typeof history.replaceState>
-): void {
+history.replaceState = function (...args: Parameters<typeof history.replaceState>): void {
   originalReplaceState(...args);
   scheduleDetection();
 };
 
-// Browser-native back/forward navigation.
 window.addEventListener('popstate', scheduleDetection);
+
+// ---------------------------------------------------------------------------
+// Adapter observe() hook — D11
+//
+// Install the adapter's MutationObserver (if any) once at page load.
+// The adapter fires scheduleDetection() when its watched DOM state changes.
+// For LinkedIn: fires when Easy Apply modal appears or disappears.
+// For all other adapters: observe is undefined — no-op.
+// ---------------------------------------------------------------------------
+
+const adapter = resolveAdapter();
+if (typeof adapter.observe === 'function') {
+  adapter.observe(scheduleDetection);
+  console.log('[DVantage Content] observe() hook installed for:', window.location.hostname);
+}
 
 // ---------------------------------------------------------------------------
 // Initial detection
 // ---------------------------------------------------------------------------
 
-// Run immediately on script load (document_idle — DOM is ready).
 runDetection();
 
 const adapterName =
