@@ -16,6 +16,7 @@
     "start:prod": "node dist/main"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@aws-sdk/client-kms": "^3.600.0",
     "@aws-sdk/client-s3": "^3.1045.0",
     "@aws-sdk/s3-request-presigner": "^3.1045.0",

@@ -78,6 +78,11 @@ export type SidepanelToBackground =
   | {
       type:    'REQUEST_CAPTURE';
       payload: { company: string | null; role: string | null; pageUrl: string };
+    }
+  | {
+      /** D13 Tier B: sent after Tier A autofill returns skipped fields */
+      type:    'REQUEST_AI_FILL';
+      payload: { resumeId: string | null; fields: SkippedField[] };
     };
 
 // ---------------------------------------------------------------------------
@@ -133,6 +138,13 @@ export type BackgroundToContent =
   | {
       type:    'EXECUTE_AUTOFILL';
       payload: { profile: UserProfile };
+    }
+  | {
+      /** D13 Tier B: AI-generated answers sent to content script for DOM fill */
+      type:    'EXECUTE_AI_FILL';
+      payload: {
+        answers: Array<{ label: string; value: string; selector: string; fieldType: string }>;
+      };
     };
 
 // ---------------------------------------------------------------------------
@@ -155,6 +167,11 @@ export type ExternalAck = { ok: true } | { ok: false; error: string };
  */
 export type AutofillExecutionResponse =
   | { ok: true;  filled: number; skipped: SkippedField[] }
+  | { ok: false; error: string };
+
+/** D13 Tier B: content script response to EXECUTE_AI_FILL */
+export type AiFillExecutionResponse =
+  | { ok: true;  aiFilled: number }
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------

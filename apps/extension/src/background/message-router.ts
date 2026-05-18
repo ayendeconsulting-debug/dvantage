@@ -9,8 +9,8 @@
 // ---------------------------------------------------------------------------
 
 import { STORAGE_KEYS, API_BASE, PROFILE_CACHE_TTL_MS } from '../shared/constants';
-import type { ScoreResult, ActiveForm, UserProfile, CachedProfile } from '../shared/types';
-import type { AutofillExecutionResponse } from '../shared/messages';
+import type { ScoreResult, ActiveForm, UserProfile, CachedProfile, SkippedField } from '../shared/types';
+import type { AutofillExecutionResponse, AiFillExecutionResponse } from '../shared/messages';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -481,7 +481,108 @@ function handleRequestCapture(payload: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// Public router
+
+// ---------------------------------------------------------------------------
+// D13 Tier B: REQUEST_AI_FILL validator + handler
+// ---------------------------------------------------------------------------
+
+function isValidAiFillPayload(
+  payload: unknown,
+): payload is { resumeId: string | null; fields: SkippedField[] } {
+  if (typeof payload !== 'object' || payload === null) return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    (p['resumeId'] === null || typeof p['resumeId'] === 'string') &&
+    Array.isArray(p['fields']) &&
+    (p['fields'] as unknown[]).length > 0
+  );
+}
+
+function handleRequestAiFill(
+  payload:      unknown,
+  sendResponse: (r: unknown) => void,
+): void {
+  if (!isValidAiFillPayload(payload)) { sendResponse({ ok: false, error: 'invalid_payload' }); return; }
+  const { resumeId, fields } = payload;
+
+  void (async (): Promise<void> => {
+    const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
+    const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+    if (!token) { sendResponse({ ok: false, error: 'not_authenticated' }); return; }
+
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 20_000);
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/v1/extension/ai-fill`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        body: JSON.stringify({
+          resumeId,
+          fields: fields.map((f) => ({ label: f.label, fieldType: f.fieldType, required: f.required })),
+        }),
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn('[DVantage Router] REQUEST_AI_FILL — fetch error:', err);
+      sendResponse({ ok: true, aiFilled: 0, remaining: fields });
+      return;
+    }
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn(`[DVantage Router] REQUEST_AI_FILL — API ${response.status}`);
+      sendResponse({ ok: true, aiFilled: 0, remaining: fields });
+      return;
+    }
+
+    let apiData: { answers: Array<{ label: string; value: string | null }> };
+    try { apiData = await response.json() as typeof apiData; }
+    catch { sendResponse({ ok: true, aiFilled: 0, remaining: fields }); return; }
+
+    const toFill: Array<{ label: string; value: string; selector: string; fieldType: string }> = [];
+    const remaining: SkippedField[] = [];
+
+    apiData.answers.forEach((answer, i) => {
+      const field = fields[i];
+      if (!field) return;
+      if (answer.value?.trim()) {
+        toFill.push({ label: field.label, value: answer.value.trim(), selector: field.selector, fieldType: field.fieldType });
+      } else {
+        remaining.push(field);
+      }
+    });
+
+    console.log(`[DVantage Router] REQUEST_AI_FILL — toFill:${toFill.length} remaining:${remaining.length}`);
+
+    if (toFill.length === 0) { sendResponse({ ok: true, aiFilled: 0, remaining }); return; }
+
+    let tabId: number | undefined;
+    try { const tabs = await chrome.tabs.query({ active: true, currentWindow: true }); tabId = tabs[0]?.id; }
+    catch { /* ignore */ }
+
+    if (!tabId) { sendResponse({ ok: true, aiFilled: 0, remaining: fields }); return; }
+
+    let fillResult: AiFillExecutionResponse;
+    try {
+      fillResult = await chrome.tabs.sendMessage(tabId, { type: 'EXECUTE_AI_FILL', payload: { answers: toFill } }) as AiFillExecutionResponse;
+    } catch (err) {
+      console.warn('[DVantage Router] REQUEST_AI_FILL — EXECUTE_AI_FILL failed:', err);
+      sendResponse({ ok: true, aiFilled: 0, remaining: fields });
+      return;
+    }
+
+    const aiFilled = fillResult.ok ? fillResult.aiFilled : 0;
+    sendResponse({ ok: true, aiFilled, remaining });
+    console.log(`[DVantage Router] REQUEST_AI_FILL complete — aiFilled:${aiFilled}`);
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// Public router — called from background/index.ts onMessage listener
 // ---------------------------------------------------------------------------
 
 export function routeMessage(
@@ -495,44 +596,16 @@ export function routeMessage(
   const type = m['type'];
 
   switch (type) {
-    case 'JOB_DETECTED': {
-      if (!sender.tab) { console.warn('[DVantage Router] JOB_DETECTED from non-content-script — ignoring'); return undefined; }
-      handleJobDetected(m['payload']);
-      return undefined;
-    }
-    case 'FORM_DETECTED': {
-      if (!sender.tab) { console.warn('[DVantage Router] FORM_DETECTED from non-content-script — ignoring'); return undefined; }
-      handleFormDetected(m['payload']);
-      return undefined;
-    }
-    case 'FORM_CLEARED': {
-      if (!sender.tab) return undefined;
-      handleFormCleared();
-      return undefined;
-    }
-    case 'REQUEST_SCORE': {
-      if (sender.tab) { console.warn('[DVantage Router] REQUEST_SCORE from content-script — ignoring'); return undefined; }
-      handleRequestScore(m['payload'], sendResponse);
-      return true;
-    }
-    case 'REQUEST_PROFILE': {
-      handleRequestProfile(sendResponse);
-      return true;
-    }
-    case 'REQUEST_AUTOFILL': {
-      handleRequestAutofill(m['payload'], sendResponse);
-      return true;
-    }
-    case 'REQUEST_PROFILE_UPDATE': {
-      handleRequestProfileUpdate(m['payload'], sendResponse);
-      return true;
-    }
-    case 'REQUEST_CAPTURE': {
-      handleRequestCapture(m['payload']);
-      return undefined;
-    }
-    default:
-      return undefined;
+    case 'JOB_DETECTED':   { if (!sender.tab) return undefined; handleJobDetected(m['payload']); return undefined; }
+    case 'FORM_DETECTED':  { if (!sender.tab) return undefined; handleFormDetected(m['payload']); return undefined; }
+    case 'FORM_CLEARED':   { if (!sender.tab) return undefined; handleFormCleared(); return undefined; }
+    case 'REQUEST_SCORE':  { if (sender.tab)  return undefined; handleRequestScore(m['payload'], sendResponse); return true; }
+    case 'REQUEST_PROFILE':         { handleRequestProfile(sendResponse); return true; }
+    case 'REQUEST_AUTOFILL':        { handleRequestAutofill(m['payload'], sendResponse); return true; }
+    case 'REQUEST_PROFILE_UPDATE':  { handleRequestProfileUpdate(m['payload'], sendResponse); return true; }
+    case 'REQUEST_CAPTURE':         { handleRequestCapture(m['payload']); return undefined; }
+    case 'REQUEST_AI_FILL':         { handleRequestAiFill(m['payload'], sendResponse); return true; }
+    default: return undefined;
   }
 }
 

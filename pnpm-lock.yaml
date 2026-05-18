@@ -35,6 +35,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.96.0
+        version: 0.96.0(zod@3.25.76)
       '@aws-sdk/client-kms':
         specifier: ^3.600.0
         version: 3.1045.0
@@ -6989,6 +6992,13 @@ snapshots:
       node-fetch: 2.7.0
     transitivePeerDependencies:
       - encoding
+
+  '@anthropic-ai/sdk@0.96.0(zod@3.25.76)':
+    dependencies:
+      json-schema-to-ts: 3.1.1
+      standardwebhooks: 1.0.0
+    optionalDependencies:
+      zod: 3.25.76
 
   '@anthropic-ai/sdk@0.96.0(zod@4.4.3)':
     dependencies:
