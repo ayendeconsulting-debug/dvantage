@@ -130,7 +130,7 @@ interface ExtractedKeywords {
 
 export class AtsScorer {
   private readonly client: Anthropic;
-  private readonly model = 'claude-sonnet-4-20250514';
+  private readonly model = 'claude-sonnet-4-6';
 
   constructor() {
     const apiKey = process.env['ANTHROPIC_API_KEY'];

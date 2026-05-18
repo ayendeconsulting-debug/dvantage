@@ -1,0 +1,38 @@
+# fly.toml — dvantage-api
+# Reconstructed from live config (fly config show) — D10 session.
+# Region: yyz (Toronto) — co-located with dvantage-db.
+
+app            = "dvantage-api"
+primary_region = "yyz"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT     = "3001"
+
+[http_service]
+  internal_port       = 3001
+  force_https         = true
+  auto_stop_machines  = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type       = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+  [[http_service.checks]]
+    interval     = "30s"
+    timeout      = "5s"
+    grace_period = "30s"
+    method       = "GET"
+    path         = "/health"
+    protocol     = "http"
+
+[[vm]]
+  memory   = "512mb"
+  cpu_kind = "shared"
+  cpus     = 1
