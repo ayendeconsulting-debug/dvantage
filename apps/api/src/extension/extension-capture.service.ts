@@ -15,11 +15,16 @@
 //     not send a date — server authority prevents timezone drift across locales.
 //   - jobDescriptionId: null for all extension captures (MVP). Future: match
 //     sourceUrl against saved job_descriptions and link if found.
-//   - notes: stores the pageUrl so the user can navigate back to the posting.
+//   - sourceUrl (D13): stored for dashboard deep-links and as the dedup key.
+//     A partial unique index (uq_applications_user_source_date) on
+//     (user_id, source_url, applied_date) prevents duplicate rows when the
+//     extension autofills the same form more than once in a calendar day.
+//     onConflictDoNothing() emits INSERT … ON CONFLICT DO NOTHING, which the
+//     partial index catches when source_url IS NOT NULL (always true here).
+//   - notes: kept for human-readable context alongside the structured sourceUrl.
 // ---------------------------------------------------------------------------
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq }                          from 'drizzle-orm';
 import { uuidv7 }                      from 'uuidv7';
 
 import {
@@ -47,14 +52,17 @@ export class ExtensionCaptureService {
   ) {}
 
   /**
-   * Insert an application capture row.
+   * Insert an application capture row, skipping silently on duplicate.
    *
-   * Called after a successful autofill. The record appears immediately in the
-   * web app dashboard under Applications.
+   * Duplicate detection: partial unique index on (user_id, source_url,
+   * applied_date) WHERE source_url IS NOT NULL (migration 0010).
+   * INSERT … ON CONFLICT DO NOTHING returns an empty array on conflict,
+   * allowing the service to log the skip without surfacing an error to the
+   * extension (which fires this request fire-and-forget with no UI dependency).
    *
    * @param token  — validated extension token (provides userId)
    * @param dto    — capture payload from the extension
-   * @returns      — inserted row summary
+   * @returns      — inserted row summary, or synthetic duplicate response
    */
   async capture(
     token: ExtensionToken,
@@ -72,28 +80,58 @@ export class ExtensionCaptureService {
     // ISO date — YYYY-MM-DD in UTC. SQL date column stores date only.
     const appliedDate = now.toISOString().slice(0, 10);
 
-    // Store the pageUrl as a note so the user can navigate back to the posting.
+    // Human-readable note alongside the structured sourceUrl.
     const notes = `Applied via D'Vantage extension — ${dto.pageUrl}`;
 
-    await this.db.insert(applications).values({
-      id,
-      userId,
-      jobDescriptionId: null,   // future: match sourceUrl → job_descriptions
-      company,
-      role,
-      location:    null,
-      status:      'applied',
-      appliedDate,
-      notes,
-      createdAt: now,
-      updatedAt: now,
-    });
+    // INSERT … ON CONFLICT DO NOTHING — partial unique index catches
+    // duplicate (user_id, source_url, applied_date) when source_url IS NOT NULL.
+    // .returning() yields the inserted row, or an empty array on conflict.
+    const [inserted] = await this.db
+      .insert(applications)
+      .values({
+        id,
+        userId,
+        jobDescriptionId: null,   // future: match sourceUrl → job_descriptions
+        company,
+        role,
+        location:   null,
+        status:     'applied',
+        appliedDate,
+        sourceUrl:  dto.pageUrl,  // D13: dedup key + dashboard deep-link
+        notes,
+        createdAt:  now,
+        updatedAt:  now,
+      })
+      .onConflictDoNothing()
+      .returning({
+        id:          applications.id,
+        company:     applications.company,
+        role:        applications.role,
+        status:      applications.status,
+        appliedDate: applications.appliedDate,
+      });
+
+    if (!inserted) {
+      // Duplicate suppressed — same user/URL/date already captured today.
+      this.logger.log(
+        `Extension capture skipped (duplicate) — user=${userId} url=${dto.pageUrl} date=${appliedDate}`,
+      );
+      // Return a synthetic response — the extension is fire-and-forget
+      // and does not branch on the response body.
+      return { id: 'duplicate', company, role, status: 'applied', appliedDate };
+    }
 
     this.logger.log(
-      `Extension capture complete — user=${userId} id=${id} ` +
+      `Extension capture complete — user=${userId} id=${inserted.id} ` +
       `company="${company}" role="${role}" date=${appliedDate}`,
     );
 
-    return { id, company, role, status: 'applied', appliedDate };
+    return {
+      id:          inserted.id,
+      company:     inserted.company,
+      role:        inserted.role,
+      status:      'applied',
+      appliedDate: inserted.appliedDate,
+    };
   }
 }

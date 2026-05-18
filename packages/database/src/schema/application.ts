@@ -30,6 +30,12 @@ export type ApplicationStatus = (typeof applicationStatusEnum.enumValues)[number
 // Manual application tracking. One row per job application submitted.
 // Optionally linked to a saved job_description row.
 // Hard-deleted (no soft-delete) — no versioning needed.
+//
+// D13: source_url added — stores the application form page URL.
+//      A partial unique index (uq_applications_user_source_date) on
+//      (user_id, source_url, applied_date) WHERE source_url IS NOT NULL
+//      prevents duplicate extension capture rows. Defined in migration
+//      0010 — Drizzle does not support partial indexes in table config.
 // ---------------------------------------------------------------------------
 
 export const applications = pgTable(
@@ -68,6 +74,14 @@ export const applications = pgTable(
      */
     appliedDate: date('applied_date').notNull(),
 
+    /**
+     * URL of the application form page at the time of autofill.
+     * D13: used as the deduplication key in conjunction with user_id
+     * and applied_date via uq_applications_user_source_date (migration 0010).
+     * Also allows the web app dashboard to deep-link back to the posting.
+     */
+    sourceUrl: text('source_url'),
+
     /** Free-text notes — interview prep, recruiter name, salary range, etc. */
     notes: text('notes'),
 
@@ -82,6 +96,8 @@ export const applications = pgTable(
   (t) => ({
     userIdx:   index('applications_user_idx').on(t.userId),
     statusIdx: index('applications_status_idx').on(t.status),
+    // Note: partial unique index uq_applications_user_source_date
+    // is defined in migration 0010 — not expressible via Drizzle table config.
   }),
 );
 

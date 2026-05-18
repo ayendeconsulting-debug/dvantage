@@ -64,6 +64,20 @@
       "when": 1778976572700,
       "tag": "0008_colossal_dormammu",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778977000000,
+      "tag": "0009_user_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779000000000,
+      "tag": "0010_applications_source_url",
+      "breakpoints": true
     }
   ]
 }
