@@ -5,9 +5,30 @@
 // uses these typed messages via chrome.runtime.sendMessage / onMessage.
 //
 // Convention: message type strings are SCREAMING_SNAKE_CASE.
+//
+// D10 additions:
+//   ContentToBackground:
+//     FORM_DETECTED — payload extended with unknownFieldCount + fillableFields
+//     FORM_CLEARED  — new; sent when detectForm() returns empty on navigation
+//   BackgroundToSidepanel:
+//     AUTOFILL_COMPLETE — payload extended with skipped: string[]
+//   BackgroundToContent (new union):
+//     EXECUTE_AUTOFILL — background SW → content script via chrome.tabs.sendMessage
+//
+// D11 additions:
+//   SidepanelToBackground:
+//     REQUEST_PROFILE_UPDATE — side panel settings form → PATCH /v1/extension/profile
+//                              Background SW validates, patches API, atomically
+//                              replaces CACHED_PROFILE, responds with fresh profile.
 // ---------------------------------------------------------------------------
 
-import type { ExtractedJob, ScoreResult, UserProfile } from './types';
+import type {
+  AutofillPreviewField,
+  AutofillResult,
+  ExtractedJob,
+  ScoreResult,
+  UserProfile,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // Content script → Background
@@ -20,11 +41,34 @@ export type ContentToBackground =
     }
   | {
       type:    'FORM_DETECTED';
-      payload: { fieldCount: number; pageUrl: string };
+      payload: {
+        /** Number of fields the adapter's field map covers. */
+        fieldCount:        number;
+        /** Number of form fields detected but not in the adapter's field map. */
+        unknownFieldCount: number;
+        /** URL of the page hosting the form (for ACTIVE_FORM storage key). */
+        pageUrl:           string;
+        /** Field→profile mapping used by AutofillPanel for value preview. */
+        fillableFields:    AutofillPreviewField[];
+      };
+    }
+  | {
+      /**
+       * Sent when detectForm() returns empty fields on a navigation event.
+       * Causes the background SW to clear ACTIVE_FORM in chrome.storage.local,
+       * which triggers AutofillPanel to hide via storage.onChanged.
+       */
+      type:    'FORM_CLEARED';
+      payload: { pageUrl: string };
     }
   | {
       type:    'FORM_SUBMITTED';
-      payload: { company: string | null; role: string | null; pageUrl: string; jdSnapshot: string | null };
+      payload: {
+        company:     string | null;
+        role:        string | null;
+        pageUrl:     string;
+        jdSnapshot:  string | null;
+      };
     }
   | {
       type:    'AUTH_BRIDGE_TOKEN';
@@ -41,6 +85,11 @@ export type SidepanelToBackground =
       payload: { jobDescription: string; resumeId: string | null };
     }
   | {
+      /**
+       * Side panel user clicked "Autofill".
+       * Background SW fetches (or reads cached) profile → sends EXECUTE_AUTOFILL
+       * to the active tab's content script → forwards AUTOFILL_COMPLETE to panel.
+       */
       type:    'REQUEST_AUTOFILL';
       payload: { pageUrl: string };
     }
@@ -50,12 +99,29 @@ export type SidepanelToBackground =
   | {
       type: 'REQUEST_AUTH_STATUS';
     }
-  // D5: Sent by AuthGate when TOKEN_EXPIRES_AT is within 7 days.
-  // BG SW calls POST /v1/extension/auth/refresh and writes the new
-  // expiresAt to storage. On 401, BG SW clears storage → AuthGate
-  // transitions to unauthenticated.
   | {
       type: 'REQUEST_REFRESH';
+    }
+  | {
+      /**
+       * Side panel settings form → PATCH /v1/extension/profile.
+       *
+       * Background SW:
+       *   1. Validates payload fields.
+       *   2. Calls PATCH /v1/extension/profile with Bearer token.
+       *   3. On success: atomically replaces CACHED_PROFILE with fresh response.
+       *   4. Responds with { ok: true; profile: UserProfile }.
+       *   5. On failure: responds with { ok: false; error: string }.
+       *
+       * Both phone and linkedinUrl are optional in the payload.
+       * Omitting a field keeps the existing stored value.
+       * Passing null explicitly clears the field.
+       */
+      type:    'REQUEST_PROFILE_UPDATE';
+      payload: {
+        phone:       string | null;
+        linkedinUrl: string | null;
+      };
     };
 
 // ---------------------------------------------------------------------------
@@ -85,11 +151,39 @@ export type BackgroundToSidepanel =
     }
   | {
       type:    'AUTOFILL_COMPLETE';
-      payload: { fieldsFilled: number };
+      payload: {
+        fieldsFilled: number;
+        /** Labels of fields that were skipped (null value or unsupported type). */
+        skipped:      string[];
+      };
+    }
+  | {
+      type:    'AUTOFILL_ERROR';
+      payload: { message: string };
     }
   | {
       type:    'CAPTURE_CONFIRMED';
       payload: { applicationId: string };
+    };
+
+// ---------------------------------------------------------------------------
+// Background → Content script  (via chrome.tabs.sendMessage)
+// ---------------------------------------------------------------------------
+
+/**
+ * Messages sent from the background service worker to the content script.
+ * Transport: chrome.tabs.sendMessage (not chrome.runtime.sendMessage).
+ * The content script must have an onMessage listener registered for these.
+ */
+export type BackgroundToContent =
+  | {
+      /**
+       * Instructs the content script to run fillFields() using the provided profile.
+       * The content script calls the resolved adapter, writes to the DOM, and
+       * sends back an AutofillResult via sendResponse.
+       */
+      type:    'EXECUTE_AUTOFILL';
+      payload: { profile: UserProfile };
     };
 
 // ---------------------------------------------------------------------------
@@ -107,6 +201,11 @@ export type ExternalToBackground = {
 /** Ack sent back via sendResponse. */
 export type ExternalAck = { ok: true } | { ok: false; error: string };
 
+/** Autofill execution result — sent back via sendResponse from content script. */
+export type AutofillExecutionResponse =
+  | { ok: true;  filled: number; skipped: string[] }
+  | { ok: false; error: string };
+
 // ---------------------------------------------------------------------------
 // Union — used in onMessage listeners that receive any message
 // ---------------------------------------------------------------------------
@@ -123,3 +222,9 @@ export function isMessageType<T extends ExtensionMessage['type']>(
 ): msg is Extract<ExtensionMessage, { type: T }> {
   return msg.type === type;
 }
+
+// ---------------------------------------------------------------------------
+// Re-exports — keep AutofillResult accessible for content script handlers
+// ---------------------------------------------------------------------------
+
+export type { AutofillResult, AutofillPreviewField, ScoreResult };

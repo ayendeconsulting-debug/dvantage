@@ -9,38 +9,39 @@
 //   if (isRefresh)    → handle in index.ts
 //   else              → routeMessage(msg, sender, sendResponse)  ← this file
 //
-// Handlers (D6):
-//   JOB_DETECTED    — content script found a job; write to ACTIVE_JOB storage.
-//                     ScorePanel in the side panel reacts via storage.onChanged.
+// Handlers (D11 state):
+//   JOB_DETECTED          — write ExtractedJob to ACTIVE_JOB.
+//   FORM_DETECTED         — write ActiveForm to ACTIVE_FORM.
+//   FORM_CLEARED          — clear ACTIVE_FORM (null).
+//   REQUEST_SCORE         — call POST /v1/extension/score, cache result in CACHED_SCORE.
+//   REQUEST_AUTOFILL      — fetch/cache profile → EXECUTE_AUTOFILL → content script.
+//   REQUEST_PROFILE       — fetch/cache profile → PROFILE_RESULT to side panel.
+//   REQUEST_PROFILE_UPDATE — PATCH /v1/extension/profile → replace CACHED_PROFILE.
 //
-//   REQUEST_SCORE   — side panel user clicked "Score against my resume".
-//                     D6: returns a realistic stub ScoreResult (800 ms delay).
-//                     D9: replace stub with POST /v1/extension/score API call.
-//
-//   REQUEST_AUTOFILL — side panel user clicked "Autofill". D11 stub only.
+// Profile cache (CACHED_PROFILE):
+//   TTL: PROFILE_CACHE_TTL_MS (5 minutes).
+//   On cache hit:  return cached profile without hitting the API.
+//   On cache miss: fetch GET /v1/extension/profile, write CACHED_PROFILE.
+//   Invalidation:  REQUEST_PROFILE_UPDATE → PATCH response atomically replaces cache.
 //
 // Return value contract (mirrors onMessage listener):
 //   return true      → async sendResponse; keep message channel open
 //   return undefined → synchronous or no sendResponse; channel may close
 // ---------------------------------------------------------------------------
 
-import { STORAGE_KEYS, APP_BASE } from '../shared/constants';
-import type { ScoreResult }        from '../shared/types';
+import { STORAGE_KEYS, API_BASE, PROFILE_CACHE_TTL_MS } from '../shared/constants';
+import type { ScoreResult, ActiveForm, UserProfile, CachedProfile } from '../shared/types';
+import type { AutofillExecutionResponse } from '../shared/messages';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Validate that a JOB_DETECTED message payload contains an ExtractedJob.
- * We only require `description` (used for scoring) and `sourceUrl`.
- * Other fields are nullable per the ExtractedJob interface.
- */
 function isValidJobDetectedPayload(
   payload: unknown,
 ): payload is { job: { description: string; sourceUrl: string; [key: string]: unknown } } {
   if (typeof payload !== 'object' || payload === null) return false;
-  const p = payload as Record<string, unknown>;
+  const p   = payload as Record<string, unknown>;
   const job = p['job'];
   if (typeof job !== 'object' || job === null) return false;
   const j = job as Record<string, unknown>;
@@ -61,60 +62,196 @@ function isValidScorePayload(
   );
 }
 
+function isValidFormDetectedPayload(
+  payload: unknown,
+): payload is { fieldCount: number; unknownFieldCount: number; pageUrl: string; fillableFields: unknown[] } {
+  if (typeof payload !== 'object' || payload === null) return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    typeof p['fieldCount']        === 'number' &&
+    typeof p['unknownFieldCount'] === 'number' &&
+    typeof p['pageUrl']           === 'string' &&
+    Array.isArray(p['fillableFields'])
+  );
+}
+
+function isValidAutofillPayload(
+  payload: unknown,
+): payload is { pageUrl: string } {
+  if (typeof payload !== 'object' || payload === null) return false;
+  const p = payload as Record<string, unknown>;
+  return typeof p['pageUrl'] === 'string';
+}
+
+function isValidProfileUpdatePayload(
+  payload: unknown,
+): payload is { phone: string | null; linkedinUrl: string | null } {
+  if (typeof payload !== 'object' || payload === null) return false;
+  const p = payload as Record<string, unknown>;
+  const phoneOk      = p['phone']       === null || typeof p['phone']       === 'string';
+  const linkedinOk   = p['linkedinUrl'] === null || typeof p['linkedinUrl'] === 'string';
+  return phoneOk && linkedinOk;
+}
+
+// ---------------------------------------------------------------------------
+// Profile cache helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Retrieve the cached profile if it exists and is within the TTL.
+ * Returns null on miss or expiry.
+ */
+async function getCachedProfile(): Promise<UserProfile | null> {
+  try {
+    const stored = await chrome.storage.local.get([STORAGE_KEYS.CACHED_PROFILE]);
+    const entry  = stored[STORAGE_KEYS.CACHED_PROFILE] as CachedProfile | undefined;
+
+    if (!entry?.profile || !entry?.cachedAt) return null;
+
+    const ageMs = Date.now() - new Date(entry.cachedAt).getTime();
+    if (ageMs > PROFILE_CACHE_TTL_MS) {
+      console.log('[DVantage Router] CACHED_PROFILE expired — will re-fetch');
+      return null;
+    }
+
+    return entry.profile;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write a fresh profile to CACHED_PROFILE with the current timestamp.
+ * Fire-and-forget — must not block callers.
+ */
+function writeCachedProfile(profile: UserProfile): void {
+  const entry: CachedProfile = {
+    profile,
+    cachedAt: new Date().toISOString(),
+  };
+  void chrome.storage.local.set({ [STORAGE_KEYS.CACHED_PROFILE]: entry });
+  console.log('[DVantage Router] CACHED_PROFILE written');
+}
+
+/**
+ * Fetch GET /v1/extension/profile and return the UserProfile.
+ * Reads the Bearer token from chrome.storage.local.
+ * Throws on network error, auth failure, or invalid response.
+ */
+async function fetchProfile(token: string): Promise<UserProfile> {
+  const response = await fetch(`${API_BASE}/v1/extension/profile`, {
+    method:  'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept':        'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`GET /v1/extension/profile → HTTP ${response.status}`);
+  }
+
+  const data = await response.json() as unknown;
+
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('GET /v1/extension/profile → invalid JSON response shape');
+  }
+
+  return data as UserProfile;
+}
+
+/**
+ * Resolve the autofill profile: cache hit → return immediately,
+ * cache miss → fetch API, write cache, return.
+ *
+ * Throws if no token is stored (user not authenticated) or API call fails.
+ */
+async function resolveProfile(): Promise<UserProfile> {
+  const cached = await getCachedProfile();
+  if (cached) {
+    console.log('[DVantage Router] CACHED_PROFILE hit — skipping API call');
+    return cached;
+  }
+
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
+  const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+  if (!token) throw new Error('not_authenticated');
+
+  const profile = await fetchProfile(token);
+  writeCachedProfile(profile);
+  return profile;
+}
+
 // ---------------------------------------------------------------------------
 // JOB_DETECTED handler
 // ---------------------------------------------------------------------------
 
-/**
- * Store the detected job in chrome.storage.local under ACTIVE_JOB.
- * The ScorePanel's storage.onChanged listener picks this up automatically.
- *
- * Security: caller must validate sender.tab is present before calling
- * (ensures message came from a content script, not an extension page).
- */
 function handleJobDetected(payload: unknown): void {
   if (!isValidJobDetectedPayload(payload)) {
     console.warn('[DVantage Router] JOB_DETECTED — invalid payload shape, ignoring');
     return;
   }
 
-  const { job } = payload;
-
-  chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_JOB]: job }, () => {
+  chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_JOB]: payload.job }, () => {
     if (chrome.runtime.lastError) {
-      console.error(
-        '[DVantage Router] ACTIVE_JOB write failed:',
-        chrome.runtime.lastError.message,
-      );
+      console.error('[DVantage Router] ACTIVE_JOB write failed:', chrome.runtime.lastError.message);
       return;
     }
     console.log(
       '[DVantage Router] ACTIVE_JOB stored — title:',
-      (job as Record<string, unknown>)['title'] ?? '(untitled)',
-      '| source:',
-      job.sourceUrl,
+      (payload.job as Record<string, unknown>)['title'] ?? '(untitled)',
+      '| source:', payload.job.sourceUrl,
     );
   });
-  // No sendResponse needed — content script sends JOB_DETECTED fire-and-forget.
+}
+
+// ---------------------------------------------------------------------------
+// FORM_DETECTED handler
+// ---------------------------------------------------------------------------
+
+function handleFormDetected(payload: unknown): void {
+  if (!isValidFormDetectedPayload(payload)) {
+    console.warn('[DVantage Router] FORM_DETECTED — invalid payload shape, ignoring');
+    return;
+  }
+
+  const activeForm: ActiveForm = {
+    fieldCount:        payload.fieldCount,
+    unknownFieldCount: payload.unknownFieldCount,
+    pageUrl:           payload.pageUrl,
+    fillableFields:    payload.fillableFields as ActiveForm['fillableFields'],
+  };
+
+  chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_FORM]: activeForm }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('[DVantage Router] ACTIVE_FORM write failed:', chrome.runtime.lastError.message);
+      return;
+    }
+    console.log(
+      `[DVantage Router] ACTIVE_FORM stored — fields:${payload.fieldCount} ` +
+      `unknown:${payload.unknownFieldCount} url:${payload.pageUrl}`,
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// FORM_CLEARED handler
+// ---------------------------------------------------------------------------
+
+function handleFormCleared(): void {
+  chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_FORM]: null }, () => {
+    if (chrome.runtime.lastError) {
+      console.warn('[DVantage Router] ACTIVE_FORM clear failed:', chrome.runtime.lastError.message);
+      return;
+    }
+    console.log('[DVantage Router] ACTIVE_FORM cleared');
+  });
 }
 
 // ---------------------------------------------------------------------------
 // REQUEST_SCORE handler
 // ---------------------------------------------------------------------------
 
-/**
- * Score the active resume against the provided job description.
- *
- * D6 stub: returns a realistic ScoreResult after 800 ms to exercise the
- * side panel's loading state. Real API call replaces this in D9.
- *
- * D9 implementation note:
- *   Replace the stub block with:
- *     const result = await apiClient.post('/v1/extension/score', {
- *       jobDescription: payload.jobDescription,
- *       resumeId:       payload.resumeId,
- *     });
- */
 function handleRequestScore(
   payload:      unknown,
   sendResponse: (response: unknown) => void,
@@ -125,47 +262,293 @@ function handleRequestScore(
   }
 
   void (async (): Promise<void> => {
-    // ---------------------------------------------------------------------------
-    // D6 STUB — replace entire block in D9 with real API call
-    // ---------------------------------------------------------------------------
-    await new Promise<void>((resolve) => setTimeout(resolve, 800));
+    const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
+    const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
 
-    const stubResult: ScoreResult = {
-      score:        72,
-      keywordGaps:  ['TypeScript', 'NestJS', 'PostgreSQL', 'REST APIs'],
-      semanticGaps: ['System design experience', 'Cross-functional leadership'],
-      optimizationUrl: `${APP_BASE}/dashboard`,
-    };
-    // ---------------------------------------------------------------------------
-    // END STUB
-    // ---------------------------------------------------------------------------
+    if (!token) {
+      sendResponse({ ok: false, error: 'not_authenticated' });
+      console.warn('[DVantage Router] REQUEST_SCORE — no token in storage');
+      return;
+    }
 
-    sendResponse({ ok: true, result: stubResult });
-    console.log('[DVantage Router] REQUEST_SCORE — stub result sent (score:', stubResult.score, ')');
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 30_000);
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/v1/extension/score`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          jobDescription: payload.jobDescription,
+          resumeId:       payload.resumeId,
+        }),
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      sendResponse({ ok: false, error: isTimeout ? 'timeout' : 'network_error' });
+      console.error('[DVantage Router] REQUEST_SCORE — fetch failed:', err);
+      return;
+    }
+
+    clearTimeout(timeoutId);
+
+    if (response.status === 401) {
+      sendResponse({ ok: false, error: 'auth_expired' });
+      return;
+    }
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      sendResponse({ ok: false, error: 'scoring_failed' });
+      console.error(`[DVantage Router] REQUEST_SCORE — API error ${response.status}:`, errText.slice(0, 200));
+      return;
+    }
+
+    let data: unknown;
+    try {
+      data = await response.json() as unknown;
+    } catch {
+      sendResponse({ ok: false, error: 'invalid_response' });
+      return;
+    }
+
+    sendResponse({ ok: true, result: data });
+
+    const score =
+      typeof data === 'object' && data !== null
+        ? (data as Record<string, unknown>)['score']
+        : '?';
+    console.log('[DVantage Router] REQUEST_SCORE — score received:', score);
+
+    // Cache score keyed by sourceUrl — fire-and-forget
+    void (async (): Promise<void> => {
+      try {
+        const jobStored = await chrome.storage.local.get([STORAGE_KEYS.ACTIVE_JOB]);
+        const activeJob = jobStored[STORAGE_KEYS.ACTIVE_JOB] as Record<string, unknown> | undefined;
+        const sourceUrl = typeof activeJob?.['sourceUrl'] === 'string'
+          ? activeJob['sourceUrl']
+          : null;
+        if (!sourceUrl) return;
+        await chrome.storage.local.set({
+          [STORAGE_KEYS.CACHED_SCORE]: { sourceUrl, result: data },
+        });
+        console.log('[DVantage Router] CACHED_SCORE written — url:', sourceUrl);
+      } catch (err) {
+        console.warn('[DVantage Router] CACHED_SCORE write failed:', err);
+      }
+    })();
   })();
 }
 
 // ---------------------------------------------------------------------------
-// REQUEST_AUTOFILL handler (D11 stub)
+// REQUEST_PROFILE handler
 // ---------------------------------------------------------------------------
 
-function handleRequestAutofill(sendResponse: (response: unknown) => void): void {
-  // D11: inject autofill logic via chrome.scripting.executeScript into the
-  // active tab, using the resolved site adapter's fillFields() method.
-  sendResponse({ ok: false, error: 'not_implemented' });
-  console.log('[DVantage Router] REQUEST_AUTOFILL — stub (D11)');
+function handleRequestProfile(
+  sendResponse: (response: unknown) => void,
+): void {
+  void (async (): Promise<void> => {
+    try {
+      const profile = await resolveProfile();
+      sendResponse({ ok: true, profile });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      sendResponse({ ok: false, error: message });
+      console.error('[DVantage Router] REQUEST_PROFILE — failed:', err);
+    }
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// REQUEST_AUTOFILL handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Orchestrate the autofill flow:
+ *   1. Resolve autofill profile (cache or API).
+ *   2. Find the active tab.
+ *   3. Send EXECUTE_AUTOFILL to the content script via chrome.tabs.sendMessage.
+ *   4. Content script calls fillFields() and sends back AutofillExecutionResponse.
+ *   5. Forward AUTOFILL_COMPLETE to the side panel via sendResponse.
+ */
+function handleRequestAutofill(
+  payload:      unknown,
+  sendResponse: (response: unknown) => void,
+): void {
+  if (!isValidAutofillPayload(payload)) {
+    sendResponse({ ok: false, error: 'invalid_payload' });
+    return;
+  }
+
+  void (async (): Promise<void> => {
+    // 1. Resolve profile
+    let profile: UserProfile;
+    try {
+      profile = await resolveProfile();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'profile_fetch_failed';
+      sendResponse({ ok: false, error: msg });
+      console.error('[DVantage Router] REQUEST_AUTOFILL — profile resolve failed:', err);
+      return;
+    }
+
+    // 2. Find the active tab
+    let tabId: number | undefined;
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tabs[0]?.id;
+    } catch (err) {
+      console.error('[DVantage Router] REQUEST_AUTOFILL — chrome.tabs.query failed:', err);
+    }
+
+    if (!tabId) {
+      sendResponse({ ok: false, error: 'no_active_tab' });
+      console.warn('[DVantage Router] REQUEST_AUTOFILL — no active tab found');
+      return;
+    }
+
+    // 3. Send EXECUTE_AUTOFILL to the content script
+    let result: AutofillExecutionResponse;
+    try {
+      result = await chrome.tabs.sendMessage(tabId, {
+        type:    'EXECUTE_AUTOFILL',
+        payload: { profile },
+      }) as AutofillExecutionResponse;
+    } catch (err) {
+      sendResponse({ ok: false, error: 'content_script_error' });
+      console.error('[DVantage Router] REQUEST_AUTOFILL — sendMessage to content script failed:', err);
+      return;
+    }
+
+    if (!result.ok) {
+      sendResponse({ ok: false, error: result.error });
+      return;
+    }
+
+    // 4. Report back to side panel
+    sendResponse({
+      ok:           true,
+      fieldsFilled: result.filled,
+      skipped:      result.skipped,
+    });
+
+    console.log(
+      `[DVantage Router] REQUEST_AUTOFILL complete — filled:${result.filled} skipped:${result.skipped.length}`,
+    );
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// REQUEST_PROFILE_UPDATE handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle a PATCH /v1/extension/profile request from the settings panel.
+ *
+ * Flow:
+ *   1. Validate payload { phone, linkedinUrl }.
+ *   2. Read Bearer token from storage.
+ *   3. PATCH /v1/extension/profile — API upserts user_profiles row.
+ *   4. On success: atomically replace CACHED_PROFILE with fresh API response.
+ *      This ensures AutofillPanel and subsequent REQUEST_PROFILE calls use
+ *      the just-saved values immediately without waiting for TTL expiry.
+ *   5. Respond with { ok: true; profile: UserProfile }.
+ *   6. On any failure: respond with { ok: false; error: string }.
+ */
+function handleRequestProfileUpdate(
+  payload:      unknown,
+  sendResponse: (response: unknown) => void,
+): void {
+  if (!isValidProfileUpdatePayload(payload)) {
+    sendResponse({ ok: false, error: 'invalid_payload' });
+    return;
+  }
+
+  void (async (): Promise<void> => {
+    // 1. Read token
+    const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
+    const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+
+    if (!token) {
+      sendResponse({ ok: false, error: 'not_authenticated' });
+      console.warn('[DVantage Router] REQUEST_PROFILE_UPDATE — no token in storage');
+      return;
+    }
+
+    // 2. PATCH /v1/extension/profile
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/v1/extension/profile`, {
+        method:  'PATCH',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept':        'application/json',
+        },
+        body: JSON.stringify({
+          phone:       payload.phone,
+          linkedinUrl: payload.linkedinUrl,
+        }),
+      });
+    } catch (err) {
+      sendResponse({ ok: false, error: 'network_error' });
+      console.error('[DVantage Router] REQUEST_PROFILE_UPDATE — fetch failed:', err);
+      return;
+    }
+
+    if (response.status === 401) {
+      sendResponse({ ok: false, error: 'not_authenticated' });
+      return;
+    }
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      sendResponse({ ok: false, error: 'update_failed' });
+      console.error(
+        `[DVantage Router] REQUEST_PROFILE_UPDATE — API error ${response.status}:`,
+        errText.slice(0, 200),
+      );
+      return;
+    }
+
+    // 3. Parse fresh profile from PATCH response
+    let freshProfile: UserProfile;
+    try {
+      const data = await response.json() as unknown;
+      if (typeof data !== 'object' || data === null) {
+        throw new Error('invalid response shape');
+      }
+      freshProfile = data as UserProfile;
+    } catch (err) {
+      sendResponse({ ok: false, error: 'invalid_response' });
+      console.error('[DVantage Router] REQUEST_PROFILE_UPDATE — JSON parse failed:', err);
+      return;
+    }
+
+    // 4. Atomically replace CACHED_PROFILE — no TTL reset needed (just saved)
+    writeCachedProfile(freshProfile);
+
+    // 5. Respond with fresh profile so SettingsPanel can re-populate fields
+    sendResponse({ ok: true, profile: freshProfile });
+
+    console.log(
+      '[DVantage Router] REQUEST_PROFILE_UPDATE complete — hasPhone:',
+      !!freshProfile.phone,
+      'hasLinkedIn:', !!freshProfile.linkedinUrl,
+    );
+  })();
 }
 
 // ---------------------------------------------------------------------------
 // Public router — called from background/index.ts onMessage listener
 // ---------------------------------------------------------------------------
 
-/**
- * Route a chrome.runtime message to the correct handler.
- *
- * @returns true  if sendResponse will be called asynchronously
- * @returns undefined if the message was not handled or was handled synchronously
- */
 export function routeMessage(
   message:      unknown,
   sender:       chrome.runtime.MessageSender,
@@ -178,31 +561,60 @@ export function routeMessage(
 
   switch (type) {
     case 'JOB_DETECTED': {
-      // JOB_DETECTED must originate from a content script (sender.tab present).
       if (!sender.tab) {
-        console.warn('[DVantage Router] JOB_DETECTED received from non-content-script context — ignoring');
+        console.warn('[DVantage Router] JOB_DETECTED from non-content-script — ignoring');
         return undefined;
       }
       handleJobDetected(m['payload']);
-      return undefined; // fire-and-forget; no sendResponse
+      return undefined;
+    }
+
+    case 'FORM_DETECTED': {
+      if (!sender.tab) {
+        console.warn('[DVantage Router] FORM_DETECTED from non-content-script — ignoring');
+        return undefined;
+      }
+      handleFormDetected(m['payload']);
+      return undefined;
+    }
+
+    case 'FORM_CLEARED': {
+      if (!sender.tab) return undefined;
+      handleFormCleared();
+      return undefined;
     }
 
     case 'REQUEST_SCORE': {
-      // REQUEST_SCORE must originate from the side panel (no sender.tab).
       if (sender.tab) {
         console.warn('[DVantage Router] REQUEST_SCORE from unexpected content-script context — ignoring');
         return undefined;
       }
       handleRequestScore(m['payload'], sendResponse);
-      return true; // async — keep message channel open
+      return true;
+    }
+
+    case 'REQUEST_PROFILE': {
+      handleRequestProfile(sendResponse);
+      return true;
     }
 
     case 'REQUEST_AUTOFILL': {
-      handleRequestAutofill(sendResponse);
-      return undefined; // synchronous stub response
+      handleRequestAutofill(m['payload'], sendResponse);
+      return true;
+    }
+
+    case 'REQUEST_PROFILE_UPDATE': {
+      handleRequestProfileUpdate(m['payload'], sendResponse);
+      return true;
     }
 
     default:
-      return undefined; // not handled here — caller may fall through
+      return undefined;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Type re-exports — keep consumers from importing two files
+// ---------------------------------------------------------------------------
+
+export type { ScoreResult };

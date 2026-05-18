@@ -3,15 +3,17 @@
 //
 // Visual redesign from flat row → inner card with rounded-square avatar.
 //
+// D11: onOpenSettings prop added. Gear (⚙) button in card footer navigates
+//      to SettingsPanel via the view-state in App.tsx. No router needed —
+//      App.tsx owns a simple 'main' | 'settings' view state.
+//
 // Layout:
 //   section wrapper (padding only)
 //   └── card (surface-1, border-2, radius 10px)
 //       ├── profile row (avatar + identity)
-//       └── card footer (divider + sign-out)
+//       └── card footer (divider + sign-out + settings button)
 //
 // Avatar: rounded square (10px radius), surface-3 bg, brand-300 initials.
-//   Rationale: rounded-square reads as a product UI element rather than a
-//   generic user icon, reinforcing D'Vantage's tool identity.
 //
 // Data strategy: stale-while-revalidate (unchanged from D5).
 // Sign-out flow: unchanged from D5.
@@ -28,6 +30,11 @@ interface UserProfile {
   name:  string;
   email: string;
   plan:  'free' | 'premium';
+}
+
+interface ProfilePanelProps {
+  /** Called when the user clicks the settings (⚙) button. */
+  onOpenSettings: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +81,7 @@ async function fetchProfile(token: string): Promise<UserProfile | null> {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function ProfilePanel() {
+export default function ProfilePanel({ onOpenSettings }: ProfilePanelProps) {
   const [profile,    setProfile]    = useState<UserProfile | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -149,7 +156,7 @@ export default function ProfilePanel() {
     <div style={styles.section}>
       <div style={styles.card}>
 
-        {/* ── Profile row ──────────────────────────────────────────────── */}
+        {/* ── Profile row ──────────────────────────────────────────────────── */}
         <div style={styles.profileRow}>
 
           {/* Rounded-square avatar */}
@@ -180,8 +187,10 @@ export default function ProfilePanel() {
 
         </div>
 
-        {/* ── Card footer — sign out ────────────────────────────────────── */}
+        {/* ── Card footer — sign out + settings ─────────────────────────── */}
         <div style={styles.cardFooter}>
+
+          {/* Sign out */}
           <button
             type="button"
             style={{
@@ -209,6 +218,33 @@ export default function ProfilePanel() {
             </svg>
             {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
+
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+
+          {/* Settings button */}
+          <button
+            type="button"
+            style={styles.settingsBtn}
+            onClick={onOpenSettings}
+            aria-label="Open profile settings"
+            title="Profile settings"
+          >
+            <svg
+              width="13" height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+
         </div>
 
       </div>
@@ -247,12 +283,10 @@ function ProfileSkeleton() {
 // ---------------------------------------------------------------------------
 
 const styles = {
-  /* Outer wrapper — just spacing, no visible chrome */
   section: {
     padding: '12px 14px 0',
   },
 
-  /* Inner card — surface-1, subtle border, 10px radius */
   card: {
     backgroundColor: 'var(--vt-surface-1)',
     border:          '0.5px solid var(--vt-border-2)',
@@ -260,7 +294,6 @@ const styles = {
     overflow:        'hidden',
   },
 
-  /* Profile row — avatar + identity, no bottom border */
   profileRow: {
     display:    'flex',
     alignItems: 'center',
@@ -268,7 +301,6 @@ const styles = {
     padding:    '12px',
   },
 
-  /* Rounded-square avatar — the Direction 2 signature element */
   avatar: {
     width:           '36px',
     height:          '36px',
@@ -288,7 +320,6 @@ const styles = {
     userSelect: 'none' as const,
   },
 
-  /* Identity block */
   identity: {
     display:       'flex',
     flexDirection: 'column' as const,
@@ -322,7 +353,6 @@ const styles = {
     whiteSpace:   'nowrap' as const,
   },
 
-  /* Plan badge */
   planBadge: {
     fontFamily:    "'DM Sans', sans-serif",
     fontSize:      '10px',
@@ -342,13 +372,13 @@ const styles = {
     backgroundColor: 'color-mix(in srgb, var(--vt-brand-500) 12%, transparent)',
   },
 
-  /* Card footer — divider + sign-out */
   cardFooter: {
     borderTop:  '0.5px solid var(--vt-border-1)',
     padding:    '9px 12px',
     display:    'flex',
     alignItems: 'center',
   },
+
   signOutBtn: {
     display:    'inline-flex',
     alignItems: 'center',
@@ -368,7 +398,19 @@ const styles = {
     cursor: 'not-allowed' as const,
   },
 
-  /* Skeleton bars */
+  /** Gear icon button — right-aligned in the card footer. */
+  settingsBtn: {
+    display:    'inline-flex',
+    alignItems: 'center',
+    padding:    '3px',
+    border:     'none',
+    background: 'transparent',
+    color:      'var(--vt-text-4)',
+    cursor:     'pointer',
+    borderRadius:'4px',
+    transition: 'color 120ms',
+  },
+
   skeletonBar: {
     height:          '8px',
     borderRadius:    '4px',
