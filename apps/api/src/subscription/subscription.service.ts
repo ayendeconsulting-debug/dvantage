@@ -118,18 +118,18 @@ export class SubscriptionService {
     user: AuthUser,
     priceId: string,
   ): Promise<CheckoutSessionDto> {
-    const sub       = await this.getOrCreateSubscription(user.id);
-    const appUrl    = process.env['APP_URL'] ?? 'http://localhost:3000';
+    const sub        = await this.getOrCreateSubscription(user.id);
+    const appUrl     = process.env['APP_URL'] ?? 'http://localhost:3000';
     const customerId = await this.getOrCreateStripeCustomer(user, sub.id);
 
     const session = await this.stripe.checkout.sessions.create({
-      customer:             customerId,
-      mode:                 'subscription',
-      line_items:           [{ price: priceId, quantity: 1 }],
-      success_url:          `${appUrl}/dashboard/settings/billing?success=1`,
-      cancel_url:           `${appUrl}/dashboard/settings/billing?canceled=1`,
+      customer:              customerId,
+      mode:                  'subscription',
+      line_items:            [{ price: priceId, quantity: 1 }],
+      success_url:           `${appUrl}/dashboard/settings/billing?success=1`,
+      cancel_url:            `${appUrl}/dashboard/settings/billing?canceled=1`,
       allow_promotion_codes: true,
-      metadata:             { userId: user.id, subscriptionRowId: sub.id },
+      metadata:              { userId: user.id, subscriptionRowId: sub.id },
     });
 
     if (!session.url) {
@@ -155,8 +155,8 @@ export class SubscriptionService {
 
     const appUrl  = process.env['APP_URL'] ?? 'http://localhost:3000';
     const session = await this.stripe.billingPortal.sessions.create({
-      customer:    sub.stripeCustomerId,
-      return_url:  `${appUrl}/dashboard/settings/billing`,
+      customer:   sub.stripeCustomerId,
+      return_url: `${appUrl}/dashboard/settings/billing`,
     });
 
     this.logger.log(`Portal session created — user=${user.id}`);
@@ -164,7 +164,7 @@ export class SubscriptionService {
   }
 
   // ---------------------------------------------------------------------------
-  // Webhook helpers — called by StripeWebhookController (M4-B)
+  // Webhook helpers — called by StripeWebhookController
   // ---------------------------------------------------------------------------
 
   async handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
@@ -197,23 +197,80 @@ export class SubscriptionService {
     this.logger.log(`Subscription activated — user=${userId}`);
   }
 
+  /**
+   * Handles customer.subscription.updated.
+   *
+   * Stripe does NOT guarantee event delivery order. In a race condition,
+   * this event can fire BEFORE checkout.session.completed is processed,
+   * meaning our DB row may not yet have stripeSubscriptionId stamped.
+   *
+   * Strategy:
+   *   1. Primary path   — match by stripeSubscriptionId (steady-state, fast path)
+   *   2. Fallback path  — match by stripeCustomerId (race condition recovery)
+   *      Also writes stripeSubscriptionId so future events hit the primary path.
+   *   3. If both miss   — log error, return 200 (do NOT throw — prevents Stripe retry storm)
+   */
   async handleSubscriptionUpdated(stripeSub: Stripe.Subscription): Promise<void> {
-    const isActive = ['active', 'trialing'].includes(stripeSub.status);
+    const isActive   = ['active', 'trialing'].includes(stripeSub.status);
+    const customerId = stripeSub.customer as string;
 
-    await this.db
+    const patch = {
+      plan:                 (isActive ? 'premium' : 'free') as PlanType,
+      // Always stamp stripeSubscriptionId — critical for the fallback path to
+      // ensure future events match via the primary path.
+      stripeSubscriptionId: stripeSub.id,
+      stripePriceId:        (stripeSub.items.data[0]?.price.id) ?? null,
+      status:               stripeSub.status as SubscriptionStatus,
+      currentPeriodStart:   new Date(stripeSub.current_period_start * 1000),
+      currentPeriodEnd:     new Date(stripeSub.current_period_end   * 1000),
+      cancelAtPeriodEnd:    stripeSub.cancel_at_period_end,
+      updatedAt:            new Date(),
+    };
+
+    // -- Primary path: match by stripeSubscriptionId (steady-state) -----------
+    const bySubId = await this.db
       .update(subscriptions)
-      .set({
-        plan:              isActive ? 'premium' : 'free',
-        stripePriceId:     (stripeSub.items.data[0]?.price.id) ?? null,
-        status:            stripeSub.status as SubscriptionStatus,
-        currentPeriodStart: new Date(stripeSub.current_period_start * 1000),
-        currentPeriodEnd:   new Date(stripeSub.current_period_end   * 1000),
-        cancelAtPeriodEnd:  stripeSub.cancel_at_period_end,
-        updatedAt:          new Date(),
-      })
-      .where(eq(subscriptions.stripeSubscriptionId, stripeSub.id));
+      .set(patch)
+      .where(eq(subscriptions.stripeSubscriptionId, stripeSub.id))
+      .returning({ id: subscriptions.id });
 
-    this.logger.log(`Subscription updated — stripe_id=${stripeSub.id} status=${stripeSub.status}`);
+    if (bySubId.length > 0) {
+      this.logger.log(
+        `Subscription updated — stripe_id=${stripeSub.id} status=${stripeSub.status}`,
+      );
+      return;
+    }
+
+    // -- Fallback path: match by stripeCustomerId (race condition recovery) ---
+    this.logger.warn(
+      `handleSubscriptionUpdated: no row matched by subscription ID — ` +
+      `falling back to customer ID (likely race condition). ` +
+      `stripe_sub=${stripeSub.id} stripe_customer=${customerId}`,
+    );
+
+    const byCustomerId = await this.db
+      .update(subscriptions)
+      .set(patch)
+      .where(eq(subscriptions.stripeCustomerId, customerId))
+      .returning({ id: subscriptions.id });
+
+    if (byCustomerId.length === 0) {
+      // Both paths missed — event arrived before checkout created the customer.
+      // This should not happen in normal flow; investigate if this log appears.
+      this.logger.error(
+        `handleSubscriptionUpdated: no subscription row found for ` +
+        `stripe_customer=${customerId} stripe_sub=${stripeSub.id} — event dropped. ` +
+        `This indicates checkout.session.completed has not yet been processed.`,
+      );
+      // Return normally — do NOT throw. Throwing here would cause Stripe to
+      // receive a 500 and retry, which will not help if the row doesn't exist.
+      return;
+    }
+
+    this.logger.log(
+      `Subscription updated via customer fallback — ` +
+      `customer=${customerId} status=${stripeSub.status}`,
+    );
   }
 
   async handleSubscriptionDeleted(stripeSub: Stripe.Subscription): Promise<void> {
