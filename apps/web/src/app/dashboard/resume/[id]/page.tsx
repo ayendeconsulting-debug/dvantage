@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
@@ -281,15 +281,15 @@ export default function ResumeDetailPage() {
         <div>
           <h1 style={{ fontFamily: 'var(--vt-font-display)', fontSize: '20px', fontWeight: 600, color: 'var(--vt-text-primary)', margin: '0 0 4px', wordBreak: 'break-all' }}>{data.fileName}</h1>
           <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
-            v{data.versionNumber} \u00b7 {(data.fileSize / 1024).toFixed(0)} KB \u00b7 {new Date(data.createdAt).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
+            v{data.versionNumber} · {(data.fileSize / 1024).toFixed(0)} KB · {new Date(data.createdAt).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
           </p>
         </div>
 
-        {/* Action buttons â€” shown when parse is complete */}
+        {/* Action buttons Ã¢â‚¬â€ shown when parse is complete */}
         {isComplete && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
 
-            {/* Original file download â€” always available */}
+            {/* Original file download Ã¢â‚¬â€ always available */}
             {data.downloadUrl && (
               <a href={data.downloadUrl} download={data.fileName} style={btnBase}>
                 <Download size={13} strokeWidth={1.5} />
@@ -297,7 +297,7 @@ export default function ResumeDetailPage() {
               </a>
             )}
 
-            {/* Export-version picker â€” only shown when optimizations exist */}
+            {/* Export-version picker Ã¢â‚¬â€ only shown when optimizations exist */}
             {hasOptimizations && (
               <select
                 value={selectedExport}
@@ -361,7 +361,7 @@ export default function ResumeDetailPage() {
 
       {isParsing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', border: '1px solid var(--vt-status-warning)', background: '#3d2e0a', borderRadius: '8px', fontFamily: 'var(--vt-font-body)', fontSize: '13.5px', color: 'var(--vt-text-body)', marginBottom: '24px' }}>
-          <Loader size={15} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Analysing your resume \u2014 this usually takes 20\u201340 seconds.
+          <Loader size={15} strokeWidth={1.5} style={{ animation: 'spin 1s linear infinite' }} />Analysing your resume — this usually takes 20–40 seconds.
         </div>
       )}
 
@@ -408,7 +408,7 @@ export default function ResumeDetailPage() {
                       <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{exp.company}</p>
                     </div>
                     <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-muted)', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {exp.startDate} \u2014 {exp.current ? 'Present' : exp.endDate ?? ''}
+                      {exp.startDate} — {exp.current ? 'Present' : exp.endDate ?? ''}
                     </p>
                   </div>
                   {exp.description && (
@@ -436,7 +436,7 @@ export default function ResumeDetailPage() {
                       <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{edu.institution}</p>
                     </div>
                     <p style={{ fontFamily: 'var(--vt-font-mono)', fontSize: '11px', color: 'var(--vt-text-muted)', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {edu.startDate}{edu.endDate ? ` \u2014 ${edu.endDate}` : ''}{edu.gpa ? ` \u00b7 GPA ${edu.gpa}` : ''}
+                      {edu.startDate}{edu.endDate ? ` \u2014 ${edu.endDate}` : ''}{edu.gpa ? ` · GPA ${edu.gpa}` : ''}
                     </p>
                   </div>
                 </div>
@@ -461,7 +461,7 @@ export default function ResumeDetailPage() {
               {sd.certifications.map((c, i) => (
                 <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: '1px solid var(--vt-surface-border)' }}>
                   <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '14px', fontWeight: 500, color: 'var(--vt-text-primary)', margin: '0 0 2px' }}>{c.name}</p>
-                  <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{c.issuer}{c.date ? ` \u00b7 ${c.date}` : ''}</p>
+                  <p style={{ fontFamily: 'var(--vt-font-body)', fontSize: '13px', color: 'var(--vt-text-secondary)', margin: 0 }}>{c.issuer}{c.date ? ` · ${c.date}` : ''}</p>
                 </div>
               ))}
             </Section>
@@ -471,3 +471,6 @@ export default function ResumeDetailPage() {
     </div>
   );
 }
+
+
+
