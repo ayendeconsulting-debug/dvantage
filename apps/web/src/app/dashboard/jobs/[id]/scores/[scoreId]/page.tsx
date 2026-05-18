@@ -233,7 +233,7 @@ function SectionBars({ label, before, after }: SectionBarsProps) {
               fontSize:        '11px',
               fontWeight:      500,
               color:           deltaColor(delta),
-              backgroundColor: delta > 0 ? '#0a2e1e' : delta < 0 ? '#2e0a0a' : 'transparent',
+              backgroundColor: delta > 0 ? 'var(--vt-bg-success)' : delta < 0 ? 'var(--vt-bg-danger)' : 'transparent',
               padding:         '1px 6px',
               borderRadius:    '4px',
             }}>
@@ -277,8 +277,8 @@ function SectionBars({ label, before, after }: SectionBarsProps) {
 
 function Pill({ text, variant }: { text: string; variant: 'gap' | 'match' }) {
   const s = variant === 'gap'
-    ? { color: 'var(--vt-status-danger)',  bg: '#2e0a0a' }
-    : { color: 'var(--vt-status-success)', bg: '#0a2e1e' };
+    ? { color: 'var(--vt-status-danger)',  bg: 'var(--vt-bg-danger)' }
+    : { color: 'var(--vt-status-success)', bg: 'var(--vt-bg-success)' };
   return (
     <span style={{
       display:         'inline-block',
@@ -372,7 +372,7 @@ function DiffView({
   }
 
   const highlightStyle: React.CSSProperties = {
-    backgroundColor: '#1e3a1a',
+    backgroundColor: 'var(--vt-bg-diff-added)',
     borderLeft:      '2px solid var(--vt-status-success)',
     paddingLeft:     '8px',
     borderRadius:    '0 4px 4px 0',
@@ -672,7 +672,7 @@ export default function ScoreDetailPage() {
       </h1>
 
       {error && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'var(--vt-bg-danger)', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '20px' }}>
           <AlertCircle size={15} strokeWidth={1.5} />{error}
         </div>
       )}
@@ -688,7 +688,7 @@ export default function ScoreDetailPage() {
 
       {/* Scoring failed */}
       {score?.scoringStatus === 'failed' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'var(--vt-bg-danger)', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
           <XCircle size={15} strokeWidth={1.5} />Scoring failed: {score.scoreError ?? 'Unknown error.'}
         </div>
       )}
@@ -720,7 +720,7 @@ export default function ScoreDetailPage() {
                   {OptimizeControls}
                 </div>
                 {optError && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: 'var(--vt-bg-danger)', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
                     <AlertCircle size={14} strokeWidth={1.5} />{optError}
                   </div>
                 )}
@@ -798,7 +798,7 @@ export default function ScoreDetailPage() {
                 </div>
 
                 {exportError && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: 'var(--vt-bg-danger)', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '12px' }}>
                     <AlertCircle size={14} strokeWidth={1.5} />{exportError}
                   </div>
                 )}

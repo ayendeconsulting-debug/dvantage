@@ -10,10 +10,10 @@ import type { JobDescriptionDetail, AtsScoreListItem, ScoringStatus } from '@/li
 import type { ResumeVersionListItem } from '@/lib/api/resume';
 
 const SCORE_STATUS: Record<ScoringStatus, { label: string; color: string; bg: string }> = {
-  pending:  { label: 'Queued',   color: 'var(--vt-status-info)',    bg: '#1e3a5f' },
-  scoring:  { label: 'Scoring…', color: 'var(--vt-status-warning)', bg: '#3d2e0a' },
-  complete: { label: 'Complete', color: 'var(--vt-status-success)', bg: '#0a2e1e' },
-  failed:   { label: 'Failed',   color: 'var(--vt-status-danger)',  bg: '#2e0a0a' },
+  pending:  { label: 'Queued',   color: 'var(--vt-status-info)',    bg: 'var(--vt-bg-info)' },
+  scoring:  { label: 'Scoring…', color: 'var(--vt-status-warning)', bg: 'var(--vt-bg-warning)' },
+  complete: { label: 'Complete', color: 'var(--vt-status-success)', bg: 'var(--vt-bg-success)' },
+  failed:   { label: 'Failed',   color: 'var(--vt-status-danger)',  bg: 'var(--vt-bg-danger)' },
 };
 
 function ScoreBadge({ status }: { status: ScoringStatus }) {
@@ -99,7 +99,7 @@ export default function JobDetailPage() {
         <Link href="/dashboard/jobs" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--vt-text-muted)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginBottom: '24px', textDecoration: 'none' }}>
           <ArrowLeft size={14} strokeWidth={1.5} />Back to jobs
         </Link>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: 'var(--vt-bg-danger)', border: '1px solid var(--vt-status-danger)', borderRadius: '8px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px' }}>
           <AlertCircle size={15} strokeWidth={1.5} />{error ?? 'Job not found.'}
         </div>
       </div>
@@ -170,7 +170,7 @@ export default function JobDetailPage() {
         )}
 
         {scoreError && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: '#2e0a0a', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', backgroundColor: 'var(--vt-bg-danger)', border: '1px solid var(--vt-status-danger)', borderRadius: '6px', color: 'var(--vt-status-danger)', fontFamily: 'var(--vt-font-body)', fontSize: '13px', marginTop: '12px' }}>
             <AlertCircle size={14} strokeWidth={1.5} />{scoreError}
           </div>
         )}
