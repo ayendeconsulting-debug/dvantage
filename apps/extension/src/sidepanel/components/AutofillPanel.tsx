@@ -1,31 +1,16 @@
 // ---------------------------------------------------------------------------
-// AutofillPanel
+// AutofillPanel — D13 Tier A
 //
-// Renders the autofill UI inside the side panel. Sits below ScorePanel in App.tsx.
+// State machine:
+//   idle → loading → ready → filling → complete → error
 //
-// States:
-//   idle      – no application form detected. Renders nothing.
-//   loading   – fetching profile from background SW.
-//   ready     – form detected; profile loaded; field-value preview shown.
-//   filling   – autofill in progress.
-//   complete  – fields filled; capture fired; review reminder shown.
-//   error     – profile fetch or fill failed; retryable.
-//
-// D11 – M19 addition:
-//   On transition to 'complete', reads ACTIVE_JOB from chrome.storage.local
-//   and fires REQUEST_CAPTURE { company, role, pageUrl } to the background SW.
-//   This is fire-and-forget – the complete state renders immediately, the
-//   capture POST happens asynchronously, and failures are silent.
-//
-// D12 – manualFields addition:
-//   ActiveForm.manualFields (file upload fields) are rendered in the ready
-//   state below fillableFields with a 📎 "Manual upload required" label.
-//   These fields are never attempted by fillFields() — the user must upload
-//   their resume/file manually after autofill completes.
-//   fieldCount now includes both fillable + manual fields (combined total).
-//
-// D12 – dead link fix:
-//   Replaced broken dvantage.ca/settings/profile link with ⚙ button copy.
+// D13 Tier A changes:
+//   - skipped: string[] → SkippedField[] throughout (complete state + response)
+//   - getProfileValue() updated with new AutofillFieldKey values:
+//     location, github, currentTitle, currentCompany, university, degree,
+//     graduationYear — powers the ready-state field preview for new probes
+//   - Complete state renders skipped.map(s => s.label) for display
+//   - profile.topSkills access is now safe (API renamed skills → topSkills)
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef, useState } from 'react';
@@ -36,6 +21,7 @@ import type {
   AutofillFieldKey,
   AutofillPreviewField,
   ExtractedJob,
+  SkippedField,
   UserProfile,
 } from '../../shared/types';
 
@@ -46,13 +32,17 @@ import type {
 type PanelState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; form: ActiveForm; profile: UserProfile }
+  | { status: 'ready';    form: ActiveForm; profile: UserProfile }
   | { status: 'filling' }
-  | { status: 'complete'; filled: number; skipped: string[] }
-  | { status: 'error'; message: string };
+  | { status: 'complete'; filled: number; skipped: SkippedField[] }
+  | { status: 'error';    message: string };
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Profile value resolver — panel display variant
+//
+// Mirrors shared/profile-resolver.ts but with display-specific tweaks:
+//   - summary is truncated to 80 chars for compact panel preview
+//   - graduationYear is formatted as a standalone year string
 // ---------------------------------------------------------------------------
 
 function getProfileValue(
@@ -60,14 +50,34 @@ function getProfileValue(
   profile:    UserProfile,
 ): string | null {
   switch (profileKey) {
-    case 'firstName':   return profile.firstName || null;
-    case 'lastName':    return profile.lastName  || null;
-    case 'fullName':    return `${profile.firstName} ${profile.lastName}`.trim() || null;
-    case 'email':       return profile.email     || null;
-    case 'phone':       return profile.phone;
-    case 'linkedinUrl': return profile.linkedinUrl;
-    case 'currentRole': return profile.currentRole;
-    case 'topSkills':   return profile.topSkills.length > 0 ? profile.topSkills.join(', ') : null;
+    case 'firstName':      return profile.firstName || null;
+    case 'lastName':       return profile.lastName  || null;
+    case 'fullName':       return `${profile.firstName} ${profile.lastName}`.trim() || null;
+    case 'email':          return profile.email     || null;
+    case 'phone':          return profile.phone;
+    case 'linkedinUrl':    return profile.linkedinUrl;
+    case 'github':         return profile.github;
+    case 'location':       return profile.location;
+    case 'currentRole':    return profile.currentRole;
+    case 'currentTitle':   return profile.experience?.[0]?.title   ?? null;
+    case 'currentCompany': return profile.experience?.[0]?.company  ?? null;
+    case 'university':     return profile.education?.[0]?.institution ?? null;
+    case 'degree': {
+      const edu = profile.education?.[0];
+      if (!edu) return null;
+      const deg   = edu.degree?.trim();
+      const field = edu.field?.trim();
+      if (!deg) return null;
+      return field ? `${deg} in ${field}` : deg;
+    }
+    case 'graduationYear': {
+      const edu = profile.education?.[0];
+      if (!edu?.endDate) return null;
+      const match = String(edu.endDate).match(/\b(20\d{2}|19\d{2})\b/);
+      return match?.[1] ?? null;
+    }
+    case 'topSkills':
+      return (profile.topSkills ?? []).length > 0 ? profile.topSkills.join(', ') : null;
     case 'summary': {
       const s = profile.summary;
       if (!s) return null;
@@ -78,33 +88,25 @@ function getProfileValue(
 }
 
 // ---------------------------------------------------------------------------
-// Capture helper – fire-and-forget
+// Capture helper — fire-and-forget
 // ---------------------------------------------------------------------------
 
-/**
- * Read ACTIVE_JOB from storage and fire REQUEST_CAPTURE to the background SW.
- * Never awaited – capture failure must not affect the complete state render.
- */
 function fireCapture(pageUrl: string): void {
   void (async (): Promise<void> => {
     try {
       const stored    = await chrome.storage.local.get([STORAGE_KEYS.ACTIVE_JOB]);
       const activeJob = stored[STORAGE_KEYS.ACTIVE_JOB] as ExtractedJob | null | undefined;
 
-      const company = activeJob?.company ?? null;
-      const role    = activeJob?.title   ?? null;
-
       chrome.runtime.sendMessage(
-        { type: 'REQUEST_CAPTURE', payload: { company, role, pageUrl } },
-        () => {
-          // Consume lastError – fire-and-forget; router returns undefined (no response).
-          void chrome.runtime.lastError;
+        {
+          type:    'REQUEST_CAPTURE',
+          payload: {
+            company: activeJob?.company ?? null,
+            role:    activeJob?.title   ?? null,
+            pageUrl,
+          },
         },
-      );
-
-      console.log(
-        `[DVantage AutofillPanel] REQUEST_CAPTURE fired – company="${company ?? '(null)'}" ` +
-        `role="${role ?? '(null)'}" url=${pageUrl}`,
+        () => { void chrome.runtime.lastError; },
       );
     } catch (err) {
       console.warn('[DVantage AutofillPanel] REQUEST_CAPTURE prep failed:', err);
@@ -116,9 +118,6 @@ function fireCapture(pageUrl: string): void {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-/**
- * Auto-fillable field row: shows the profile value (or "– not set" if empty).
- */
 function FieldRow({ field, profile }: { field: AutofillPreviewField; profile: UserProfile }) {
   const value = getProfileValue(field.profileKey, profile);
 
@@ -156,12 +155,6 @@ function FieldRow({ field, profile }: { field: AutofillPreviewField; profile: Us
   );
 }
 
-/**
- * D12: Manual upload field row.
- * Shown for file inputs (e.g. resume) that the autofill engine cannot fill.
- * Browsers block programmatic value setting on <input type="file">.
- * The user must upload manually after the autofill button is clicked.
- */
 function ManualFieldRow({ field }: { field: { label: string; required: boolean } }) {
   return (
     <div style={{
@@ -187,7 +180,6 @@ function ManualFieldRow({ field }: { field: { label: string; required: boolean }
       <span style={{
         fontSize:   '12px',
         color:      'var(--vt-warning)',
-        fontStyle:  'normal',
         lineHeight: '1.4',
         display:    'flex',
         alignItems: 'center',
@@ -208,7 +200,6 @@ export default function AutofillPanel() {
   const [state, setState] = useState<PanelState>({ status: 'idle' });
   const activeFormRef     = useRef<ActiveForm | null>(null);
 
-  // ── Bootstrap: read ACTIVE_FORM from storage on mount ──────────────────
   useEffect(() => {
     chrome.storage.local.get([STORAGE_KEYS.ACTIVE_FORM], (result) => {
       const form = result[STORAGE_KEYS.ACTIVE_FORM] as ActiveForm | null | undefined;
@@ -219,7 +210,6 @@ export default function AutofillPanel() {
     });
   }, []);
 
-  // ── React to ACTIVE_FORM changes ────────────────────────────────────────
   useEffect(() => {
     function handleStorageChange(
       changes: Record<string, chrome.storage.StorageChange>,
@@ -243,7 +233,6 @@ export default function AutofillPanel() {
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
-  // ── Profile fetch ───────────────────────────────────────────────────────
   function loadProfile(form: ActiveForm): void {
     setState({ status: 'loading' });
 
@@ -269,7 +258,6 @@ export default function AutofillPanel() {
     });
   }
 
-  // ── Autofill trigger ────────────────────────────────────────────────────
   function handleAutofill(): void {
     const form = activeFormRef.current;
     if (!form) return;
@@ -287,7 +275,7 @@ export default function AutofillPanel() {
         const resp = response as {
           ok:            boolean;
           fieldsFilled?: number;
-          skipped?:      string[];
+          skipped?:      SkippedField[];  // D13 Tier A: SkippedField[] not string[]
           error?:        string;
         };
 
@@ -301,27 +289,22 @@ export default function AutofillPanel() {
           return;
         }
 
-        // Transition to complete immediately – DO NOT await capture
         setState({
           status:  'complete',
           filled:  resp.fieldsFilled ?? 0,
           skipped: resp.skipped      ?? [],
         });
 
-        // Fire-and-forget capture – runs after state update, no blocking
         fireCapture(form.pageUrl);
       },
     );
   }
 
-  // ── Retry ───────────────────────────────────────────────────────────────
   function handleRetry(): void {
     const form = activeFormRef.current;
     if (form) loadProfile(form);
     else setState({ status: 'idle' });
   }
-
-  // ── Render ──────────────────────────────────────────────────────────────
 
   if (state.status === 'idle') return null;
 
@@ -341,21 +324,18 @@ export default function AutofillPanel() {
         </span>
       </div>
 
-      {/* Loading */}
       {state.status === 'loading' && (
         <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
           Loading your profile&hellip;
         </p>
       )}
 
-      {/* Filling */}
       {state.status === 'filling' && (
         <p style={{ fontSize: '12px', color: 'var(--vt-text-muted)', margin: 0 }}>
           Filling fields&hellip;
         </p>
       )}
 
-      {/* Error */}
       {state.status === 'error' && (
         <div>
           <p style={{ fontSize: '12px', color: 'var(--vt-danger)', margin: '0 0 10px' }}>
@@ -367,10 +347,7 @@ export default function AutofillPanel() {
         </div>
       )}
 
-      {/* Ready – field-value preview */}
       {state.status === 'ready' && (() => {
-        // Defensive: manualFields may be undefined in cached ACTIVE_FORM
-        // written by an older content script version before D12.
         const manualFields = state.form.manualFields ?? [];
 
         return (
@@ -387,17 +364,14 @@ export default function AutofillPanel() {
             </p>
 
             <div style={{ marginBottom: '12px' }}>
-              {/* Auto-fillable fields */}
               {state.form.fillableFields.map((field) => (
                 <FieldRow key={field.profileKey} field={field} profile={state.profile} />
               ))}
-              {/* Manual upload fields (📎) – D12 */}
               {manualFields.map((field) => (
                 <ManualFieldRow key={field.label} field={field} />
               ))}
             </div>
 
-            {/* "Empty fields" warning — only checks fillableFields, not manual */}
             {state.form.fillableFields.some(
               (f) => !getProfileValue(f.profileKey, state.profile),
             ) && (
@@ -421,7 +395,6 @@ export default function AutofillPanel() {
         );
       })()}
 
-      {/* Complete */}
       {state.status === 'complete' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
@@ -442,15 +415,15 @@ export default function AutofillPanel() {
               <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--vt-text)', margin: '0 0 4px' }}>
                 &#9888; {state.skipped.length} field{state.skipped.length !== 1 ? 's' : ''} need{state.skipped.length === 1 ? 's' : ''} review:
               </p>
-              {state.skipped.map((label) => (
-                <p key={label} style={{ fontSize: '11px', color: 'var(--vt-text-muted)', margin: '2px 0 0' }}>
-                  &middot; {label}
+              {/* D13 Tier A: skipped is SkippedField[] — use .label for display */}
+              {state.skipped.map((s) => (
+                <p key={s.label} style={{ fontSize: '11px', color: 'var(--vt-text-muted)', margin: '2px 0 0' }}>
+                  &middot; {s.label}
                 </p>
               ))}
             </div>
           )}
 
-          {/* Review reminder – always shown */}
           <div style={{
             padding:      '8px 10px',
             background:   'var(--vt-bg)',
@@ -472,10 +445,6 @@ export default function AutofillPanel() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Shared button style helper
-// ---------------------------------------------------------------------------
 
 function btnStyle(variant: 'primary' | 'secondary'): CSSProperties {
   const isPrimary = variant === 'primary';

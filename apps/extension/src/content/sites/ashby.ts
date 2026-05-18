@@ -1,35 +1,12 @@
 // ---------------------------------------------------------------------------
 // D'Vantage — Ashby Site Adapter
 //
-// Full implementation added in D10. (detectJD was a stub; skipped in D8.)
-//
-// Supported paths:
-//   https://jobs.ashbyhq.com/*
-//
-// Ashby is a React SPA. Job posting pages are client-rendered.
-// The SPA dispatcher in content/index.ts fires detectJD() + detectForm() on each
-// navigation event. All selectors target stable attributes.
-//
-// ── detectJD ──────────────────────────────────────────────────────────────
-//
-// Job posting URL: jobs.ashbyhq.com/:company/:jobId
-// Apply URL:       jobs.ashbyhq.com/:company/:jobId/application  (skip JD)
-//
-// Selector strategy (most-stable to least):
-//   Title:       h1 (first on posting page)
-//   Company:     [data-testid="org-name"] | meta[property="og:site_name"]
-//   Location:    [data-testid="location"]  | div containing "Remote"/"Hybrid" text
-//   Description: .ashby-job-posting-description | [data-testid="job-description"]
-//
-// ── detectForm / fillFields ──────────────────────────────────────────────
-//
-// Ashby apply page: /company/:jobId/application
-// Ashby forms are React-controlled. Label-based selector strategy is most
-// resilient — Ashby generates input IDs that match label[for] attributes.
-//
-// Field detection uses two passes:
-//   1. Exact id-based selectors (fastest, most reliable when stable)
-//   2. Label-text-based fallback (robust to id generation changes)
+// D13 Tier A changes:
+//   - Import resolveProfileValue from shared/profile-resolver
+//   - New label-based probes: location, github/website
+//   - fillFields() returns SkippedField[] instead of string[]
+//   - SkippedField.selector is '' for label-based fields (Tier B will use
+//     label-text lookup since Ashby generates unstable dynamic input IDs)
 // ---------------------------------------------------------------------------
 
 import type {
@@ -37,26 +14,24 @@ import type {
   ExtractedJob,
   FormField,
   SiteAdapter,
+  SkippedField,
   UserProfile,
 } from '../../shared/types';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import { resolveProfileValue } from '../../shared/profile-resolver';
 
 const ADAPTER_NAME = 'ashby';
 
 const JD_SELECTORS = {
-  title:          'h1',
-  orgName:        '[data-testid="org-name"]',
-  location:       '[data-testid="location"]',
-  descPrimary:    '.ashby-job-posting-description',
-  descTestId:     '[data-testid="job-description"]',
-  descFallback:   'main',
+  title:        'h1',
+  orgName:      '[data-testid="org-name"]',
+  location:     '[data-testid="location"]',
+  descPrimary:  '.ashby-job-posting-description',
+  descTestId:   '[data-testid="job-description"]',
+  descFallback: 'main',
 } as const;
 
 // ---------------------------------------------------------------------------
-// Text helpers (canonical pattern — locked Decision 88)
+// Text helpers
 // ---------------------------------------------------------------------------
 
 function cleanText(raw: string | null | undefined): string | null {
@@ -82,10 +57,6 @@ function firstMatch(...selectors: string[]): string | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Native input setter — React controlled-input compatibility
-// ---------------------------------------------------------------------------
-
 const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
 const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
 
@@ -106,20 +77,17 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
 // ---------------------------------------------------------------------------
 
 function extractCompany(): string | null {
-  // Primary: data-testid attribute added by Ashby for org branding
   const orgEl = textFrom(JD_SELECTORS.orgName);
   if (orgEl) return orgEl;
 
-  // Secondary: Open Graph meta tag (present on all Ashby job pages)
   const ogSite = document.querySelector<HTMLMetaElement>('meta[property="og:site_name"]');
   if (ogSite) {
     const candidate = cleanText(ogSite.content);
     if (candidate) return candidate;
   }
 
-  // Tertiary: page title pattern "Role at Company | Ashby"
-  const title    = document.title;
-  const atMatch  = title.match(/\bat\s+(.+?)(?:\s*[|—\-]|\s*$)/i);
+  const title   = document.title;
+  const atMatch = title.match(/\bat\s+(.+?)(?:\s*[|—\-]|\s*$)/i);
   if (atMatch?.[1]) {
     const candidate = cleanText(atMatch[1]);
     if (candidate) return candidate;
@@ -134,7 +102,6 @@ function extractCompany(): string | null {
 
 function isJobPostingPage(): boolean {
   const { pathname } = window.location;
-  // Posting: /:company/:jobId  (2 segments, no trailing /application)
   const segments = pathname.split('/').filter(Boolean);
   return segments.length === 2;
 }
@@ -144,13 +111,9 @@ function isApplicationPage(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Form detection — label-text-based (most resilient for React SPAs)
+// Form detection — label-text-based
 // ---------------------------------------------------------------------------
 
-/**
- * Find an input element by its associated label text.
- * Tries label[for] attribute first, then label > input child.
- */
 function findInputByLabel(
   labelText: string,
 ): HTMLInputElement | HTMLTextAreaElement | null {
@@ -160,14 +123,12 @@ function findInputByLabel(
     if (!text) continue;
     if (!text.toLowerCase().includes(labelText.toLowerCase())) continue;
 
-    // label[for="id"] pattern
     const forId = label.getAttribute('for');
     if (forId) {
       const el = document.getElementById(forId) as HTMLInputElement | HTMLTextAreaElement | null;
       if (el) return el;
     }
 
-    // label > input / label > textarea pattern
     const child = label.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
     if (child) return child;
   }
@@ -175,47 +136,52 @@ function findInputByLabel(
 }
 
 /**
- * Detect application form fields on Ashby /application pages.
+ * Label-based field definitions for Ashby application forms.
+ * D13 Tier A: added location and github/website probes.
  */
+const FIELD_DEFS: Array<{
+  profileKey:   string;
+  displayLabel: string;
+  required:     boolean;
+  labelSearch:  string;  // text to search in label innerText
+}> = [
+  { profileKey: 'firstName',   displayLabel: 'First name',       required: true,  labelSearch: 'first' },
+  { profileKey: 'lastName',    displayLabel: 'Last name',        required: true,  labelSearch: 'last' },
+  { profileKey: 'email',       displayLabel: 'Email',            required: true,  labelSearch: 'email' },
+  { profileKey: 'phone',       displayLabel: 'Phone',            required: false, labelSearch: 'phone' },
+  { profileKey: 'linkedinUrl', displayLabel: 'LinkedIn URL',     required: false, labelSearch: 'linkedin' },
+  { profileKey: 'github',      displayLabel: 'GitHub / Website', required: false, labelSearch: 'github' },
+  { profileKey: 'location',    displayLabel: 'Location',         required: false, labelSearch: 'location' },
+  { profileKey: 'summary',     displayLabel: 'Cover letter',     required: false, labelSearch: 'cover' },
+];
+
 function detectAshbyForm(): FormField[] {
   if (!isApplicationPage()) return [];
-
-  // Guard: confirm a form is actually rendered
   const hasForm = !!document.querySelector('form');
   if (!hasForm) return [];
 
   const fields: FormField[] = [];
 
-  function probeByLabel(
-    profileKey:  string,
-    label:       string,
-    required:    boolean,
-    labelSearch: string,
-  ): void {
-    const el = findInputByLabel(labelSearch);
-    if (!el) return;
+  for (const def of FIELD_DEFS) {
+    const el = findInputByLabel(def.labelSearch);
+    if (!el) continue;
 
     const tag  = el.tagName.toLowerCase();
     const type = (el as HTMLInputElement).type;
     fields.push({
-      name:        profileKey,
+      name:        def.profileKey,
       type:        tag === 'textarea' ? 'textarea'
                  : type === 'email'   ? 'email'
                  : type === 'tel'     ? 'tel'
                  : 'text',
-      label,
+      label:       def.displayLabel,
       placeholder: (el as HTMLInputElement).placeholder || null,
-      required,
-      selector:    `#${el.id || ''}`, // best-effort; el is found by reference in fillFields
+      required:    def.required,
+      // Label-based adapters don't have stable CSS selectors.
+      // Tier B AI fill uses labelSearch fallback when selector is ''.
+      selector:    el.id ? `#${el.id}` : '',
     });
   }
-
-  probeByLabel('firstName',   'First name',   true,  'first');
-  probeByLabel('lastName',    'Last name',     true,  'last');
-  probeByLabel('email',       'Email',         true,  'email');
-  probeByLabel('phone',       'Phone',         false, 'phone');
-  probeByLabel('linkedinUrl', 'LinkedIn URL',  false, 'linkedin');
-  probeByLabel('summary',     'Cover letter',  false, 'cover');
 
   return fields;
 }
@@ -228,7 +194,6 @@ export const ashbyAdapter: SiteAdapter = {
   detectJD(): ExtractedJob | null {
     const { pathname } = window.location;
 
-    // Apply page — skip JD extraction; ACTIVE_JOB already set from posting visit.
     if (isApplicationPage()) {
       console.debug(`[DVantage][${ADAPTER_NAME}] application page — JD extraction skipped`);
       return null;
@@ -241,25 +206,15 @@ export const ashbyAdapter: SiteAdapter = {
 
     const title = firstMatch(JD_SELECTORS.title);
     if (!title) {
-      // React SPA — DOM may not be hydrated yet; debounce will retry.
       console.debug(`[DVantage][${ADAPTER_NAME}] title not found — DOM may not be hydrated yet`);
       return null;
     }
 
-    const company = extractCompany();
-
-    // Location — Ashby renders location as a text div near the title.
-    const location = firstMatch(JD_SELECTORS.location);
-
-    // Description — try purpose-built class first, then generic fallback.
-    const description =
-      firstMatch(JD_SELECTORS.descPrimary, JD_SELECTORS.descTestId, JD_SELECTORS.descFallback) ?? '';
-
     const job: ExtractedJob = {
       title,
-      company,
-      location,
-      description,
+      company:     extractCompany(),
+      location:    firstMatch(JD_SELECTORS.location),
+      description: firstMatch(JD_SELECTORS.descPrimary, JD_SELECTORS.descTestId, JD_SELECTORS.descFallback) ?? '',
       sourceUrl:   window.location.href,
       extractedAt: new Date().toISOString(),
     };
@@ -282,48 +237,30 @@ export const ashbyAdapter: SiteAdapter = {
   fillFields(profile: UserProfile): AutofillResult {
     if (!isApplicationPage()) return { filled: 0, skipped: [] };
 
-    let filled  = 0;
-    const skipped: string[] = [];
+    let filled = 0;
+    const skipped: SkippedField[] = [];
 
-    // Value map keyed by profileKey
-    const valueMap: Record<string, string | null> = {
-      firstName:   profile.firstName   || null,
-      lastName:    profile.lastName    || null,
-      email:       profile.email       || null,
-      phone:       profile.phone,
-      linkedinUrl: profile.linkedinUrl,
-      summary:     profile.summary,
-    };
+    for (const def of FIELD_DEFS) {
+      const value = resolveProfileValue(
+        def.profileKey as import('../../shared/types').AutofillFieldKey,
+        profile,
+      );
 
-    // Re-detect fields at fill time — Ashby SPA may have re-rendered since detectForm().
-    const labelMap: Record<string, string> = {
-      firstName:   'first',
-      lastName:    'last',
-      email:       'email',
-      phone:       'phone',
-      linkedinUrl: 'linkedin',
-      summary:     'cover',
-    };
-
-    const displayLabels: Record<string, string> = {
-      firstName:   'First name',
-      lastName:    'Last name',
-      email:       'Email',
-      phone:       'Phone',
-      linkedinUrl: 'LinkedIn URL',
-      summary:     'Cover letter',
-    };
-
-    for (const [key, labelSearch] of Object.entries(labelMap)) {
-      const value = valueMap[key] ?? null;
       if (!value) {
-        skipped.push(displayLabels[key] ?? key);
+        skipped.push({
+          label:     def.displayLabel,
+          selector:  '',  // label-based — Tier B uses def.labelSearch for fallback
+          fieldType: 'text',
+          required:  def.required,
+        });
         continue;
       }
 
-      const el = findInputByLabel(labelSearch);
+      // Re-resolve element at fill time — Ashby SPA may have re-rendered
+      const el = findInputByLabel(def.labelSearch);
       if (!el) {
-        // Field not on this form — skip silently (not all Ashby forms have all fields).
+        // Field not present in this form — skip silently (not all Ashby forms have all fields)
+        console.debug(`[DVantage][${ADAPTER_NAME}] field not found in form: ${def.displayLabel}`);
         continue;
       }
 
@@ -332,7 +269,7 @@ export const ashbyAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.join(', ')}]`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map(s => s.label).join(', ')}]`,
     );
 
     return { filled, skipped };

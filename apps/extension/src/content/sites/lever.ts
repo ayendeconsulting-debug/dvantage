@@ -1,41 +1,21 @@
 // ---------------------------------------------------------------------------
 // D'Vantage — Lever Site Adapter
 //
-// Real DOM selectors implemented in D7 (detectJD) and D10 (detectForm + fillFields).
-//
-// Supported paths:
-//   https://jobs.lever.co/*
-//
-// Autofill (D10):
-//   Lever separates the job posting (/company/uuid) from the application form
-//   (/company/uuid/apply). detectJD() already returns null on apply pages.
-//   detectForm() fires on /apply pages only.
-//
-//   Lever uses standard HTML inputs with stable name attributes — no React.
-//   name="name"           → fullName (firstName + lastName combined)
-//   name="email"          → email
-//   name="phone"          → phone
-//   name="urls[LinkedIn]" → linkedinUrl
-//   name="comments"       → summary (textarea — cover letter / additional info)
-//
-// Note on name field:
-//   Lever renders a SINGLE "Name" input (not split first/last).
-//   fillFields fills it with "${firstName} ${lastName}" (profile.firstName + lastName).
-//   profileKey 'fullName' signals this combination in AutofillPreviewField.
+// D13 Tier A changes:
+//   - Import resolveProfileValue from shared/profile-resolver
+//   - New field probes: github (urls[GitHub]), location
+//   - fillFields() returns SkippedField[] instead of string[]
 // ---------------------------------------------------------------------------
 
 import type {
-  AutofillPreviewField,
   AutofillResult,
   ExtractedJob,
   FormField,
   SiteAdapter,
+  SkippedField,
   UserProfile,
 } from '../../shared/types';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import { resolveProfileValue } from '../../shared/profile-resolver';
 
 const ADAPTER_NAME = 'lever';
 
@@ -51,7 +31,7 @@ const SELECTORS = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Text helpers (canonical pattern — locked Decision 88)
+// Text helpers
 // ---------------------------------------------------------------------------
 
 function cleanText(raw: string | null | undefined): string | null {
@@ -76,11 +56,6 @@ function firstMatch(...selectors: string[]): string | null {
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// Native input setter — required for Lever's vanilla-HTML forms
-// (kept consistent with other adapters; future-proof if Lever migrates to React)
-// ---------------------------------------------------------------------------
 
 const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
 const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
@@ -160,15 +135,10 @@ function extractDescription(): string {
 // Form detection
 // ---------------------------------------------------------------------------
 
-/**
- * Lever application forms live exclusively on /company/uuid/apply paths.
- * The form uses stable name attributes — detected by exact name match.
- */
 function detectLeverForm(): FormField[] {
   const { pathname } = window.location;
   if (!pathname.endsWith('/apply')) return [];
 
-  // Guard: confirm a Lever application form is actually rendered.
   const hasForm = !!document.querySelector('form.application-form, form[enctype="multipart/form-data"]');
   if (!hasForm) return [];
 
@@ -186,11 +156,13 @@ function detectLeverForm(): FormField[] {
     }
   }
 
-  probe('fullName',    'Full name',     true,  'input[name="name"]',          'text');
-  probe('email',       'Email',         true,  'input[name="email"]',         'email');
-  probe('phone',       'Phone',         false, 'input[name="phone"]',         'tel');
-  probe('linkedinUrl', 'LinkedIn URL',  false, 'input[name="urls[LinkedIn]"]','text');
-  probe('summary',     'Cover letter',  false, 'textarea[name="comments"]',   'textarea');
+  probe('fullName',    'Full name',     true,  'input[name="name"]',              'text');
+  probe('email',       'Email',         true,  'input[name="email"]',             'email');
+  probe('phone',       'Phone',         false, 'input[name="phone"]',             'tel');
+  probe('linkedinUrl', 'LinkedIn URL',  false, 'input[name="urls[LinkedIn]"]',    'text');
+  probe('github',      'GitHub',        false, 'input[name="urls[GitHub]"]',      'text');
+  probe('location',    'Location',      false, 'input[name="location"]',          'text');
+  probe('summary',     'Cover letter',  false, 'textarea[name="comments"]',       'textarea');
 
   return fields;
 }
@@ -249,27 +221,32 @@ export const leverAdapter: SiteAdapter = {
     if (fields.length === 0) return { filled: 0, skipped: [] };
 
     let filled = 0;
-    const skipped: string[] = [];
-
-    // Build value map for each detected profileKey
-    const valueMap: Record<string, string | null> = {
-      fullName:    `${profile.firstName} ${profile.lastName}`.trim() || null,
-      email:       profile.email       || null,
-      phone:       profile.phone,
-      linkedinUrl: profile.linkedinUrl,
-      summary:     profile.summary,
-    };
+    const skipped: SkippedField[] = [];
 
     for (const field of fields) {
-      const value = valueMap[field.name] ?? null;
+      const value = resolveProfileValue(
+        field.name as import('../../shared/types').AutofillFieldKey,
+        profile,
+      );
+
       if (!value) {
-        skipped.push(field.label ?? field.name);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: field.type as SkippedField['fieldType'],
+          required:  field.required,
+        });
         continue;
       }
 
       const el = findInput(field.selector);
       if (!el) {
-        skipped.push(field.label ?? field.name);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: field.type as SkippedField['fieldType'],
+          required:  field.required,
+        });
         continue;
       }
 
@@ -278,7 +255,7 @@ export const leverAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.join(', ')}]`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map(s => s.label).join(', ')}]`,
     );
 
     return { filled, skipped };

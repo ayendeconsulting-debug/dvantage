@@ -1,49 +1,28 @@
 // ---------------------------------------------------------------------------
-// D'Vantage – Greenhouse Site Adapter
+// D'Vantage — Greenhouse Site Adapter
 //
-// Real DOM selectors implemented in D7 (detectJD) and D10 (detectForm + fillFields).
-//
-// D12 changes:
-//   1. File input guard (crash fix, D12 initial): Layer 1 early-exit removed
-//      from probe(). File inputs now correctly enter fields[] as type:'file'
-//      and are routed by content/index.ts to ActiveForm.manualFields, where
-//      they appear in AutofillPanel with a 📎 "Manual upload required" label.
-//   2. Layer 2 (correct type mapping to 'file') retained in probe().
-//   3. Layer 3 (fillFields() guard before fillInput()) retained – defense-in-depth.
-//      If a file input ever reaches the fill loop (e.g. via a future code path
-//      that bypasses probe()), it is skipped with a console.warn.
-//   4. Explicit resume probe added: '#resume', 'input[name*="resume"]',
-//      'input[accept*="pdf" i]', 'input[type="file"]' (last resort).
-//      Ensures resume upload always surfaces as 📎 rather than being silently omitted.
+// D13 Tier A changes:
+//   - Import resolveProfileValue from shared/profile-resolver (replaces inline switch)
+//   - New field probes: location, github, currentTitle, currentCompany
+//   - fillFields() returns SkippedField[] instead of string[]
+//     Each skipped entry includes selector + fieldType for Tier B AI fill.
+//   - Iterates over FormField[] directly (not AutofillPreviewField[]) to
+//     carry selector info through to SkippedField.
 //
 // Supported paths:
-//   https://boards.greenhouse.io/*       ← classic layout
-//   https://job-boards.greenhouse.io/*   ← new layout (data-qa attributes)
-//
-// Both subdomains render server-side HTML – no SPA concerns.
-//
-// Field map (classic + new board share the same ids):
-//   #first_name                              → firstName
-//   #last_name                               → lastName
-//   #email                                   → email
-//   #phone                                   → phone
-//   #job_application_linkedin_profile_url    → linkedinUrl
-//   #cover_letter (textarea)                 → summary
-//   #resume / input[type="file"]             → resume (📎 manual)
+//   https://boards.greenhouse.io/*
+//   https://job-boards.greenhouse.io/*
 // ---------------------------------------------------------------------------
 
 import type {
-  AutofillPreviewField,
   AutofillResult,
   ExtractedJob,
   FormField,
   SiteAdapter,
+  SkippedField,
   UserProfile,
 } from '../../shared/types';
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+import { resolveProfileValue } from '../../shared/profile-resolver';
 
 const ADAPTER_NAME = 'greenhouse';
 
@@ -68,7 +47,7 @@ const FALLBACK = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Text helpers (canonical pattern – locked Decision 88)
+// Text helpers
 // ---------------------------------------------------------------------------
 
 function cleanText(raw: string | null | undefined): string | null {
@@ -95,14 +74,9 @@ function firstMatch(...selectors: string[]): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Native input setter – React/Vue controlled-input compatibility
+// Native input setter — React/Vue controlled-input compatibility
 // ---------------------------------------------------------------------------
 
-/**
- * Write a value to an input or textarea while triggering React's synthetic
- * event system. Plain `el.value = x` bypasses React's internal state and the
- * component never registers the change.
- */
 const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
 const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
 
@@ -135,21 +109,21 @@ function findInput(
 function extractCompanyFromTitle(): string | null {
   const title = document.title;
 
-  const applicationPattern = /\bat\s+(.+?)(?:\s*[|–\-]|\s*$)/i;
+  const applicationPattern = /\bat\s+(.+?)(?:\s*[|—\-]|\s*$)/i;
   const applicationMatch   = title.match(applicationPattern);
   if (applicationMatch?.[1]) {
     const candidate = cleanText(applicationMatch[1]);
     if (candidate) return candidate;
   }
 
-  const jobsAtPattern = /^Jobs\s+at\s+(.+?)(?:\s*[|–\-]|\s*$)/i;
+  const jobsAtPattern = /^Jobs\s+at\s+(.+?)(?:\s*[|—\-]|\s*$)/i;
   const jobsAtMatch   = title.match(jobsAtPattern);
   if (jobsAtMatch?.[1]) {
     const candidate = cleanText(jobsAtMatch[1]);
     if (candidate) return candidate;
   }
 
-  const dashPattern = /^(.+?)\s*[–\-]\s*Jobs?\s*$/i;
+  const dashPattern = /^(.+?)\s*[—\-]\s*Jobs?\s*$/i;
   const dashMatch   = title.match(dashPattern);
   if (dashMatch?.[1]) {
     const candidate = cleanText(dashMatch[1]);
@@ -166,7 +140,6 @@ function extractCompanyFromTitle(): string | null {
 function extractClassic(): ExtractedJob | null {
   const title = firstMatch(CLASSIC.title, FALLBACK.title);
   if (!title) return null;
-
   return {
     title,
     company:     firstMatch(CLASSIC.company) ?? extractCompanyFromTitle(),
@@ -180,7 +153,6 @@ function extractClassic(): ExtractedJob | null {
 function extractNewBoard(): ExtractedJob | null {
   const title = firstMatch(NEW_BOARD.title, FALLBACK.title);
   if (!title) return null;
-
   return {
     title,
     company:     extractCompanyFromTitle(),
@@ -192,25 +164,9 @@ function extractNewBoard(): ExtractedJob | null {
 }
 
 // ---------------------------------------------------------------------------
-// Form detection helpers
+// Form detection
 // ---------------------------------------------------------------------------
 
-/**
- * Detect whether an application form is present on the current page.
- * Returns FormField[] describing each detected input, including file inputs.
- *
- * D12 change: file inputs are NO LONGER excluded at the probe() level.
- * They enter fields[] as type:'file' and are routed by content/index.ts
- * into ActiveForm.manualFields → shown as 📎 in AutofillPanel.
- * fillFields() still has a Layer 3 guard that prevents any fill attempt.
- *
- * probe() type mapping (Layer 2 – retained):
- *   textarea           → 'textarea'
- *   input[type=email]  → 'email'
- *   input[type=tel]    → 'tel'
- *   input[type=file]   → 'file'   ← content script routes to manualFields
- *   anything else      → 'text'
- */
 function detectGreenhouseForm(): FormField[] {
   const hasForm = !!document.querySelector(
     '#application-form, #application_form, form.application--form, form[action*="greenhouse"], #apply-form',
@@ -228,10 +184,6 @@ function detectGreenhouseForm(): FormField[] {
     for (const sel of selectors) {
       const el = document.querySelector<HTMLElement>(sel);
       if (el) {
-        // Layer 2 (D12): correct type mapping — file inputs are type:'file',
-        // not 'text'. content/index.ts routes them to manualFields[].
-        // Note: Layer 1 (early-exit for file inputs) intentionally removed in D12
-        // so that file fields flow through the pipeline to the 📎 indicator.
         const tag = el.tagName.toLowerCase();
         fields.push({
           name:        profileKey,
@@ -245,27 +197,48 @@ function detectGreenhouseForm(): FormField[] {
           required,
           selector:    sel,
         });
-        return; // found – move to next field
+        return;
       }
     }
   }
 
-  probe('firstName',   'First name',   true,  '#first_name',  'input[name*="first"][type="text"]');
-  probe('lastName',    'Last name',    true,  '#last_name',   'input[name*="last"][type="text"]');
-  probe('email',       'Email',        true,  '#email',       'input[type="email"]');
-  probe('phone',       'Phone',        false, '#phone',       'input[type="tel"]', 'input[name*="phone"]');
-  probe('linkedinUrl', 'LinkedIn URL', false,
+  probe('firstName',      'First name',        true,  '#first_name', 'input[name*="first"][type="text"]');
+  probe('lastName',       'Last name',         true,  '#last_name',  'input[name*="last"][type="text"]');
+  probe('email',          'Email',             true,  '#email',      'input[type="email"]');
+  probe('phone',          'Phone',             false, '#phone',      'input[type="tel"]', 'input[name*="phone"]');
+  probe('linkedinUrl',    'LinkedIn URL',      false,
     '#job_application_linkedin_profile_url',
     'input[name*="linkedin"]',
     'input[placeholder*="LinkedIn"]',
   );
-  probe('summary', 'Cover letter', false,
+  probe('github',         'GitHub / Website',  false,
+    'input[name*="github"]',
+    'input[name*="website"]',
+    'input[placeholder*="GitHub"]',
+    'input[placeholder*="github"]',
+    'input[placeholder*="portfolio"]',
+  );
+  probe('location',       'Location',          false,
+    'input[name*="location"]',
+    'input[id*="location"]',
+    'input[placeholder*="City"]',
+    'input[placeholder*="Location"]',
+  );
+  probe('currentTitle',   'Current title',     false,
+    'input[name*="title"]',
+    'input[id*="title"]',
+    'input[placeholder*="title" i]',
+  );
+  probe('currentCompany', 'Current company',   false,
+    'input[name*="company"]',
+    'input[id*="company"]',
+  );
+  probe('summary',        'Cover letter',      false,
     '#cover_letter',
     '#job_application_cover_letter',
     'textarea[name*="cover"]',
   );
-  // Resume upload – always type:'file' → routed to manualFields → 📎 in panel.
-  // Selectors in specificity order; 'input[type="file"]' is last-resort broad fallback.
+  // Resume — always type:'file' → routed to manualFields → 📎 in panel
   probe('resume', 'Resume', false,
     '#resume',
     'input[name="resume"]',
@@ -318,60 +291,44 @@ export const greenhouseAdapter: SiteAdapter = {
     if (fields.length === 0) return { filled: 0, skipped: [] };
 
     let filled = 0;
-    const skipped: string[] = [];
+    const skipped: SkippedField[] = [];
 
-    // Only auto-fill non-file, non-unknown fields.
-    const previewFields: AutofillPreviewField[] = fields
-      .filter(f => f.type !== 'unknown' && f.type !== 'file')
-      .map(f => ({
-        label:      f.label ?? f.name,
-        profileKey: f.name as import('../../shared/types').AutofillFieldKey,
-        required:   f.required,
-      }));
+    // Only auto-fill non-file, non-unknown fields
+    const fillableFields = fields.filter(f => f.type !== 'unknown' && f.type !== 'file');
 
-    for (const preview of previewFields) {
-      const el = findInput(
-        ...fields
-          .filter(f => f.name === preview.profileKey)
-          .map(f => f.selector),
-      );
-
+    for (const field of fillableFields) {
+      // Layer 3 guard — defense-in-depth
+      const el = findInput(field.selector);
       if (!el) {
-        skipped.push(preview.label);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: field.type as SkippedField['fieldType'],
+          required:  field.required,
+        });
         continue;
       }
 
-      // ---------------------------------------------------------------------------
-      // Layer 3 – defense-in-depth: skip file inputs before fillInput().
-      // Protects against any future code path that bypasses the type:'file' filter
-      // above (e.g. a new probe added without the Layer 2 type mapping).
-      // Browsers throw InvalidStateError on .value assignment for file inputs.
-      // ---------------------------------------------------------------------------
       if (el instanceof HTMLInputElement && el.type === 'file') {
-        console.warn(
-          `[DVantage][${ADAPTER_NAME}] fillFields(): file input reached fill loop — skipping (${preview.label})`,
-        );
-        skipped.push(preview.label);
+        console.warn(`[DVantage][${ADAPTER_NAME}] file input in fill loop — skipping (${field.label})`);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: 'text',
+          required:  field.required,
+        });
         continue;
       }
 
-      let value: string | null = null;
-
-      switch (preview.profileKey) {
-        case 'firstName':   value = profile.firstName || null;                               break;
-        case 'lastName':    value = profile.lastName  || null;                               break;
-        case 'fullName':    value = `${profile.firstName} ${profile.lastName}`.trim() || null; break;
-        case 'email':       value = profile.email     || null;                               break;
-        case 'phone':       value = profile.phone;                                           break;
-        case 'linkedinUrl': value = profile.linkedinUrl;                                     break;
-        case 'summary':     value = profile.summary;                                         break;
-        case 'topSkills':   value = profile.topSkills.join(', ') || null;                   break;
-        case 'currentRole': value = profile.currentRole;                                     break;
-        default:            value = null;
-      }
+      const value = resolveProfileValue(field.name as import('../../shared/types').AutofillFieldKey, profile);
 
       if (!value) {
-        skipped.push(preview.label);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: field.type as SkippedField['fieldType'],
+          required:  field.required,
+        });
         continue;
       }
 
@@ -380,7 +337,7 @@ export const greenhouseAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete – filled:${filled} skipped:${skipped.join(', ')}`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:${skipped.map(s => s.label).join(', ')}`,
     );
 
     return { filled, skipped };

@@ -1,32 +1,12 @@
 // ---------------------------------------------------------------------------
-// D'Vantage Extension – Runtime Message Bus
+// D'Vantage Extension — Runtime Message Bus
 //
-// All cross-context communication (content ↔ background ↔ sidepanel)
-// uses these typed messages via chrome.runtime.sendMessage / onMessage.
+// All cross-context communication (content ↔ background ↔ sidepanel).
 //
-// Convention: message type strings are SCREAMING_SNAKE_CASE.
-//
-// D10 additions:
-//   ContentToBackground:
-//     FORM_DETECTED – payload extended with unknownFieldCount + fillableFields
-//     FORM_CLEARED  – new; sent when detectForm() returns empty on navigation
-//   BackgroundToSidepanel:
-//     AUTOFILL_COMPLETE – payload extended with skipped: string[]
-//   BackgroundToContent (new union):
-//     EXECUTE_AUTOFILL – background SW → content script via chrome.tabs.sendMessage
-//
-// D11 additions:
-//   SidepanelToBackground:
-//     REQUEST_PROFILE_UPDATE – settings form → PATCH /v1/extension/profile
-//     REQUEST_CAPTURE        – fire-and-forget after autofill complete
-//                              → POST /v1/extension/applications
-//
-// D12 additions:
-//   ContentToBackground:
-//     FORM_DETECTED payload extended with manualFields:
-//       Array<{ label: string; required: boolean }>
-//       File inputs (type='file') are routed here by content/index.ts.
-//       Stored in ActiveForm.manualFields; rendered as 📎 in AutofillPanel.
+// D13 Tier A changes:
+//   AutofillExecutionResponse.skipped: string[] → SkippedField[]
+//   BackgroundToSidepanel.AUTOFILL_COMPLETE.skipped: string[] → SkippedField[]
+//   Enables the side panel to forward SkippedField[] to Tier B AI fill.
 // ---------------------------------------------------------------------------
 
 import type {
@@ -34,6 +14,7 @@ import type {
   AutofillResult,
   ExtractedJob,
   ScoreResult,
+  SkippedField,
   UserProfile,
 } from './types';
 
@@ -53,11 +34,6 @@ export type ContentToBackground =
         unknownFieldCount: number;
         pageUrl:           string;
         fillableFields:    AutofillPreviewField[];
-        /**
-         * D12: file upload fields requiring manual user action.
-         * Populated by content/index.ts from FormField[type='file'].
-         * Rendered in AutofillPanel with 📎 "Manual upload required" label.
-         */
         manualFields:      Array<{ label: string; required: boolean }>;
       };
     }
@@ -92,42 +68,16 @@ export type SidepanelToBackground =
       type:    'REQUEST_AUTOFILL';
       payload: { pageUrl: string };
     }
+  | { type: 'REQUEST_PROFILE' }
+  | { type: 'REQUEST_AUTH_STATUS' }
+  | { type: 'REQUEST_REFRESH' }
   | {
-      type: 'REQUEST_PROFILE';
-    }
-  | {
-      type: 'REQUEST_AUTH_STATUS';
-    }
-  | {
-      type: 'REQUEST_REFRESH';
-    }
-  | {
-      /**
-       * Side panel settings form → PATCH /v1/extension/profile.
-       * BG SW validates, patches API, atomically replaces CACHED_PROFILE.
-       */
       type:    'REQUEST_PROFILE_UPDATE';
-      payload: {
-        phone:       string | null;
-        linkedinUrl: string | null;
-      };
+      payload: { phone: string | null; linkedinUrl: string | null };
     }
   | {
-      /**
-       * Fire-and-forget capture after autofill complete.
-       * AutofillPanel sends this immediately after receiving AUTOFILL_COMPLETE.
-       * BG SW calls POST /v1/extension/applications and logs the result.
-       * No response is awaited – capture failure is silent at the UI level.
-       *
-       * company and role are nullable because JD detection may have failed.
-       * pageUrl is always present (from ACTIVE_FORM.pageUrl).
-       */
       type:    'REQUEST_CAPTURE';
-      payload: {
-        company: string | null;
-        role:    string | null;
-        pageUrl: string;
-      };
+      payload: { company: string | null; role: string | null; pageUrl: string };
     };
 
 // ---------------------------------------------------------------------------
@@ -159,7 +109,11 @@ export type BackgroundToSidepanel =
       type:    'AUTOFILL_COMPLETE';
       payload: {
         fieldsFilled: number;
-        skipped:      string[];
+        /**
+         * D13 Tier A: changed from string[] to SkippedField[].
+         * Each entry carries selector + fieldType for Tier B AI fill.
+         */
+        skipped:      SkippedField[];
       };
     }
   | {
@@ -172,7 +126,7 @@ export type BackgroundToSidepanel =
     };
 
 // ---------------------------------------------------------------------------
-// Background → Content script  (via chrome.tabs.sendMessage)
+// Background → Content script (via chrome.tabs.sendMessage)
 // ---------------------------------------------------------------------------
 
 export type BackgroundToContent =
@@ -182,25 +136,29 @@ export type BackgroundToContent =
     };
 
 // ---------------------------------------------------------------------------
-// External → Background  (dvantage.ca → chrome.runtime.onMessageExternal)
+// External → Background (dvantage.ca → chrome.runtime.onMessageExternal)
 // ---------------------------------------------------------------------------
 
 export type ExternalToBackground = {
   type:    'DVANTAGE_EXT_TOKEN';
-  payload: {
-    token:     string;
-    expiresAt: string;
-  };
+  payload: { token: string; expiresAt: string };
 };
 
 export type ExternalAck = { ok: true } | { ok: false; error: string };
 
+/**
+ * Response from content script's EXECUTE_AUTOFILL handler.
+ *
+ * D13 Tier A: skipped changed from string[] to SkippedField[].
+ * The background SW forwards this to the side panel as-is, which then
+ * uses it to trigger Tier B AI fill for any non-null skipped entries.
+ */
 export type AutofillExecutionResponse =
-  | { ok: true;  filled: number; skipped: string[] }
+  | { ok: true;  filled: number; skipped: SkippedField[] }
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
-// Union – used in onMessage listeners that receive any message
+// Union — used in onMessage listeners
 // ---------------------------------------------------------------------------
 
 export type ExtensionMessage =
@@ -209,10 +167,10 @@ export type ExtensionMessage =
   | BackgroundToSidepanel;
 
 export function isMessageType<T extends ExtensionMessage['type']>(
-  msg: ExtensionMessage,
+  msg:  ExtensionMessage,
   type: T,
 ): msg is Extract<ExtensionMessage, { type: T }> {
   return msg.type === type;
 }
 
-export type { AutofillResult, AutofillPreviewField, ScoreResult };
+export type { AutofillResult, AutofillPreviewField, ScoreResult, SkippedField };

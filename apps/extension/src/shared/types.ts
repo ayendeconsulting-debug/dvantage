@@ -1,28 +1,35 @@
 // ---------------------------------------------------------------------------
-// D'Vantage Extension – Shared Types
+// D'Vantage Extension — Shared Types
 //
 // Core domain types shared across background, content scripts, and sidepanel.
 //
 // D10 additions:
 //   - UserProfile.name → firstName + lastName (split happens API-side)
 //   - SiteAdapter.fillFields return type: void → AutofillResult
-//   - AutofillFieldKey – typed keys for profile→form field mapping
-//   - AutofillPreviewField – one entry per fillable form field (sent in FORM_DETECTED)
-//   - AutofillResult – returned by fillFields() to report what was filled
-//   - ActiveForm – stored in chrome.storage.local[ACTIVE_FORM]
-//   - CachedProfile – stored in chrome.storage.local[CACHED_PROFILE]
+//   - AutofillFieldKey — typed keys for profile→form field mapping
+//   - AutofillPreviewField — one entry per fillable form field (sent in FORM_DETECTED)
+//   - AutofillResult — returned by fillFields() to report what was filled
+//   - ActiveForm — stored in chrome.storage.local[ACTIVE_FORM]
+//   - CachedProfile — stored in chrome.storage.local[CACHED_PROFILE]
 //
 // D11 additions:
-//   - SiteAdapter.observe() – optional hook for adapters that must detect
+//   - SiteAdapter.observe() — optional hook for adapters that must detect
 //     form appearance via MutationObserver rather than URL changes
-//     (LinkedIn Easy Apply modal). Returns a cleanup function.
 //
 // D12 additions:
-//   - ActiveForm.manualFields – file inputs requiring manual user upload.
-//     Detected by adapters as FormField[type='file'], routed by content/index.ts
-//     into this separate array. Never attempted by fillFields(); rendered in
-//     AutofillPanel with a 📎 "Manual upload required" label.
-//   - ActiveForm.fieldCount now includes manualFields.length (combined total).
+//   - ActiveForm.manualFields — file inputs requiring manual user upload
+//   - ActiveForm.fieldCount now includes manualFields.length
+//
+// D13 Tier A additions:
+//   - ProfileExperience, ProfileEducation, ProfileSkill, ProfileCertification
+//     — sub-types for resume-sourced rich profile data
+//   - UserProfile expanded with location, github, experience[], education[],
+//     certifications[], allSkills[] — powered by the user's parsed resume
+//   - AutofillFieldKey expanded: location, github, currentTitle, currentCompany,
+//     university, degree, graduationYear
+//   - SkippedField — replaces string in AutofillResult.skipped[].
+//     Carries selector + fieldType so Tier B AI fill can write answers to the DOM.
+//   - AutofillResult.skipped: string[] → SkippedField[]
 // ---------------------------------------------------------------------------
 
 /** A job posting extracted from a supported job board page. */
@@ -53,42 +60,127 @@ export interface ScoreResult {
   score:           number; // 0–100
   keywordGaps:     string[];
   semanticGaps:    string[];
-  optimizationUrl: string; // deep link to web app optimize page
+  optimizationUrl: string;
 }
+
+// ---------------------------------------------------------------------------
+// Rich profile sub-types (D13 Tier A)
+// ---------------------------------------------------------------------------
+
+/**
+ * A work experience entry from the user's parsed resume.
+ * Maps from ResumeData.experience[] in @vantage/validation.
+ */
+export interface ProfileExperience {
+  company:    string;
+  title:      string;
+  startDate:  string;
+  endDate:    string | null;
+  current:    boolean;
+  highlights: string[];
+}
+
+/**
+ * An education entry from the user's parsed resume.
+ * Maps from ResumeData.education[] in @vantage/validation.
+ */
+export interface ProfileEducation {
+  institution: string;
+  degree:      string;
+  field:       string;
+  startDate:   string;
+  endDate:     string | null;
+  gpa:         string | null;
+}
+
+/**
+ * A skill entry from the user's parsed resume.
+ * Maps from ResumeData.skills[] in @vantage/validation.
+ */
+export interface ProfileSkill {
+  name:     string;
+  category: string; // 'technical' | 'soft' | 'language' | 'tool'
+  level:    string | null; // 'beginner' | 'intermediate' | 'advanced' | 'expert'
+}
+
+/**
+ * A certification entry from the user's parsed resume.
+ * Maps from ResumeData.certifications[] in @vantage/validation.
+ */
+export interface ProfileCertification {
+  name:   string;
+  issuer: string;
+  date:   string | null;
+}
+
+// ---------------------------------------------------------------------------
+// User profile
+// ---------------------------------------------------------------------------
 
 /**
  * User profile returned from GET /v1/extension/profile.
  *
  * D10: split name into firstName + lastName (API-side split).
- * This removes the split-on-space logic from every adapter and panel component.
- * Adapters that need a combined name field (e.g. Lever's single-name input)
- * concatenate: `${profile.firstName} ${profile.lastName}`.
+ * D13 Tier A: expanded with rich resume-sourced fields (location, github,
+ *   experience[], education[], certifications[], allSkills[]).
+ *   These power Tier A deterministic autofill of extended form fields,
+ *   and Tier B AI fill of custom questions.
  */
 export interface UserProfile {
+  // ── Auth-sourced (users table) ──────────────────────────────────────────
   firstName:        string;
   lastName:         string;
   email:            string;
+
+  // ── User-profile-sourced (user_profiles table) ──────────────────────────
   phone:            string | null;
   linkedinUrl:      string | null;
+
+  // ── Resume-sourced — contact section ────────────────────────────────────
+  /** City/country/state as extracted from the resume contact section. */
+  location:         string | null;
+  /** GitHub or portfolio URL from the resume contact section. */
+  github:           string | null;
+
+  // ── Resume-sourced — derived convenience fields ──────────────────────────
+  /** Professional summary or objective statement from the resume. */
   summary:          string | null;
   /** Top 5 skills ordered by level: expert > advanced > intermediate > beginner. */
   topSkills:        string[];
-  /** e.g. "Senior Backend Engineer @ Acme Corp" */
+  /** e.g. "Senior Backend Engineer @ Acme Corp" from the most-recent/current role. */
   currentRole:      string | null;
+
+  // ── Resume-sourced — full arrays ─────────────────────────────────────────
+  /** Full work experience array, most-recent first (resume convention). */
+  experience:       ProfileExperience[];
+  /** Full education array, most-recent first. */
+  education:        ProfileEducation[];
+  /** All certifications from the resume. */
+  certifications:   ProfileCertification[];
+  /** Full skill list — all skills, not just top 5. */
+  allSkills:        ProfileSkill[];
+
+  // ── Resume asset ─────────────────────────────────────────────────────────
   defaultResumeId:  string | null;
-  /** 1-hour presigned R2 URL – null when no complete resume exists. */
+  /** 1-hour presigned R2 URL — null when no complete resume exists. */
   defaultResumeUrl: string | null;
 }
 
 // ---------------------------------------------------------------------------
-// Autofill types (D10)
+// Autofill types (D10, expanded D13 Tier A)
 // ---------------------------------------------------------------------------
 
 /**
- * Typed keys that map a form field to the profile field that fills it.
+ * Typed keys that map a form field to the profile source value.
  *
- * 'fullName'  – Lever-style single-name input; filled with "${firstName} ${lastName}".
- * All others  – direct UserProfile property lookup.
+ * D13 Tier A additions:
+ *   'location'       — profile.location (contact.location from resume)
+ *   'github'         — profile.github (contact.github from resume)
+ *   'currentTitle'   — profile.experience[0].title
+ *   'currentCompany' — profile.experience[0].company
+ *   'university'     — profile.education[0].institution
+ *   'degree'         — profile.education[0].degree + field (combined)
+ *   'graduationYear' — year extracted from profile.education[0].endDate
  */
 export type AutofillFieldKey =
   | 'fullName'
@@ -97,9 +189,16 @@ export type AutofillFieldKey =
   | 'email'
   | 'phone'
   | 'linkedinUrl'
+  | 'github'
+  | 'location'
   | 'summary'
   | 'topSkills'
-  | 'currentRole';
+  | 'currentRole'
+  | 'currentTitle'
+  | 'currentCompany'
+  | 'university'
+  | 'degree'
+  | 'graduationYear';
 
 /**
  * A single fillable form field as detected by the site adapter.
@@ -115,19 +214,46 @@ export interface AutofillPreviewField {
 }
 
 /**
+ * A field that was detected but not filled — profile value was null/empty,
+ * or the DOM element could not be found.
+ *
+ * D13 Tier A: replaces `string` in AutofillResult.skipped[].
+ * Carries selector + fieldType so Tier B AI fill can write answers back to
+ * the DOM after the AI endpoint generates an answer.
+ *
+ * selector conventions:
+ *   Standard CSS selector (e.g. '#email', 'input[type="tel"]') — used with
+ *   document.querySelector() in the content script.
+ *   Label-based fallback (adapters that use label lookup): empty string ''.
+ *   Tier B content script falls back to label-text search when selector is ''.
+ */
+export interface SkippedField {
+  /** Human-readable label — shown in panel + sent to AI as context. */
+  label:     string;
+  /** CSS selector to locate the input for DOM fill after AI answer. */
+  selector:  string;
+  /** Input type — informs the AI whether to return a short answer or prose. */
+  fieldType: 'text' | 'email' | 'tel' | 'textarea';
+  required:  boolean;
+}
+
+/**
  * Result returned by SiteAdapter.fillFields().
- * Used by the content script's EXECUTE_AUTOFILL handler to report
- * back to the background SW → side panel.
+ *
+ * D13 Tier A: skipped changed from string[] to SkippedField[].
+ * skipped[] entries are candidates for Tier B AI fill — they have enough
+ * context (selector, fieldType) for the content script to write AI answers
+ * directly into the DOM.
  */
 export interface AutofillResult {
-  /** Number of fields that were successfully written to the DOM. */
+  /** Number of fields successfully written to the DOM. */
   filled:  number;
   /**
-   * Human-readable labels of fields that were detected but skipped.
-   * Reasons: profile value was null/empty, or field type is unsupported.
-   * Rendered as "⚠ N fields need review" in AutofillPanel.
+   * Fields that were detected but not filled because the profile value was
+   * null/empty. Rendered as "⚠ N fields need review" in AutofillPanel.
+   * Passed to Tier B AI fill as candidates for AI-generated answers.
    */
-  skipped: string[];
+  skipped: SkippedField[];
 }
 
 /**
@@ -136,25 +262,13 @@ export interface AutofillResult {
  * Cleared (null) when navigating away from a form page.
  *
  * D12: fieldCount now includes both fillable + manual fields (combined total).
- *      manualFields added – file inputs that require manual user upload.
+ *      manualFields added — file inputs that require manual user upload.
  */
 export interface ActiveForm {
-  /**
-   * Total detected field count: fillableFields.length + manualFields.length.
-   * Shown in the AutofillPanel header: "5 fields detected".
-   */
   fieldCount:        number;
-  /** Number of fields detected but not in the adapter's field map. */
   unknownFieldCount: number;
-  /** URL of the page where the form was detected. */
   pageUrl:           string;
-  /** Auto-fillable fields — shown with profile value preview in AutofillPanel. */
   fillableFields:    AutofillPreviewField[];
-  /**
-   * File upload fields — shown with 📎 "Manual upload required" label.
-   * D12 addition. Always [] for adapters that don't emit type:'file' fields.
-   * Defensive: consumers must treat undefined as [] for forward-compat.
-   */
   manualFields:      Array<{ label: string; required: boolean }>;
 }
 
@@ -164,80 +278,40 @@ export interface ActiveForm {
  */
 export interface CachedProfile {
   profile:  UserProfile;
-  /** ISO 8601 timestamp of when this cache entry was written. */
-  cachedAt: string;
+  cachedAt: string; // ISO 8601
 }
 
 // ---------------------------------------------------------------------------
-// Extension bearer token (stored in chrome.storage.local)
+// Extension bearer token
 // ---------------------------------------------------------------------------
 
-/** Extension bearer token stored in chrome.storage.local. */
 export interface StoredToken {
   token:     string;
-  expiresAt: string; // ISO 8601 – sliding 30-day window, refreshed on each call
+  expiresAt: string; // ISO 8601
 }
 
 // ---------------------------------------------------------------------------
 // Site adapter interface
 // ---------------------------------------------------------------------------
 
-/**
- * Site adapter interface – one file per supported job board.
- *
- * D10 change: fillFields now returns AutofillResult instead of void.
- *
- * D11 addition: observe() – optional hook for adapters that cannot rely
- * on URL changes to detect form open/close events (e.g. LinkedIn Easy Apply
- * modal, Indeed Apply modal). When present, the content script installs it
- * once at startup and calls the returned cleanup function on adapter change
- * or unload.
- */
 export interface SiteAdapter {
-  /** Detect and extract the job description from the current page. */
-  detectJD: () => ExtractedJob | null;
-
-  /**
-   * Detect application form fields on the current page.
-   *
-   * Returns an empty array when no application form is present.
-   * Called on every navigation event alongside detectJD().
-   *
-   * D12: file inputs (type='file') should be included in the return value.
-   * The content script routes them to ActiveForm.manualFields automatically.
-   * Adapters must NOT skip file inputs — they should emit them with type:'file'
-   * so the panel can show the 📎 "Manual upload required" indicator.
-   */
-  detectForm: () => FormField[];
-
-  /** Extract field values from the current form state. */
+  detectJD:    () => ExtractedJob | null;
+  detectForm:  () => FormField[];
   extractFields: () => Record<string, string>;
 
   /**
    * Fill detected form fields with the provided profile data.
    *
-   * Implementation requirements:
-   *   - Use nativeInputValueSetter + dispatchEvent to trigger React/Vue reactivity.
-   *   - Never call form.submit() or click submit buttons.
-   *   - Skip fields whose profile value is null or empty – add to skipped[].
-   *   - Skip file inputs (type='file') – browsers block programmatic value set.
-   *   - Return filled count + skipped label array for panel display.
+   * D13 Tier A: returns AutofillResult with skipped: SkippedField[] instead
+   * of string[]. Each SkippedField carries selector + fieldType for Tier B
+   * AI fill — the content script uses these to write AI answers to the DOM.
    */
-  fillFields: (profile: UserProfile) => AutofillResult;
+  fillFields:  (profile: UserProfile) => AutofillResult;
 
   /**
    * Optional: install a persistent observer for form state changes that
    * happen without a URL change (e.g. LinkedIn Easy Apply modal,
-   * Indeed Apply modal).
-   *
-   * When present, the content script calls this once at startup.
-   * The adapter calls onFormChange() whenever the form appears or disappears.
-   * onFormChange maps to scheduleDetection() in the content script –
-   * meaning runDetection() is triggered via the standard debounce path.
-   *
-   * Returns a cleanup function. The content script calls it if the adapter
-   * changes (currently adapters are resolved once per page load, so cleanup
-   * happens on page unload automatically via MutationObserver GC).
+   * Indeed Apply modal). Returns a cleanup function.
    */
   observe?: (onFormChange: () => void) => () => void;
 }

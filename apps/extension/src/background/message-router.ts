@@ -1,33 +1,11 @@
 // ---------------------------------------------------------------------------
-// D'Vantage – Background Message Router
+// D'Vantage — Background Message Router
 //
-// Routes chrome.runtime.onMessage events that are NOT handled by the
-// existing auth handlers (REQUEST_REFRESH, AUTH_BRIDGE_TOKEN) in index.ts.
-//
-// Called from background/index.ts onMessage listener as the final delegate:
-//   if (isAuthBridge) → handle in index.ts
-//   if (isRefresh)    → handle in index.ts
-//   else              → routeMessage(msg, sender, sendResponse)  ← this file
-//
-// Handlers (D12 / M19 state):
-//   JOB_DETECTED           – write ExtractedJob to ACTIVE_JOB.
-//   FORM_DETECTED          – write ActiveForm to ACTIVE_FORM.
-//   FORM_CLEARED           – clear ACTIVE_FORM (null).
-//   REQUEST_SCORE          – POST /v1/extension/score, cache in CACHED_SCORE.
-//   REQUEST_AUTOFILL       – profile → EXECUTE_AUTOFILL → content script.
-//   REQUEST_PROFILE        – fetch/cache profile → PROFILE_RESULT to side panel.
-//   REQUEST_PROFILE_UPDATE – PATCH /v1/extension/profile → replace CACHED_PROFILE.
-//   REQUEST_CAPTURE        – POST /v1/extension/applications (fire-and-forget).
-//
-// D12 change:
-//   FORM_DETECTED payload now includes manualFields: Array<{ label, required }>.
-//   isValidFormDetectedPayload updated to validate Array.isArray(manualFields).
-//   handleFormDetected updated to write manualFields into ActiveForm.
-//   Backward-compat: manualFields defaults to [] if absent (old content scripts).
-//
-// Return value contract (mirrors onMessage listener):
-//   return true      → async sendResponse; keep message channel open
-//   return undefined → synchronous or no sendResponse; channel may close
+// D13 Tier A changes:
+//   - AutofillExecutionResponse.skipped is now SkippedField[] (from shared/messages.ts)
+//   - handleRequestAutofill forwards SkippedField[] to the panel as-is
+//   - Log line updated: skipped.length (works with both string[] and SkippedField[])
+//   - No other structural changes — type changes flow through from shared/types.ts
 // ---------------------------------------------------------------------------
 
 import { STORAGE_KEYS, API_BASE, PROFILE_CACHE_TTL_MS } from '../shared/constants';
@@ -63,11 +41,6 @@ function isValidScorePayload(
   );
 }
 
-/**
- * D12: Updated to validate manualFields (Array.isArray with [] default).
- * Backward-compat: manualFields may be absent in payloads from old content
- * scripts — we treat that as an empty array rather than a validation failure.
- */
 function isValidFormDetectedPayload(
   payload: unknown,
 ): payload is {
@@ -84,7 +57,6 @@ function isValidFormDetectedPayload(
     typeof p['unknownFieldCount'] === 'number'  &&
     typeof p['pageUrl']           === 'string'  &&
     Array.isArray(p['fillableFields'])           &&
-    // manualFields is optional for backward-compat — default [] handled in handler
     (p['manualFields'] === undefined || Array.isArray(p['manualFields']))
   );
 }
@@ -131,7 +103,7 @@ async function getCachedProfile(): Promise<UserProfile | null> {
     if (!entry?.profile || !entry?.cachedAt) return null;
     const ageMs = Date.now() - new Date(entry.cachedAt).getTime();
     if (ageMs > PROFILE_CACHE_TTL_MS) {
-      console.log('[DVantage Router] CACHED_PROFILE expired – will re-fetch');
+      console.log('[DVantage Router] CACHED_PROFILE expired — will re-fetch');
       return null;
     }
     return entry.profile;
@@ -162,7 +134,7 @@ async function fetchProfile(token: string): Promise<UserProfile> {
 async function resolveProfile(): Promise<UserProfile> {
   const cached = await getCachedProfile();
   if (cached) {
-    console.log('[DVantage Router] CACHED_PROFILE hit – skipping API call');
+    console.log('[DVantage Router] CACHED_PROFILE hit — skipping API call');
     return cached;
   }
   const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
@@ -179,7 +151,7 @@ async function resolveProfile(): Promise<UserProfile> {
 
 function handleJobDetected(payload: unknown): void {
   if (!isValidJobDetectedPayload(payload)) {
-    console.warn('[DVantage Router] JOB_DETECTED – invalid payload shape, ignoring');
+    console.warn('[DVantage Router] JOB_DETECTED — invalid payload shape, ignoring');
     return;
   }
   chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_JOB]: payload.job }, () => {
@@ -188,7 +160,7 @@ function handleJobDetected(payload: unknown): void {
       return;
     }
     console.log(
-      '[DVantage Router] ACTIVE_JOB stored – title:',
+      '[DVantage Router] ACTIVE_JOB stored — title:',
       (payload.job as Record<string, unknown>)['title'] ?? '(untitled)',
       '| source:', payload.job.sourceUrl,
     );
@@ -199,14 +171,9 @@ function handleJobDetected(payload: unknown): void {
 // FORM_DETECTED handler
 // ---------------------------------------------------------------------------
 
-/**
- * D12: Writes manualFields into ActiveForm.
- * Defaults to [] if payload.manualFields is absent (backward-compat with
- * old content scripts that predate D12).
- */
 function handleFormDetected(payload: unknown): void {
   if (!isValidFormDetectedPayload(payload)) {
-    console.warn('[DVantage Router] FORM_DETECTED – invalid payload shape, ignoring');
+    console.warn('[DVantage Router] FORM_DETECTED — invalid payload shape, ignoring');
     return;
   }
   const activeForm: ActiveForm = {
@@ -222,7 +189,7 @@ function handleFormDetected(payload: unknown): void {
       return;
     }
     console.log(
-      `[DVantage Router] ACTIVE_FORM stored – fields:${payload.fieldCount} ` +
+      `[DVantage Router] ACTIVE_FORM stored — fields:${payload.fieldCount} ` +
       `manual:${activeForm.manualFields.length} ` +
       `unknown:${payload.unknownFieldCount} url:${payload.pageUrl}`,
     );
@@ -285,7 +252,7 @@ function handleRequestScore(
       clearTimeout(timeoutId);
       const isTimeout = err instanceof Error && err.name === 'AbortError';
       sendResponse({ ok: false, error: isTimeout ? 'timeout' : 'network_error' });
-      console.error('[DVantage Router] REQUEST_SCORE – fetch failed:', err);
+      console.error('[DVantage Router] REQUEST_SCORE — fetch failed:', err);
       return;
     }
 
@@ -295,7 +262,7 @@ function handleRequestScore(
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       sendResponse({ ok: false, error: 'scoring_failed' });
-      console.error(`[DVantage Router] REQUEST_SCORE – API error ${response.status}:`, errText.slice(0, 200));
+      console.error(`[DVantage Router] REQUEST_SCORE — API error ${response.status}:`, errText.slice(0, 200));
       return;
     }
 
@@ -307,7 +274,7 @@ function handleRequestScore(
 
     const score = typeof data === 'object' && data !== null
       ? (data as Record<string, unknown>)['score'] : '?';
-    console.log('[DVantage Router] REQUEST_SCORE – score received:', score);
+    console.log('[DVantage Router] REQUEST_SCORE — score received:', score);
 
     void (async (): Promise<void> => {
       try {
@@ -316,7 +283,7 @@ function handleRequestScore(
         const sourceUrl = typeof activeJob?.['sourceUrl'] === 'string' ? activeJob['sourceUrl'] : null;
         if (!sourceUrl) return;
         await chrome.storage.local.set({ [STORAGE_KEYS.CACHED_SCORE]: { sourceUrl, result: data } });
-        console.log('[DVantage Router] CACHED_SCORE written – url:', sourceUrl);
+        console.log('[DVantage Router] CACHED_SCORE written — url:', sourceUrl);
       } catch (err) {
         console.warn('[DVantage Router] CACHED_SCORE write failed:', err);
       }
@@ -336,7 +303,7 @@ function handleRequestProfile(sendResponse: (response: unknown) => void): void {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown_error';
       sendResponse({ ok: false, error: message });
-      console.error('[DVantage Router] REQUEST_PROFILE – failed:', err);
+      console.error('[DVantage Router] REQUEST_PROFILE — failed:', err);
     }
   })();
 }
@@ -369,7 +336,7 @@ function handleRequestAutofill(
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       tabId = tabs[0]?.id;
     } catch (err) {
-      console.error('[DVantage Router] REQUEST_AUTOFILL – chrome.tabs.query failed:', err);
+      console.error('[DVantage Router] REQUEST_AUTOFILL — chrome.tabs.query failed:', err);
     }
 
     if (!tabId) {
@@ -384,15 +351,16 @@ function handleRequestAutofill(
       }) as AutofillExecutionResponse;
     } catch (err) {
       sendResponse({ ok: false, error: 'content_script_error' });
-      console.error('[DVantage Router] REQUEST_AUTOFILL – sendMessage failed:', err);
+      console.error('[DVantage Router] REQUEST_AUTOFILL — sendMessage failed:', err);
       return;
     }
 
     if (!result.ok) { sendResponse({ ok: false, error: result.error }); return; }
 
+    // D13 Tier A: result.skipped is now SkippedField[] — forwarded as-is to the panel
     sendResponse({ ok: true, fieldsFilled: result.filled, skipped: result.skipped });
     console.log(
-      `[DVantage Router] REQUEST_AUTOFILL complete – filled:${result.filled} skipped:${result.skipped.length}`,
+      `[DVantage Router] REQUEST_AUTOFILL complete — filled:${result.filled} skipped:${result.skipped.length}`,
     );
   })();
 }
@@ -428,7 +396,7 @@ function handleRequestProfileUpdate(
       });
     } catch (err) {
       sendResponse({ ok: false, error: 'network_error' });
-      console.error('[DVantage Router] REQUEST_PROFILE_UPDATE – fetch failed:', err);
+      console.error('[DVantage Router] REQUEST_PROFILE_UPDATE — fetch failed:', err);
       return;
     }
 
@@ -436,7 +404,7 @@ function handleRequestProfileUpdate(
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       sendResponse({ ok: false, error: 'update_failed' });
-      console.error(`[DVantage Router] REQUEST_PROFILE_UPDATE – API error ${response.status}:`, errText.slice(0, 200));
+      console.error(`[DVantage Router] REQUEST_PROFILE_UPDATE — API error ${response.status}:`, errText.slice(0, 200));
       return;
     }
 
@@ -447,7 +415,7 @@ function handleRequestProfileUpdate(
       freshProfile = data as UserProfile;
     } catch (err) {
       sendResponse({ ok: false, error: 'invalid_response' });
-      console.error('[DVantage Router] REQUEST_PROFILE_UPDATE – parse failed:', err);
+      console.error('[DVantage Router] REQUEST_PROFILE_UPDATE — parse failed:', err);
       return;
     }
 
@@ -461,13 +429,9 @@ function handleRequestProfileUpdate(
 // REQUEST_CAPTURE handler
 // ---------------------------------------------------------------------------
 
-/**
- * Fire POST /v1/extension/applications to record the application capture.
- * Fire-and-forget – no sendResponse; returns undefined.
- */
 function handleRequestCapture(payload: unknown): void {
   if (!isValidCapturePayload(payload)) {
-    console.warn('[DVantage Router] REQUEST_CAPTURE – invalid payload, ignoring');
+    console.warn('[DVantage Router] REQUEST_CAPTURE — invalid payload, ignoring');
     return;
   }
 
@@ -475,7 +439,7 @@ function handleRequestCapture(payload: unknown): void {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
     const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
     if (!token) {
-      console.warn('[DVantage Router] REQUEST_CAPTURE – no token, skipping');
+      console.warn('[DVantage Router] REQUEST_CAPTURE — no token, skipping');
       return;
     }
 
@@ -495,19 +459,19 @@ function handleRequestCapture(payload: unknown): void {
         }),
       });
     } catch (err) {
-      console.warn('[DVantage Router] REQUEST_CAPTURE – network error:', err);
+      console.warn('[DVantage Router] REQUEST_CAPTURE — network error:', err);
       return;
     }
 
     if (!response.ok) {
-      console.warn(`[DVantage Router] REQUEST_CAPTURE – API error ${response.status}`);
+      console.warn(`[DVantage Router] REQUEST_CAPTURE — API error ${response.status}`);
       return;
     }
 
     try {
       const data = await response.json() as Record<string, unknown>;
       console.log(
-        `[DVantage Router] REQUEST_CAPTURE complete – id=${data['id'] ?? '?'} ` +
+        `[DVantage Router] REQUEST_CAPTURE complete — id=${data['id'] ?? '?'} ` +
         `company="${data['company'] ?? '?'}" role="${data['role'] ?? '?'}"`,
       );
     } catch {
@@ -517,7 +481,7 @@ function handleRequestCapture(payload: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// Public router – called from background/index.ts onMessage listener
+// Public router
 // ---------------------------------------------------------------------------
 
 export function routeMessage(
@@ -532,12 +496,12 @@ export function routeMessage(
 
   switch (type) {
     case 'JOB_DETECTED': {
-      if (!sender.tab) { console.warn('[DVantage Router] JOB_DETECTED from non-content-script – ignoring'); return undefined; }
+      if (!sender.tab) { console.warn('[DVantage Router] JOB_DETECTED from non-content-script — ignoring'); return undefined; }
       handleJobDetected(m['payload']);
       return undefined;
     }
     case 'FORM_DETECTED': {
-      if (!sender.tab) { console.warn('[DVantage Router] FORM_DETECTED from non-content-script – ignoring'); return undefined; }
+      if (!sender.tab) { console.warn('[DVantage Router] FORM_DETECTED from non-content-script — ignoring'); return undefined; }
       handleFormDetected(m['payload']);
       return undefined;
     }
@@ -547,7 +511,7 @@ export function routeMessage(
       return undefined;
     }
     case 'REQUEST_SCORE': {
-      if (sender.tab) { console.warn('[DVantage Router] REQUEST_SCORE from content-script – ignoring'); return undefined; }
+      if (sender.tab) { console.warn('[DVantage Router] REQUEST_SCORE from content-script — ignoring'); return undefined; }
       handleRequestScore(m['payload'], sendResponse);
       return true;
     }

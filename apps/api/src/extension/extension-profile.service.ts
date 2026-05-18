@@ -4,22 +4,21 @@
 // Assembles the autofill profile returned by GET /v1/extension/profile and
 // persists phone + LinkedIn URL updates via PATCH /v1/extension/profile.
 //
+// D13 Tier A additions to getProfile():
+//   - Renamed skills → topSkills in the response (aligns with UserProfile)
+//   - Added resume contact fields: location, github
+//   - Added full resume arrays: experience[], education[], certifications[],
+//     allSkills[] — these power Tier A deterministic autofill of extended
+//     form fields (location, currentTitle, university, degree, etc.) and
+//     provide full resume context for Tier B AI fill of custom questions.
+//
 // Profile assembly (three concurrent DB reads + one conditional R2 presign):
 //   users          → name (split into firstName + lastName), email
-//   user_profiles  → phone, linkedinUrl           (nullable; row may not exist)
-//   resume_versions (MRU complete) → structuredData → summary, skills, currentRole
-//   StorageService → presignDownload(storageKey)  → defaultResumeUrl (1-hour TTL)
+//   user_profiles  → phone, linkedinUrl (nullable; row may not exist)
+//   resume_versions (MRU complete) → full structuredData (ResumeData)
+//   StorageService → presignDownload(storageKey) → defaultResumeUrl (1-hour TTL)
 //
-// Skill ranking: expert(4) > advanced(3) > intermediate(2) > beginner(1).
-// Top 5 returned to keep autofill payload small.
-//
-// currentRole resolution:
-//   1. First experience entry where current === true.
-//   2. experience[0] (resumes list most-recent first by convention).
-//   Format: "<title> @ <company>"
-//
-// No caching server-side — the extension caches this response for 5 minutes
-// in chrome.storage.local[CACHED_PROFILE] via the background service worker.
+// No server-side caching — extension caches for 5 minutes in chrome.storage.
 // ---------------------------------------------------------------------------
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -40,6 +39,10 @@ import { StorageService }  from '../storage/storage.service';
 import type {
   ExtensionProfileResponseDto,
   ExtensionProfileUpdateDto,
+  ExperienceEntry,
+  EducationEntry,
+  SkillEntry,
+  CertificationEntry,
 } from './dto/extension-profile.dto';
 
 // ---------------------------------------------------------------------------
@@ -72,17 +75,10 @@ export class ExtensionProfileService {
   // GET /v1/extension/profile
   // ---------------------------------------------------------------------------
 
-  /**
-   * Assemble the autofill profile for the authenticated user.
-   *
-   * Three DB reads run concurrently via Promise.all.
-   * The R2 presign (fourth async step) runs sequentially only if a resume exists —
-   * it generates a signed URL without touching R2 over the wire (SDK-only).
-   */
   async getProfile(token: ExtensionToken): Promise<ExtensionProfileResponseDto> {
     const userId = token.userId;
 
-    // ── Concurrent reads ──────────────────────────────────────────────────
+    // ── Concurrent reads ──────────────────────────────────────────────────────
     const [userRow, profileRow, resumeRow] = await Promise.all([
       this.db
         .select({ name: users.name, email: users.email })
@@ -98,8 +94,6 @@ export class ExtensionProfileService {
         .limit(1)
         .then((rows) => rows[0] ?? null),
 
-      // MRU complete resume version — most-recently created, not most-recently updated,
-      // so re-parses of the same file don't re-order versions.
       this.db
         .select()
         .from(resumeVersions)
@@ -115,31 +109,38 @@ export class ExtensionProfileService {
         .then((rows) => rows[0] ?? null),
     ]);
 
-    // ── Name split ────────────────────────────────────────────────────────
-    // better-auth stores a single `name` string. We split on the first whitespace
-    // boundary so adapters can fill separate firstName / lastName fields without
-    // duplicating the split logic in every adapter or panel component.
+    // ── Name split ───────────────────────────────────────────────────────────
     const nameParts = (userRow?.name ?? '').trim().split(/\s+/);
     const firstName = nameParts[0] ?? '';
     const lastName  = nameParts.slice(1).join(' ');
 
-    // ── Resume structured data ────────────────────────────────────────────
+    // ── Resume structured data ───────────────────────────────────────────────
     const resumeData = (resumeRow?.structuredData as ResumeData | null) ?? null;
 
+    // ── Derived convenience fields ───────────────────────────────────────────
     const summary     = resumeData?.summary?.trim() || null;
-    const skills      = resumeData?.skills ? this.topSkills(resumeData.skills) : [];
+    const topSkills   = resumeData?.skills ? this.topSkills(resumeData.skills) : [];
     const currentRole = resumeData?.experience?.length
       ? this.resolveCurrentRole(resumeData.experience)
       : null;
 
-    // ── Resume download URL ───────────────────────────────────────────────
+    // ── Contact fields (D13 Tier A) ──────────────────────────────────────────
+    const location = resumeData?.contact?.location?.trim() || null;
+    const github   = resumeData?.contact?.github?.trim()   || null;
+
+    // ── Full resume arrays (D13 Tier A) ──────────────────────────────────────
+    const experience:     ExperienceEntry[]     = this.mapExperience(resumeData);
+    const education:      EducationEntry[]      = this.mapEducation(resumeData);
+    const certifications: CertificationEntry[]  = this.mapCertifications(resumeData);
+    const allSkills:      SkillEntry[]          = this.mapAllSkills(resumeData);
+
+    // ── Resume download URL ───────────────────────────────────────────────────
     let defaultResumeUrl: string | null = null;
     if (resumeRow?.storageKey) {
       try {
         const presigned  = await this.storage.presignDownload(resumeRow.storageKey);
         defaultResumeUrl = presigned.downloadUrl;
       } catch (err) {
-        // Non-fatal — the extension can still autofill text fields without the resume URL.
         this.logger.warn(
           `Profile presignDownload failed — key=${resumeRow.storageKey}: ${(err as Error).message}`,
         );
@@ -149,19 +150,26 @@ export class ExtensionProfileService {
     this.logger.log(
       `Extension profile assembled — user=${userId} ` +
       `hasPhone=${!!profileRow?.phone} hasLinkedIn=${!!profileRow?.linkedinUrl} ` +
-      `hasResume=${!!resumeRow} skills=${skills.length}`,
+      `hasResume=${!!resumeRow} skills=${topSkills.length} ` +
+      `exp=${experience.length} edu=${education.length}`,
     );
 
     return {
       firstName,
       lastName,
-      email:           userRow?.email   ?? '',
+      email:           userRow?.email         ?? '',
       phone:           profileRow?.phone       ?? null,
       linkedinUrl:     profileRow?.linkedinUrl ?? null,
+      location,
+      github,
       summary,
-      skills,
+      topSkills,
       currentRole,
-      defaultResumeId: resumeRow?.id        ?? null,
+      experience,
+      education,
+      certifications,
+      allSkills,
+      defaultResumeId: resumeRow?.id          ?? null,
       defaultResumeUrl,
     };
   }
@@ -170,20 +178,6 @@ export class ExtensionProfileService {
   // PATCH /v1/extension/profile
   // ---------------------------------------------------------------------------
 
-  /**
-   * Upsert the user_profiles row for this user.
-   *
-   * Only fields present in the DTO are written — undefined means "leave as-is".
-   * Returns the full assembled profile after update so the extension replaces
-   * its chrome.storage.local[CACHED_PROFILE] without a separate GET.
-   *
-   * Upsert strategy: check for existing row, then INSERT or UPDATE.
-   * Using a conditional branch rather than ON CONFLICT because Drizzle's
-   * onConflictDoUpdate requires the conflict target to be a unique index,
-   * and the `.unique()` on userId creates an unnamed constraint — safe to
-   * use here but fragile across Drizzle versions. Explicit SELECT→INSERT/UPDATE
-   * is more readable and equally performant for a single-row-per-user table.
-   */
   async updateProfile(
     token: ExtensionToken,
     dto:   ExtensionProfileUpdateDto,
@@ -228,43 +222,67 @@ export class ExtensionProfileService {
   }
 
   // ---------------------------------------------------------------------------
-  // Private helpers
+  // Private helpers — resume data mapping (D13 Tier A)
   // ---------------------------------------------------------------------------
 
-  /**
-   * Return the top N skill names ordered by level descending.
-   * Within the same level, the resume's original ordering is preserved
-   * (stable sort behaviour via [...spread]).
-   */
+  private mapExperience(resumeData: ResumeData | null): ExperienceEntry[] {
+    if (!resumeData?.experience?.length) return [];
+    return resumeData.experience.map((e) => ({
+      company:    e.company?.trim()   ?? '',
+      title:      e.title?.trim()     ?? '',
+      startDate:  e.startDate         ?? '',
+      endDate:    e.endDate           ?? null,
+      current:    e.current           ?? false,
+      highlights: e.highlights        ?? [],
+    }));
+  }
+
+  private mapEducation(resumeData: ResumeData | null): EducationEntry[] {
+    if (!resumeData?.education?.length) return [];
+    return resumeData.education.map((e) => ({
+      institution: e.institution?.trim() ?? '',
+      degree:      e.degree?.trim()      ?? '',
+      field:       e.field?.trim()       ?? '',
+      startDate:   e.startDate           ?? '',
+      endDate:     e.endDate             ?? null,
+      gpa:         e.gpa                 ?? null,
+    }));
+  }
+
+  private mapCertifications(resumeData: ResumeData | null): CertificationEntry[] {
+    if (!resumeData?.certifications?.length) return [];
+    return resumeData.certifications.map((c) => ({
+      name:   c.name?.trim()   ?? '',
+      issuer: c.issuer?.trim() ?? '',
+      date:   c.date           ?? null,
+    }));
+  }
+
+  private mapAllSkills(resumeData: ResumeData | null): SkillEntry[] {
+    if (!resumeData?.skills?.length) return [];
+    return resumeData.skills.map((s) => ({
+      name:     s.name     ?? '',
+      category: s.category ?? 'technical',
+      level:    s.level    ?? null,
+    }));
+  }
+
   private topSkills(skills: ResumeData['skills']): string[] {
     return [...skills]
       .sort((a, b) => {
         const ra = LEVEL_RANK[a.level ?? ''] ?? 0;
         const rb = LEVEL_RANK[b.level ?? ''] ?? 0;
-        return rb - ra; // descending
+        return rb - ra;
       })
       .slice(0, TOP_SKILLS_COUNT)
       .map((s) => s.name);
   }
 
-  /**
-   * Resolve the current or most-recent role as a single display string.
-   *
-   * Resolution order:
-   *   1. First experience entry with current === true.
-   *   2. experience[0] — resume convention: most-recent entry listed first.
-   *
-   * Format: "<title> @ <company>"
-   * Handles partial data gracefully — returns just title or just company
-   * if one is empty, or null if both are.
-   */
   private resolveCurrentRole(experience: ResumeData['experience']): string | null {
     const entry = experience.find((e) => e.current) ?? experience[0];
     if (!entry) return null;
-
     const title   = entry.title?.trim()   ?? '';
     const company = entry.company?.trim() ?? '';
-
     if (!title && !company) return null;
     if (!company)           return title;
     if (!title)             return company;

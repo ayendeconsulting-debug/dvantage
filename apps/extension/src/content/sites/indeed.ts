@@ -1,48 +1,9 @@
 // ---------------------------------------------------------------------------
-// D'Vantage – Indeed Site Adapter
+// D'Vantage — Indeed Site Adapter
 //
-// detectJD: real implementation since D8.
-// detectForm / fillFields / observe: real implementation since D12.
-//
-// D10 change: fillFields return type updated void → AutofillResult.
-// D12 change: detectForm + fillFields + observe implemented for Indeed Apply
-//             step 1 (same-origin DOM). CSP constraint noted below.
-//
-// ── Indeed Apply architecture ──────────────────────────────────────────────
-//
-// Indeed Apply opens as a modal overlay on the job listing page without a
-// URL change. This requires observe() (MutationObserver) to trigger detection
-// when the modal appears or disappears — same pattern as LinkedIn Easy Apply.
-//
-// Step 1 of Indeed Apply renders its form fields in the same-origin DOM
-// (indeed.com → indeed.com). These fields are accessible to the content script
-// and can be filled with the nativeInputSetter pattern.
-//
-// Step 2+ may involve a cross-origin iframe (apply.indeed.com or
-// smartapply.indeed.com). Content scripts cannot access cross-origin iframes
-// due to CSP / Same-Origin Policy. Step 2+ is therefore OUT OF SCOPE.
-// Users must complete step 2+ manually.
-//
-// ── Field map (step 1) ────────────────────────────────────────────────────
-//
-//   Full name OR first + last  → fullName / firstName + lastName
-//   Email                      → email
-//   Phone                      → phone
-//   Resume upload              → resume (📎 manual — type:'file')
-//
-// ── Modal detection selectors (priority order) ───────────────────────────
-//
-//   [data-testid="ia-LightningApplyModal"]
-//   [data-testid="apply-form-container"]
-//   .ia-BasePage
-//   div[role="dialog"][aria-label*="apply" i]
-//
-// Note: Indeed's frontend evolves frequently. If selectors stop matching,
-// inspect the DOM of an active apply modal and update this file.
-//
-// Supported paths (isJobPostingPage guard):
-//   /viewjob              ← classic job page
-//   /jobs?vjk=<id>        ← SPA job listing with panel
+// D13 Tier A changes:
+//   - Import resolveProfileValue from shared/profile-resolver
+//   - fillFields() returns SkippedField[] instead of string[]
 // ---------------------------------------------------------------------------
 
 import type {
@@ -50,14 +11,12 @@ import type {
   ExtractedJob,
   FormField,
   SiteAdapter,
+  SkippedField,
   UserProfile,
 } from '../../shared/types';
+import { resolveProfileValue } from '../../shared/profile-resolver';
 
 const ADAPTER_NAME = 'indeed';
-
-// ---------------------------------------------------------------------------
-// JD detection constants (D8 – unchanged)
-// ---------------------------------------------------------------------------
 
 const HEADER = {
   titleTestId:    'h1[data-testid="jobsearch-JobInfoHeader-title"]',
@@ -75,14 +34,6 @@ const DESCRIPTION = {
 
 const FALLBACK = { title: 'h1' } as const;
 
-// ---------------------------------------------------------------------------
-// Modal detection selectors (D12)
-// ---------------------------------------------------------------------------
-
-/**
- * Indeed Apply modal selectors in priority order.
- * Try specific data-testid first, fall back to role/aria-label.
- */
 const MODAL_SELECTORS = [
   '[data-testid="ia-LightningApplyModal"]',
   '[data-testid="apply-form-container"]',
@@ -117,10 +68,6 @@ function firstMatch(...selectors: string[]): string | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Native input setter – React controlled-input compatibility
-// ---------------------------------------------------------------------------
-
 const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
 const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
 
@@ -136,14 +83,10 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-// ---------------------------------------------------------------------------
-// Company extraction
-// ---------------------------------------------------------------------------
-
 function extractCompanyFromTitle(): string | null {
-  const title        = document.title;
+  const title         = document.title;
   const withoutSuffix = title.replace(/\s*\|\s*Indeed\s*$/i, '').trim();
-  const parts        = withoutSuffix.split(/\s*-\s*/);
+  const parts         = withoutSuffix.split(/\s*-\s*/);
   if (parts.length >= 2) {
     const candidate = cleanText(parts[1]);
     if (candidate) return candidate;
@@ -151,27 +94,13 @@ function extractCompanyFromTitle(): string | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Page guards
-// ---------------------------------------------------------------------------
-
 function isJobPostingPage(): boolean {
   const { pathname, search } = window.location;
   if (pathname === '/viewjob') return true;
-  if (pathname === '/jobs') {
-    return new URLSearchParams(search).has('vjk');
-  }
+  if (pathname === '/jobs') return new URLSearchParams(search).has('vjk');
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Modal detection (D12)
-// ---------------------------------------------------------------------------
-
-/**
- * Detect the Indeed Apply modal element.
- * Returns null when the modal is not open.
- */
 function detectIndeedApplyModal(): Element | null {
   for (const sel of MODAL_SELECTORS) {
     const el = document.querySelector(sel);
@@ -181,17 +110,9 @@ function detectIndeedApplyModal(): Element | null {
 }
 
 // ---------------------------------------------------------------------------
-// Form detection (D12)
+// Form detection
 // ---------------------------------------------------------------------------
 
-/**
- * Probe for a field inside the modal, scoped to the modal container.
- *
- * File inputs (type='file') are included with type:'file' so that
- * content/index.ts routes them to ActiveForm.manualFields → 📎 in panel.
- *
- * Returns true if a field was pushed.
- */
 function probeModal(
   container:  Element,
   fields:     FormField[],
@@ -222,20 +143,6 @@ function probeModal(
   return false;
 }
 
-/**
- * Detect Indeed Apply step 1 form fields inside the apply modal.
- *
- * Strategy:
- *   1. Modal must be present (detectIndeedApplyModal()).
- *   2. Probe for full-name field first — Indeed Apply step 1 uses a single
- *      name field on many postings. If found, use fullName profileKey.
- *   3. If no combined field, probe for firstName + lastName separately.
- *   4. Probe email, phone, resume (always file type → 📎).
- *
- * Note: selectors use data-testid and name attributes where possible for
- * resilience against class name churn. Attribute-based fallbacks handle
- * employers who customise the apply flow layout.
- */
 function detectIndeedForm(): FormField[] {
   if (!isJobPostingPage()) return [];
 
@@ -244,10 +151,6 @@ function detectIndeedForm(): FormField[] {
 
   const fields: FormField[] = [];
 
-  // ── Name field strategy ──────────────────────────────────────────────────
-  // Indeed Apply step 1 may show a single "Full name" input or
-  // separate "First name" / "Last name" inputs depending on employer config.
-  // Probe for combined field first; fall back to split fields.
   const hasCombinedName = !!(
     modal.querySelector('input[name="applicant.name"]') ??
     modal.querySelector('input[data-testid="applicant-name-input"]') ??
@@ -277,7 +180,6 @@ function detectIndeedForm(): FormField[] {
     );
   }
 
-  // ── Email ─────────────────────────────────────────────────────────────────
   probeModal(modal, fields, 'email', 'Email', true,
     'input[name="applicant.email"]',
     'input[data-testid="applicant-email-input"]',
@@ -285,7 +187,6 @@ function detectIndeedForm(): FormField[] {
     'input[id*="email" i]',
   );
 
-  // ── Phone ─────────────────────────────────────────────────────────────────
   probeModal(modal, fields, 'phone', 'Phone', false,
     'input[name="applicant.phoneNumber"]',
     'input[data-testid="applicant-phone-input"]',
@@ -294,9 +195,6 @@ function detectIndeedForm(): FormField[] {
     'input[name*="phone" i]',
   );
 
-  // ── Resume (file → 📎) ───────────────────────────────────────────────────
-  // Always type:'file' — browsers block programmatic value setting.
-  // content/index.ts routes this to manualFields → 📎 in AutofillPanel.
   probeModal(modal, fields, 'resume', 'Resume', false,
     'input[type="file"]',
     'input[name*="resume" i]',
@@ -304,23 +202,15 @@ function detectIndeedForm(): FormField[] {
   );
 
   console.debug(
-    `[DVantage][${ADAPTER_NAME}] detectForm – fields found: ${fields.length}`,
+    `[DVantage][${ADAPTER_NAME}] detectForm — fields found: ${fields.length}`,
     fields.map(f => `${f.name}(${f.type})`).join(', '),
   );
 
   return fields;
 }
 
-// ---------------------------------------------------------------------------
-// Fill helper (modal-scoped)
-// ---------------------------------------------------------------------------
-
-/**
- * Find an input or textarea inside the modal container.
- * Scoped to avoid matching unrelated page inputs.
- */
 function findInputInModal(
-  modal:     Element,
+  modal:       Element,
   ...selectors: string[]
 ): HTMLInputElement | HTMLTextAreaElement | null {
   for (const sel of selectors) {
@@ -343,7 +233,7 @@ export const indeedAdapter: SiteAdapter = {
 
     const title = firstMatch(HEADER.titleTestId, HEADER.titleClass, FALLBACK.title);
     if (!title) {
-      console.debug(`[DVantage][${ADAPTER_NAME}] title not found – DOM may not be hydrated yet`);
+      console.debug(`[DVantage][${ADAPTER_NAME}] title not found — DOM may not be hydrated yet`);
       return null;
     }
 
@@ -351,14 +241,11 @@ export const indeedAdapter: SiteAdapter = {
       firstMatch(HEADER.companyTestId, HEADER.companyAttr) ??
       extractCompanyFromTitle();
 
-    const location    = firstMatch(HEADER.locationTestId, HEADER.locationAlt);
-    const description = firstMatch(DESCRIPTION.primary, DESCRIPTION.broad) ?? '';
-
     const job: ExtractedJob = {
       title,
       company,
-      location,
-      description,
+      location:    firstMatch(HEADER.locationTestId, HEADER.locationAlt),
+      description: firstMatch(DESCRIPTION.primary, DESCRIPTION.broad) ?? '',
       sourceUrl:   window.location.href,
       extractedAt: new Date().toISOString(),
     };
@@ -386,47 +273,52 @@ export const indeedAdapter: SiteAdapter = {
     if (fields.length === 0) return { filled: 0, skipped: [] };
 
     let filled = 0;
-    const skipped: string[] = [];
+    const skipped: SkippedField[] = [];
 
     for (const field of fields) {
-      // Skip file inputs – browsers block programmatic value setting.
-      // These are shown as 📎 in AutofillPanel via manualFields[].
+      // File inputs: routed to manualFields by content/index.ts; not filled here
       if (field.type === 'file') continue;
 
-      // Skip unknown fields – no profile mapping.
       if (field.type === 'unknown') {
-        skipped.push(field.label ?? field.name);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: 'text',
+          required:  field.required,
+        });
         continue;
       }
 
       const el = findInputInModal(modal, field.selector);
       if (!el) {
-        skipped.push(field.label ?? field.name);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: field.type as SkippedField['fieldType'],
+          required:  field.required,
+        });
         continue;
       }
 
-      // Defense-in-depth: never fill a file input regardless of type mapping.
       if (el instanceof HTMLInputElement && el.type === 'file') {
         console.warn(
-          `[DVantage][${ADAPTER_NAME}] fillFields(): file input reached fill loop – skipping (${field.label})`,
+          `[DVantage][${ADAPTER_NAME}] fillFields(): file input reached fill loop — skipping (${field.label})`,
         );
         continue;
       }
 
-      let value: string | null = null;
-
-      switch (field.name) {
-        case 'fullName':    value = `${profile.firstName} ${profile.lastName}`.trim() || null; break;
-        case 'firstName':   value = profile.firstName   || null;    break;
-        case 'lastName':    value = profile.lastName    || null;    break;
-        case 'email':       value = profile.email       || null;    break;
-        case 'phone':       value = profile.phone;                  break;
-        case 'linkedinUrl': value = profile.linkedinUrl;            break;
-        default:            value = null;
-      }
+      const value = resolveProfileValue(
+        field.name as import('../../shared/types').AutofillFieldKey,
+        profile,
+      );
 
       if (!value) {
-        skipped.push(field.label ?? field.name);
+        skipped.push({
+          label:     field.label ?? field.name,
+          selector:  field.selector,
+          fieldType: field.type as SkippedField['fieldType'],
+          required:  field.required,
+        });
         continue;
       }
 
@@ -435,25 +327,12 @@ export const indeedAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete – filled:${filled} skipped:${skipped.join(', ')}`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:${skipped.map(s => s.label).join(', ')}`,
     );
 
     return { filled, skipped };
   },
 
-  /**
-   * D12: MutationObserver hook for Indeed Apply modal.
-   *
-   * Indeed Apply opens/closes without a URL change on job listing pages.
-   * We watch document.body for DOM mutations and fire onFormChange() only
-   * when the modal's presence actually changes (appear or disappear).
-   * This maps to scheduleDetection() in the content script – the standard
-   * 1000ms debounce path. Zero new architecture.
-   *
-   * Note: subtree:true is required because the modal is deeply nested.
-   * The state-change guard (nowPresent !== modalPresent) prevents
-   * onFormChange() from firing on every minor DOM mutation.
-   */
   observe(onFormChange: () => void): () => void {
     let modalPresent = !!detectIndeedApplyModal();
 
