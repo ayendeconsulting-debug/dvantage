@@ -1,17 +1,16 @@
 // ---------------------------------------------------------------------------
 // D'Vantage — Greenhouse Site Adapter
 //
-// D13 Tier A changes:
-//   - Import resolveProfileValue from shared/profile-resolver (replaces inline switch)
-//   - New field probes: location, github, currentTitle, currentCompany
-//   - fillFields() returns SkippedField[] instead of string[]
-//     Each skipped entry includes selector + fieldType for Tier B AI fill.
-//   - Iterates over FormField[] directly (not AutofillPreviewField[]) to
-//     carry selector info through to SkippedField.
-//
-// Supported paths:
-//   https://boards.greenhouse.io/*
-//   https://job-boards.greenhouse.io/*
+// D13 post-smoke-test fix:
+//   - Custom field sweep added to detectGreenhouseForm().
+//     After named probes run, any remaining labeled text inputs/textareas in
+//     the form are collected as custom_* fields. These don't resolve via
+//     resolveProfileValue (unknown key → null) so they land in skipped[]
+//     and are sent to Tier B AI fill. This catches:
+//       City, State, Country, Preferred First Name, Desired Base Salary,
+//       cover letter variants, work authorisation, etc.
+//   - Select dropdowns (School, Degree, State dropdown) are excluded from
+//     the sweep — select value setting requires option matching, out of scope.
 // ---------------------------------------------------------------------------
 
 import type {
@@ -167,13 +166,117 @@ function extractNewBoard(): ExtractedJob | null {
 // Form detection
 // ---------------------------------------------------------------------------
 
+/**
+ * Sanitise a label string into a stable field key.
+ * e.g. "Preferred First Name" → "custom_preferred_first_name"
+ * e.g. "Desired Base Salary *" → "custom_desired_base_salary"
+ */
+function labelToKey(label: string): string {
+  return 'custom_' + label
+    .toLowerCase()
+    .replace(/\*+/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 50);
+}
+
+/**
+ * After named probes run, sweep all remaining labeled text inputs and
+ * textareas in the form container that haven't been captured yet.
+ *
+ * Strategy:
+ *   1. Walk all <label> elements in the form.
+ *   2. Resolve their associated input via label[for] or nested child.
+ *   3. Skip types that can't be autofilled: file, hidden, submit, button,
+ *      radio, checkbox, image.
+ *   4. Skip <select> dropdowns — option matching is out of scope.
+ *   5. Skip elements already in coveredIds (from named probes).
+ *   6. Add remaining as custom_* fields with selector = #id or [name="…"].
+ *      These resolve to null in resolveProfileValue → land in skipped[] →
+ *      Tier B AI generates answers from resume context.
+ */
+function sweepCustomFields(
+  formEl:     Element,
+  coveredIds: Set<string>,
+): FormField[] {
+  const SKIP_INPUT_TYPES = new Set([
+    'file', 'hidden', 'submit', 'button', 'reset',
+    'radio', 'checkbox', 'image', 'color', 'range',
+  ]);
+
+  const custom: FormField[] = [];
+  const seenIds = new Set<string>(coveredIds);
+
+  const labels = Array.from(formEl.querySelectorAll<HTMLLabelElement>('label'));
+
+  for (const label of labels) {
+    // Resolve label text — strip trailing * and whitespace
+    const rawText = cleanText(label.innerText)?.replace(/\*+\s*$/, '').trim();
+    if (!rawText) continue;
+
+    // Find associated input/textarea
+    let el: HTMLInputElement | HTMLTextAreaElement | null = null;
+
+    const forId = label.getAttribute('for');
+    if (forId) {
+      const found = document.getElementById(forId);
+      if (found instanceof HTMLInputElement || found instanceof HTMLTextAreaElement) {
+        el = found;
+      }
+    }
+
+    if (!el) {
+      el = label.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
+    }
+
+    if (!el) continue;
+
+    // Skip select dropdowns
+    if (el.tagName.toLowerCase() === 'select') continue;
+
+    // Skip disallowed input types
+    if (el instanceof HTMLInputElement && SKIP_INPUT_TYPES.has(el.type)) continue;
+
+    // Build a stable identifier for dedup
+    const elId   = el.id   ? `#${el.id}`           : null;
+    const elName = el.name ? `[name="${el.name}"]`  : null;
+    const dedupeKey = elId ?? elName ?? rawText;
+
+    if (seenIds.has(dedupeKey)) continue;
+    seenIds.add(dedupeKey);
+
+    const tag      = el.tagName.toLowerCase();
+    const inputType = (el as HTMLInputElement).type ?? 'text';
+    const required  = el.required || /\*/.test(label.innerText);
+
+    custom.push({
+      name:        labelToKey(rawText),
+      type:        tag === 'textarea' ? 'textarea' : 'text',
+      label:       rawText,
+      placeholder: (el as HTMLInputElement).placeholder || null,
+      required,
+      selector:    elId ?? elName ?? `input[placeholder="${(el as HTMLInputElement).placeholder}"]`,
+    });
+
+    console.debug(
+      `[DVantage][${ADAPTER_NAME}] sweep captured custom field: "${rawText}" → ${dedupeKey}`,
+    );
+  }
+
+  return custom;
+}
+
 function detectGreenhouseForm(): FormField[] {
-  const hasForm = !!document.querySelector(
+  const formEl = document.querySelector<Element>(
     '#application-form, #application_form, form.application--form, form[action*="greenhouse"], #apply-form',
   );
-  if (!hasForm) return [];
+  if (!formEl) return [];
 
   const fields: FormField[] = [];
+
+  // Track element IDs that named probes successfully found,
+  // so the sweep skips them.
+  const coveredIds = new Set<string>();
 
   function probe(
     profileKey:  string,
@@ -197,11 +300,16 @@ function detectGreenhouseForm(): FormField[] {
           required,
           selector:    sel,
         });
+        // Track this element so sweep skips it
+        if ((el as HTMLElement & { id?: string }).id) {
+          coveredIds.add(`#${(el as HTMLInputElement).id}`);
+        }
         return;
       }
     }
   }
 
+  // ── Named probes ─────────────────────────────────────────────────────────
   probe('firstName',      'First name',        true,  '#first_name', 'input[name*="first"][type="text"]');
   probe('lastName',       'Last name',         true,  '#last_name',  'input[name*="last"][type="text"]');
   probe('email',          'Email',             true,  '#email',      'input[type="email"]');
@@ -238,7 +346,7 @@ function detectGreenhouseForm(): FormField[] {
     '#job_application_cover_letter',
     'textarea[name*="cover"]',
   );
-  // Resume — always type:'file' → routed to manualFields → 📎 in panel
+  // Resume — type:'file' → routed to manualFields → 📎 in panel
   probe('resume', 'Resume', false,
     '#resume',
     'input[name="resume"]',
@@ -247,6 +355,17 @@ function detectGreenhouseForm(): FormField[] {
     'input[accept*="pdf" i]',
     'input[accept*="doc" i]',
     'input[type="file"]',
+  );
+
+  // ── Custom field sweep ────────────────────────────────────────────────────
+  // Captures any remaining labeled text inputs / textareas that named probes
+  // didn't cover: City, State, Country, Preferred First Name, Salary, etc.
+  // These go into skipped[] → Tier B AI fill.
+  const customFields = sweepCustomFields(formEl, coveredIds);
+  fields.push(...customFields);
+
+  console.debug(
+    `[DVantage][${ADAPTER_NAME}] detectForm — named:${fields.length - customFields.length} custom:${customFields.length}`,
   );
 
   return fields;
@@ -297,7 +416,6 @@ export const greenhouseAdapter: SiteAdapter = {
     const fillableFields = fields.filter(f => f.type !== 'unknown' && f.type !== 'file');
 
     for (const field of fillableFields) {
-      // Layer 3 guard — defense-in-depth
       const el = findInput(field.selector);
       if (!el) {
         skipped.push({
@@ -310,16 +428,11 @@ export const greenhouseAdapter: SiteAdapter = {
       }
 
       if (el instanceof HTMLInputElement && el.type === 'file') {
-        console.warn(`[DVantage][${ADAPTER_NAME}] file input in fill loop — skipping (${field.label})`);
-        skipped.push({
-          label:     field.label ?? field.name,
-          selector:  field.selector,
-          fieldType: 'text',
-          required:  field.required,
-        });
+        skipped.push({ label: field.label ?? field.name, selector: field.selector, fieldType: 'text', required: field.required });
         continue;
       }
 
+      // resolveProfileValue returns null for custom_* keys → goes to skipped[]
       const value = resolveProfileValue(field.name as import('../../shared/types').AutofillFieldKey, profile);
 
       if (!value) {
@@ -337,7 +450,7 @@ export const greenhouseAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:${skipped.map(s => s.label).join(', ')}`,
+      `[DVantage][${ADAPTER_NAME}] fillFields — filled:${filled} skipped:[${skipped.map(s => s.label).join(', ')}]`,
     );
 
     return { filled, skipped };

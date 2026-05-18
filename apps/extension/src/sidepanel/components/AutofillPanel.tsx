@@ -61,11 +61,11 @@ function fireCapture(pageUrl: string): void {
 function FieldRow({ field, profile }: { field: AutofillPreviewField; profile: UserProfile }) {
   const value = getProfileValue(field.profileKey, profile);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '0 8px', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid var(--vt-border)' }}>
-      <span style={{ fontSize: '11px', color: 'var(--vt-text-muted)', fontWeight: 500, letterSpacing: '0.02em', textTransform: 'uppercase', lineHeight: '1.4' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '0 10px', alignItems: 'start', padding: '7px 0', borderBottom: '1px solid var(--vt-border)' }}>
+      <span style={{ fontSize: '10px', color: 'var(--vt-text-secondary)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: '1.8' }}>
         {field.label}{field.required && <span style={{ color: 'var(--vt-danger)', marginLeft: 2 }}>*</span>}
       </span>
-      <span style={{ fontSize: '12px', color: value ? 'var(--vt-text)' : 'var(--vt-text-muted)', fontStyle: value ? 'normal' : 'italic', lineHeight: '1.4', wordBreak: 'break-word' }}>
+      <span style={{ fontSize: '13px', color: value ? 'var(--vt-text)' : 'var(--vt-text-disabled)', fontStyle: value ? 'normal' : 'italic', lineHeight: '1.5', wordBreak: 'break-word' }}>
         {value ?? '\u2013 not set'}
       </span>
     </div>
@@ -74,11 +74,11 @@ function FieldRow({ field, profile }: { field: AutofillPreviewField; profile: Us
 
 function ManualFieldRow({ field }: { field: { label: string; required: boolean } }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '0 8px', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid var(--vt-border)' }}>
-      <span style={{ fontSize: '11px', color: 'var(--vt-text-muted)', fontWeight: 500, letterSpacing: '0.02em', textTransform: 'uppercase', lineHeight: '1.4' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '0 10px', alignItems: 'start', padding: '7px 0', borderBottom: '1px solid var(--vt-border)' }}>
+      <span style={{ fontSize: '10px', color: 'var(--vt-text-secondary)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: '1.8' }}>
         {field.label}{field.required && <span style={{ color: 'var(--vt-danger)', marginLeft: 2 }}>*</span>}
       </span>
-      <span style={{ fontSize: '12px', color: 'var(--vt-warning)', lineHeight: '1.4', display: 'flex', alignItems: 'center', gap: '4px' }}><span>📎</span><span>Manual upload required</span></span>
+      <span style={{ fontSize: '13px', color: 'var(--vt-warning)', lineHeight: '1.5', display: 'flex', alignItems: 'center', gap: '4px' }}><span>📎</span><span>Manual upload required</span></span>
     </div>
   );
 }
