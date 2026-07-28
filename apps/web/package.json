@@ -17,7 +17,7 @@
     "@vantage/contracts": "workspace:*",
     "@vantage/ui-kit": "workspace:*",
     "@vantage/validation": "workspace:*",
-    "better-auth": "^1.6.0",
+    "better-auth": "^1.6.22",
     "lucide-react": "^0.383.0",
     "next": "^15.0.0",
     "react": "^18.3.0",
