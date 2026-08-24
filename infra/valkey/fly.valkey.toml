@@ -4,13 +4,18 @@
 #
 # Deploy:  fly deploy --config infra/valkey/fly.valkey.toml --app dvantage-valkey
 #
-# PRIVATE NETWORK ONLY. There is deliberately no [http_service] and no
-# [[services]] block — this app is never exposed to the public internet.
-# Reached over Fly 6PN at dvantage-valkey.flycast:6379, the same pattern
-# already used for dvantage-db.flycast.
+# PRIVATE NETWORK ONLY. There is deliberately no public IP and no [[services]]
+# block. Consumers reach it over Fly 6PN at:
 #
-# Replaces the Upstash free-tier database that was archived after 30 days of
-# inactivity on 2026-08-24, taking the API down with it. See README.md.
+#     dvantage-valkey.internal:6379
+#
+# .internal resolves to the machine's private IPv6 directly, with no Fly Proxy
+# in the path. That is why no service definition is needed — a [[services]]
+# block would require a [[services.ports]] section and a processes reference,
+# and buys nothing for a single-node cache on a private network.
+#
+# Replaces the Upstash free-tier database archived after 30 days of inactivity
+# on 2026-08-24, which took the API down with it. See README.md.
 # =============================================================================
 
 app            = 'dvantage-valkey'
@@ -21,53 +26,31 @@ primary_region = 'yyz'          # Toronto — must match dvantage-api (PIPEDA)
 [build]
   image = 'valkey/valkey:8-alpine'
 
-# ── Non-secret env (VALKEY_PASSWORD injected via `fly secrets set`) ───────────
-[env]
-  VALKEY_MAXMEMORY = '200mb'      # leaves ~56MB headroom on a 256MB machine
-
 # ── Persistence ───────────────────────────────────────────────────────────────
-# AOF lives here. Without a volume, a machine restart drops every queued
-# BullMQ job and every active session.
+# AOF lives here. Without a volume, a machine restart drops every queued BullMQ
+# job and every active session.
 [[mounts]]
   source      = 'valkey_data'
   destination = '/data'
 
 # ── Process ───────────────────────────────────────────────────────────────────
-# maxmemory-policy MUST be noeviction. Under `allkeys-lru` (the setting in
-# docker-compose.yml) Valkey will silently evict BullMQ job hashes and
-# wait/active lists under memory pressure — jobs vanish with no error, no
-# failure event and no DB status change. Audit finding REL-5.
+# Wrapped in `sh -c` on purpose: Fly execs the process command directly without
+# a shell, so a bare `--requirepass $VALKEY_PASSWORD` would pass the literal
+# string "$VALKEY_PASSWORD" as the password. The shell is what expands it.
+#
+# maxmemory-policy MUST be noeviction. Under allkeys-lru (the setting in
+# docker-compose.yml) Valkey silently evicts BullMQ job hashes and wait/active
+# lists under memory pressure — jobs vanish with no error, no failure event and
+# no DB status change. Audit finding REL-5.
+#
+# noeviction means a full Valkey REFUSES writes rather than evicting, so watch
+# headroom: `valkey-cli info memory`. Bump to a 512mb machine before used_memory
+# reaches ~80% of maxmemory.
 [processes]
-  app = """valkey-server \
-    --requirepass $VALKEY_PASSWORD \
-    --maxmemory $VALKEY_MAXMEMORY \
-    --maxmemory-policy noeviction \
-    --appendonly yes \
-    --appendfsync everysec \
-    --save 900 1 \
-    --dir /data"""
-
-# ── Health check ──────────────────────────────────────────────────────────────
-# TCP-only: a `redis-cli ping` check would need the password in the config.
-# Port open is a sufficient liveness signal for a single-node cache.
-[[services]]
-  internal_port = 6379
-  protocol      = 'tcp'
-  auto_stop_machines  = false     # never park the broker
-  auto_start_machines = true
-  min_machines_running = 1
-
-  [[services.tcp_checks]]
-    interval      = '15s'
-    timeout       = '2s'
-    grace_period  = '10s'
+  app = "sh -c 'exec valkey-server --requirepass \"$VALKEY_PASSWORD\" --maxmemory 200mb --maxmemory-policy noeviction --appendonly yes --appendfsync everysec --dir /data'"
 
 # ── Machine sizing ────────────────────────────────────────────────────────────
 # 256MB shared-cpu-1x ≈ $2.02/mo + $0.15/mo for the 1GB volume.
-# Sessions + queue state for MVP scale fit comfortably in 200MB.
-# Watch `used_memory` in `redis-cli INFO memory`; bump to 512mb before you
-# reach ~80% of maxmemory, because the policy is noeviction — a full Valkey
-# starts REFUSING writes rather than evicting, which fails enqueues loudly.
 [[vm]]
   cpu_kind = 'shared'
   cpus     = 1

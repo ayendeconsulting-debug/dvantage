@@ -55,13 +55,24 @@ Three fixes landed together so no single link can repeat this:
 
 ## Provisioning
 
-From the repo root:
+**Preferred — GitHub Actions.** Actions → **Provision — Valkey** → Run workflow
+→ type `provision` → Run.
 
-```powershell
-.\scripts\valkey-provision.ps1
-```
+Creates the app and volume, generates a password, deploys, allocates a private
+IPv6, points `dvantage-api` and `dvantage-worker` at it, and polls `/health`
+until the API is back. The password is masked and never printed.
 
-Idempotent apart from password generation. Or manually:
+Requires `FLY_API_TOKEN` as a repo secret, with permission to **create apps** —
+a deploy-scoped token is not sufficient.
+
+Safe to re-run: app and volume creation are skipped when they already exist,
+and the password is rotated with all three apps updated in the same run.
+
+> `scripts/valkey-provision.ps1` does the same thing locally. It cannot run on
+> the primary dev machine — Windows Application Control blocks the unsigned
+> flyctl binary — so it is kept only for machines with a working flyctl.
+
+Or manually:
 
 ```powershell
 flyctl apps create dvantage-valkey --org personal
