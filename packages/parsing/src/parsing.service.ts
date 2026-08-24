@@ -1,8 +1,5 @@
 import { Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
-import {
-  ALLOWED_RESUME_MIME_TYPES,
-  RESUME_MAX_SIZE_BYTES,
-} from '@vantage/validation';
+import { ALLOWED_RESUME_MIME_TYPES, RESUME_MAX_SIZE_BYTES } from '@vantage/validation';
 import type { ParseResult } from './parse-result.interface';
 import { PdfStrategy } from './strategies/pdf.strategy';
 import { DocxStrategy } from './strategies/docx.strategy';
@@ -22,15 +19,10 @@ export class ParsingService {
     private readonly txtStrategy: TxtStrategy,
     private readonly virusScan: VirusScanService,
   ) {
-    this.blockOnUnknownScan =
-      process.env['VIRUS_SCAN_BLOCK_UNKNOWN'] === 'true';
+    this.blockOnUnknownScan = process.env['VIRUS_SCAN_BLOCK_UNKNOWN'] === 'true';
   }
 
-  async parse(
-    buffer: Buffer,
-    mimeType: string,
-    fileName: string,
-  ): Promise<ParseResult> {
+  async parse(buffer: Buffer, mimeType: string, fileName: string): Promise<ParseResult> {
     // 1. MIME type
     const allowedMimes = ALLOWED_RESUME_MIME_TYPES as readonly string[];
     if (!allowedMimes.includes(mimeType)) {
@@ -56,9 +48,7 @@ export class ParsingService {
     }
     if (scanResult === 'unknown' && this.blockOnUnknownScan) {
       this.logger.warn(`File "${fileName}" blocked — scan returned unknown`);
-      throw new UnprocessableEntityException(
-        'The file could not be scanned. Upload rejected.',
-      );
+      throw new UnprocessableEntityException('The file could not be scanned. Upload rejected.');
     }
 
     // 4. Parse
@@ -76,9 +66,7 @@ export class ParsingService {
         result = this.txtStrategy.parse(buffer);
         break;
       default:
-        throw new UnprocessableEntityException(
-          `No parsing strategy for "${mimeType}".`,
-        );
+        throw new UnprocessableEntityException(`No parsing strategy for "${mimeType}".`);
     }
 
     // 5. Minimum content check

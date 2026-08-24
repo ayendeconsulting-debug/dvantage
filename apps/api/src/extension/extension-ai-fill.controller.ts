@@ -16,13 +16,14 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ZodError } from 'zod';
 
-import { Public }                                       from '../auth/decorators/public.decorator';
-import { CurrentExtensionToken, ExtensionAuthGuard }    from './extension-auth.guard';
-import type { ExtensionToken }                          from '@vantage/database';
-import { ExtensionAiFillService }                       from './extension-ai-fill.service';
-import { AiFillRequestSchema }                          from './dto/ai-fill.dto';
+import { Public } from '../auth/decorators/public.decorator';
+import { CurrentExtensionToken, ExtensionAuthGuard } from './extension-auth.guard';
+import type { ExtensionToken } from '@vantage/database';
+import { ExtensionAiFillService } from './extension-ai-fill.service';
+import { AiFillRequestSchema } from './dto/ai-fill.dto';
 
 @Controller('extension')
 @Public()
@@ -41,20 +42,23 @@ export class ExtensionAiFillController {
    * 400 Bad Request on invalid payload.
    * 422 Unprocessable Entity when no complete resume exists.
    */
+  // One Claude call per request, carrying the full resume JSON. A user filling
+  // a form clicks this once, maybe twice on retry — 10/min is generous for the
+  // real workflow and closes the unbounded-loop case.
+  //
+  // A per-user daily ceiling is enforced separately in ExtensionAiFillService
+  // (Redis counter), because throttling is per-IP and a determined caller can
+  // change IP; the daily cap follows the account.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('ai-fill')
   @HttpCode(HttpStatus.OK)
-  async fill(
-    @CurrentExtensionToken() token: ExtensionToken,
-    @Body() body: unknown,
-  ) {
+  async fill(@CurrentExtensionToken() token: ExtensionToken, @Body() body: unknown) {
     let dto;
     try {
       dto = AiFillRequestSchema.parse(body);
     } catch (err) {
       if (err instanceof ZodError) {
-        throw new BadRequestException(
-          err.errors.map((e) => e.message).join('; '),
-        );
+        throw new BadRequestException(err.errors.map((e) => e.message).join('; '));
       }
       throw err;
     }

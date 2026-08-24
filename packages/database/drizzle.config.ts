@@ -13,13 +13,13 @@ import { defineConfig } from 'drizzle-kit';
  * CI and production pick up the real URL via Doppler → environment variable.
  */
 export default defineConfig({
-  schema:  './src/schema/index.ts',
-  out:     './migrations',
+  schema: './src/schema/index.ts',
+  out: './migrations',
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env['DATABASE_URL'] ?? 'postgres://vantage:vantage@localhost:5432/vantage',
   },
   // Verbose migration output in development
   verbose: process.env['NODE_ENV'] !== 'production',
-  strict:  true,
+  strict: true,
 });

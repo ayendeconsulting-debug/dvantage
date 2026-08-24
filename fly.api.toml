@@ -24,8 +24,15 @@ primary_region = 'yyz'          # Toronto — nearest + Canadian data residency 
   internal_port        = 3001
   force_https          = true
 
-  # Keep one machine always warm — no cold-start latency for authenticated users
-  auto_stop_machines   = 'stop'
+  # Keep machines always warm — no cold-start latency for authenticated users.
+  #
+  # auto_stop_machines is false, not 'stop'. INCIDENT 2026-08-24: an unhealthy
+  # machine stops counting toward min_machines_running, so when /health began
+  # failing on a dead Redis, Fly parked the only machine and the API went from
+  # "unhealthy" to "absent" — the edge then served its own 503 with no CORS
+  # headers, which surfaced in the browser as a CORS error. Never let a health
+  # blip remove the last machine.
+  auto_stop_machines   = false
   auto_start_machines  = true
   min_machines_running = 1
 
@@ -36,9 +43,14 @@ primary_region = 'yyz'          # Toronto — nearest + Canadian data residency 
     hard_limit = 250
     soft_limit = 200
 
-  # Fly health check — must return 200 before traffic is routed to machine
+  # Fly health check — must return 200 before traffic is routed to machine.
+  #
+  # GET /health is READINESS: Postgres is critical (503 if down), Redis is
+  # reported as degraded but never fails the response. See health.controller.ts.
+  # GET /health/live is liveness only — no dependencies — if you ever wire a
+  # restart policy, point it there, not here.
   [[http_service.checks]]
-    grace_period    = '30s'   # allow NestJS + DB pool to warm up
+    grace_period    = '60s'   # NestJS + DB pool warm-up; 30s was tight
     interval        = '30s'
     method          = 'GET'
     path            = '/health'

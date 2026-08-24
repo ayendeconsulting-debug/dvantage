@@ -1,8 +1,4 @@
-import {
-  pgTable,
-  text,
-  timestamp,
-} from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { users } from './auth';
 
 // ---------------------------------------------------------------------------
@@ -36,18 +32,14 @@ export const jobDescriptions = pgTable('job_descriptions', {
   /** Optional source URL of the job posting. */
   url: text('url'),
 
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ---------------------------------------------------------------------------
 // Inferred types — used across API packages
 // ---------------------------------------------------------------------------
 
-export type JobDescription    = typeof jobDescriptions.$inferSelect;
+export type JobDescription = typeof jobDescriptions.$inferSelect;
 export type NewJobDescription = typeof jobDescriptions.$inferInsert;

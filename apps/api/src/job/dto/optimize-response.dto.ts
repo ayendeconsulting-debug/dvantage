@@ -6,9 +6,9 @@ import type { ResumeData, OptimizationChange } from '@vantage/validation';
 // ---------------------------------------------------------------------------
 
 export interface OptimizationStatusDto {
-  atsScoreId:         string;
+  atsScoreId: string;
   optimizationStatus: OptimizationStatus;
-  message:            string;
+  message: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -16,12 +16,12 @@ export interface OptimizationStatusDto {
 // ---------------------------------------------------------------------------
 
 export interface OptimizationResultDto {
-  atsScoreId:         string;
+  atsScoreId: string;
   optimizationStatus: OptimizationStatus;
   /** Populated when optimizationStatus is 'complete'. */
-  optimizedData:      ResumeData | null;
+  optimizedData: ResumeData | null;
   /** Structured list of every change made and its rationale. */
-  changeLog:          OptimizationChange[] | null;
+  changeLog: OptimizationChange[] | null;
   /** Populated when optimizationStatus is 'failed'. */
-  optimizationError:  string | null;
+  optimizationError: string | null;
 }

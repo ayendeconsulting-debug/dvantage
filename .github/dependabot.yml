@@ -1,0 +1,59 @@
+# =============================================================================
+# Dependabot
+#
+# Added 2026-08-24. Nothing scanned dependencies, code or images before this —
+# which is the complete explanation for 43 vulnerabilities (1 critical, 19 high)
+# accumulating unnoticed on a live product.
+#
+# The github-actions ecosystem also keeps the SHA pins in deploy.yml and
+# deploy-staging.yml current. Pinning without an updater just means running
+# stale actions forever.
+# =============================================================================
+
+version: 2
+
+updates:
+  # ── npm / pnpm workspace ───────────────────────────────────────────────────
+  # `directory: /` covers the whole pnpm workspace via the root lockfile.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: America/Toronto
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+    groups:
+      # Patch and minor bumps arrive as two PRs a week rather than thirty.
+      # Majors stay separate — they need reading.
+      production-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+      development-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # Node 22 upgrade is tracked separately (D15 backlog item 5 — AWS SDK
+      # warns Node 20 is EOL Jan 2027). Don't let Dependabot force the timing.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
+
+  # ── GitHub Actions ─────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: America/Toronto
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: 'chore(ci)'
