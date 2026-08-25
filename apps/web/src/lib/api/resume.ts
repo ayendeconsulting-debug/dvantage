@@ -7,107 +7,100 @@
  */
 
 const API_BASE =
-  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
-  'http://localhost:3001';
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) || 'http://localhost:3001';
 
 // ---------------------------------------------------------------------------
 // Types (mirrored from backend DTOs)
 // ---------------------------------------------------------------------------
 
-export type ParseStatus =
-  | 'pending'
-  | 'uploading'
-  | 'uploaded'
-  | 'parsing'
-  | 'complete'
-  | 'failed';
+export type ParseStatus = 'pending' | 'uploading' | 'uploaded' | 'parsing' | 'complete' | 'failed';
 
 export interface ResumeVersionListItem {
-  id:            string;
+  id: string;
   versionNumber: number;
-  fileName:      string;
-  fileSize:      number;
-  mimeType:      string;
-  parseStatus:   ParseStatus;
-  createdAt:     string;
-  updatedAt:     string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  parseStatus: ParseStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ResumeVersionDetail extends ResumeVersionListItem {
-  rawText:              string | null;
-  structuredData:       ResumeData | null;
-  parseError:           string | null;
-  downloadUrl:          string | null;
+  rawText: string | null;
+  structuredData: ResumeData | null;
+  parseError: string | null;
+  downloadUrl: string | null;
   downloadUrlExpiresAt: string | null;
 }
 
 export interface ResumeVersionListResponse {
-  data:       ResumeVersionListItem[];
+  data: ResumeVersionListItem[];
   nextCursor: string | null;
-  total:      number;
+  total: number;
 }
 
 export interface UploadUrlResponse {
   resumeVersionId: string;
-  uploadUrl:       string;
-  expiresAt:       string;
+  uploadUrl: string;
+  expiresAt: string;
 }
 
 export interface ConfirmUploadResponse {
   resumeVersionId: string;
-  parseStatus:     ParseStatus;
-  message:         string;
+  parseStatus: ParseStatus;
+  message: string;
 }
 
 // Minimal ResumeData types for rendering
 export interface ResumeContact {
-  name:      string;
-  email:     string;
-  phone?:    string;
+  name: string;
+  email: string;
+  phone?: string;
   location?: string;
   linkedin?: string;
-  github?:   string;
+  github?: string;
 }
 
 export interface ResumeExperience {
-  company:     string;
-  title:       string;
-  startDate:   string;
-  endDate?:    string;
-  current:     boolean;
+  company: string;
+  title: string;
+  startDate: string;
+  endDate?: string;
+  current: boolean;
   description: string;
-  highlights:  string[];
+  highlights: string[];
 }
 
 export interface ResumeEducation {
   institution: string;
-  degree:      string;
-  field:       string;
-  startDate:   string;
-  endDate?:    string;
-  gpa?:        string;
+  degree: string;
+  field: string;
+  startDate: string;
+  endDate?: string;
+  gpa?: string;
 }
 
 export interface ResumeSkill {
-  name:      string;
-  category:  'technical' | 'soft' | 'language' | 'tool';
-  level?:    string;
+  name: string;
+  category: 'technical' | 'soft' | 'language' | 'tool';
+  level?: string;
 }
 
 export interface ResumeCertification {
-  name:        string;
-  issuer:      string;
-  date?:       string;
+  name: string;
+  issuer: string;
+  date?: string;
   expiryDate?: string;
-  url?:        string;
+  url?: string;
 }
 
 export interface ResumeData {
-  contact:        ResumeContact;
-  summary:        string;
-  experience:     ResumeExperience[];
-  education:      ResumeEducation[];
-  skills:         ResumeSkill[];
+  contact: ResumeContact;
+  summary: string;
+  experience: ResumeExperience[];
+  education: ResumeEducation[];
+  skills: ResumeSkill[];
   certifications: ResumeCertification[];
 }
 
@@ -120,10 +113,10 @@ export interface ResumeData {
  * Provides enough context to label a UI dropdown option.
  */
 export interface ResumeOptimizationItem {
-  atsScoreId:  string;
-  jobId:       string;
-  jobTitle:    string | null;
-  jobCompany:  string | null;
+  atsScoreId: string;
+  jobId: string;
+  jobTitle: string | null;
+  jobCompany: string | null;
   optimizedAt: string; // ISO 8601
 }
 
@@ -139,10 +132,7 @@ function idempotencyKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-async function apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const { headers: initHeaders, ...restInit } = init ?? {};
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
@@ -153,9 +143,11 @@ async function apiFetch<T>(
   if (!res.ok) {
     let message = `API error ${res.status}`;
     try {
-      const body = await res.json() as { detail?: string; title?: string };
+      const body = (await res.json()) as { detail?: string; title?: string };
       message = body.detail ?? body.title ?? message;
-    } catch { /* ignore parse errors */ }
+    } catch {
+      /* ignore parse errors */
+    }
     throw new Error(message);
   }
 
@@ -203,7 +195,9 @@ export function uploadResume(
         try {
           const body = JSON.parse(xhr.responseText) as { detail?: string; title?: string };
           message = body.detail ?? body.title ?? message;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         reject(new Error(message));
       }
     };
@@ -215,14 +209,14 @@ export function uploadResume(
 
 /** Request a presigned upload URL. Creates a pending resume version row. */
 export async function createUploadUrl(payload: {
-  filename:  string;
-  mimeType:  string;
+  filename: string;
+  mimeType: string;
   sizeBytes: number;
 }): Promise<UploadUrlResponse> {
   return apiFetch<UploadUrlResponse>('/v1/resumes/upload-url', {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey() },
-    body:    JSON.stringify(payload),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -262,23 +256,16 @@ export function uploadToStorage(
 }
 
 /** Confirm upload complete. Enqueues the parse job. */
-export async function confirmUpload(
-  resumeVersionId: string,
-): Promise<ConfirmUploadResponse> {
-  return apiFetch<ConfirmUploadResponse>(
-    `/v1/resumes/${resumeVersionId}/confirm`,
-    {
-      method:  'POST',
-      headers: { 'Idempotency-Key': idempotencyKey() },
-      body:    '{}',
-    },
-  );
+export async function confirmUpload(resumeVersionId: string): Promise<ConfirmUploadResponse> {
+  return apiFetch<ConfirmUploadResponse>(`/v1/resumes/${resumeVersionId}/confirm`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey() },
+    body: '{}',
+  });
 }
 
 /** List all resume versions for the current user. */
-export async function listResumes(
-  cursor?: string,
-): Promise<ResumeVersionListResponse> {
+export async function listResumes(cursor?: string): Promise<ResumeVersionListResponse> {
   const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
   return apiFetch<ResumeVersionListResponse>(`/v1/resumes${qs}`);
 }

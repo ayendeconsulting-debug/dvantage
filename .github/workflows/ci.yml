@@ -50,7 +50,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2  # Turborepo needs git history for affected detection
 
@@ -67,6 +67,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Added 2026-08-24. Nothing scanned dependencies before this, which is why
+      # 43 vulnerabilities (1 critical, 19 high) accumulated unnoticed.
+      #
+      # continue-on-error is deliberate and TEMPORARY: it establishes a baseline
+      # without blocking every build on day one. Work the backlog down with the
+      # Dependabot PRs, then delete this line so the gate becomes real. A
+      # permanently-advisory security check is theatre.
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
 
       - name: Format check
         run: pnpm format:check
@@ -93,7 +104,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 

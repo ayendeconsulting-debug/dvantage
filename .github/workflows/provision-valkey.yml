@@ -1,0 +1,203 @@
+# =============================================================================
+# Provision — Valkey
+#
+# One-shot bootstrap for the dvantage-valkey Fly app: creates the app and
+# volume, generates a password, deploys, allocates a private IPv6, and points
+# dvantage-api and dvantage-worker at it.
+#
+# WHY A WORKFLOW AND NOT scripts/valkey-provision.ps1
+#   Windows Application Control blocks the unsigned flyctl binary on the
+#   primary dev machine, so the PowerShell script cannot run there. The script
+#   is kept for anyone with a working local flyctl; this is the path that works
+#   from any browser.
+#
+# RUN IT
+#   Actions → "Provision — Valkey" → Run workflow → type "provision" → Run
+#
+# RE-RUNNING IS SAFE AND ROTATES THE PASSWORD
+#   App and volume creation are skipped if they already exist. The password is
+#   regenerated every run — Fly secrets are write-only, so there is no way to
+#   read the existing one back to rebuild REDIS_URL. Because the same run then
+#   updates all three apps, the end state is consistent either way. All three
+#   roll-restart; sessions survive via Postgres, in-flight jobs retry.
+#
+# THE PASSWORD IS NEVER PRINTED
+#   Generated on the runner, registered with ::add-mask:: so it is redacted
+#   from all logs, passed to flyctl via stdin-free env vars, and discarded when
+#   the run ends. Nobody — including whoever triggers this — ever sees it. It
+#   does not need to be seen: only Fly and the two consuming apps use it.
+#
+# REQUIRES
+#   FLY_API_TOKEN — repo secret with permission to create apps in the org.
+#   A deploy-scoped token is NOT sufficient here (it cannot create apps).
+# =============================================================================
+
+name: Provision — Valkey
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "provision" to confirm. This creates infrastructure and rotates the Valkey password.'
+        required: true
+        type: string
+
+concurrency:
+  group: provision-valkey
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP:    dvantage-valkey
+  REGION: yyz
+  VOLUME: valkey_data
+  CONFIG: infra/valkey/fly.valkey.toml
+
+jobs:
+  provision:
+    name: Create and wire up Valkey
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      - name: Check confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "provision" ]; then
+            echo "::error::Confirmation failed. Type exactly: provision"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify Fly config exists
+        run: |
+          test -f "$CONFIG" || { echo "::error::$CONFIG not found"; exit 1; }
+          echo "Found $CONFIG"
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
+      # ── App ────────────────────────────────────────────────────────────────
+      - name: Create app (skip if present)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if flyctl apps list | grep -qw "$APP"; then
+            echo "App $APP already exists — skipping."
+          else
+            flyctl apps create "$APP" --org personal
+            echo "Created app $APP"
+          fi
+
+      # ── Volume ─────────────────────────────────────────────────────────────
+      # 1GB is generous for sessions + queue state. AOF lives here; without it
+      # a machine restart drops every queued job and every active session.
+      - name: Create volume (skip if present)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if flyctl volumes list --app "$APP" 2>/dev/null | grep -qw "$VOLUME"; then
+            echo "Volume $VOLUME already exists — skipping."
+          else
+            flyctl volumes create "$VOLUME" --size 1 --region "$REGION" --app "$APP" --yes
+            echo "Created volume $VOLUME"
+          fi
+
+      # ── Password ───────────────────────────────────────────────────────────
+      # 48 chars from [A-Za-z0-9] only, so the value needs no URL-escaping
+      # inside the redis:// connection string.
+      - name: Generate and register password
+        id: pw
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          PW="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)"
+          # Redact from every subsequent log line in this run.
+          echo "::add-mask::$PW"
+          echo "PW=$PW" >> "$GITHUB_ENV"
+          flyctl secrets set "VALKEY_PASSWORD=$PW" --app "$APP"
+          echo "VALKEY_PASSWORD set on $APP"
+
+      # ── Deploy ─────────────────────────────────────────────────────────────
+      - name: Deploy Valkey
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy --config "$CONFIG" --app "$APP" --remote-only --wait-timeout 600
+
+      # ── Private networking ─────────────────────────────────────────────────
+      # No public IP is ever allocated. Valkey is reachable only over Fly's
+      # private network, the same way dvantage-db.flycast already is.
+      - name: Allocate private IPv6 (skip if present)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if flyctl ips list --app "$APP" | grep -qi private; then
+            echo "Private IP already allocated — skipping."
+          else
+            flyctl ips allocate-v6 --private --app "$APP"
+            echo "Allocated private IPv6"
+          fi
+
+      # ── Wire up consumers ──────────────────────────────────────────────────
+      # Locked decision 36's principle applied to Redis: dvantage-api and
+      # dvantage-worker must always carry matching connection strings. Setting
+      # a secret triggers a rolling restart on each.
+      - name: Point API and worker at Valkey
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          URL="redis://default:${PW}@${APP}.flycast:6379"
+          echo "::add-mask::$URL"
+          flyctl secrets set "REDIS_URL=$URL" --app dvantage-api
+          flyctl secrets set "REDIS_URL=$URL" --app dvantage-worker
+          echo "REDIS_URL set on dvantage-api and dvantage-worker"
+
+      # ── Verify ─────────────────────────────────────────────────────────────
+      - name: Wait for the API to come back
+        run: |
+          echo "Both apps are roll-restarting. Polling /health…"
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /tmp/h.json -w '%{http_code}' https://api.dvantage.ca/health || echo 000)
+            if [ "$CODE" = "200" ]; then
+              echo "API healthy on attempt $i"
+              cat /tmp/h.json
+              if grep -q '"degraded":true' /tmp/h.json; then
+                echo "::error::API is up but Redis still reports DEGRADED."
+                echo "::error::Most likely cause: ioredis cannot resolve ${APP}.flycast over IPv6."
+                echo "::error::Fix: add \`family: 6\` to the options in BOTH"
+                echo "::error::  apps/api/src/redis/redis.module.ts"
+                echo "::error::  packages/queue/src/connection.ts"
+                exit 1
+              fi
+              echo "Redis is connected and healthy."
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $CODE — retrying in 15s"
+            sleep 15
+          done
+          echo "::error::/health did not return 200 after 5 minutes."
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Valkey provisioning"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| App | \`$APP\` (${REGION}) |"
+            echo "| Address | \`${APP}.flycast:6379\` — private network only |"
+            echo "| Wired to | \`dvantage-api\`, \`dvantage-worker\` |"
+            echo "| Password | generated, masked, never logged |"
+            echo ""
+            echo "**Next:** every user has been logged out — the old sessions died with"
+            echo "the archived Upstash database. Then run the deliberate failure test in"
+            echo "\`infra/valkey/README.md\` step 4: stop the Valkey machine and confirm"
+            echo "the API stays up and reports \`degraded\` rather than going down."
+          } >> "$GITHUB_STEP_SUMMARY"

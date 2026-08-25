@@ -19,7 +19,7 @@ const BLUE = '2563EB';
 const DARK = '111827';
 const BODY = '374151';
 const MUTED = '6B7280';
-const RULE  = 'D1D5DB';
+const RULE = 'D1D5DB';
 
 // Page geometry (twips — 1 inch = 1440 twips)
 // A4 width 11906 twips, margins 1080 twips (0.75 in) each side
@@ -64,7 +64,9 @@ export class ResumeDocxService {
       data.contact.location,
       data.contact.linkedin,
       data.contact.github,
-    ].map(clean).filter(Boolean);
+    ]
+      .map(clean)
+      .filter(Boolean);
 
     if (contactParts.length) {
       children.push(this.contactParagraph(contactParts));
@@ -86,7 +88,9 @@ export class ResumeDocxService {
           : cleanDate(exp.startDate, exp.endDate);
 
         // Role · Company [TAB] Date
-        children.push(this.entryHeader(`${clean(exp.title)}  \u00B7  ${clean(exp.company)}`, dateRange));
+        children.push(
+          this.entryHeader(`${clean(exp.title)}  \u00B7  ${clean(exp.company)}`, dateRange),
+        );
 
         // Context description — italicised muted line
         const desc = clean(exp.description);
@@ -138,11 +142,11 @@ export class ResumeDocxService {
           new Paragraph({
             children: [
               new TextRun({
-                text:  `${label}: `,
-                bold:  true,
-                size:  20,
+                text: `${label}: `,
+                bold: true,
+                size: 20,
                 color: DARK,
-                font:  'Calibri',
+                font: 'Calibri',
               }),
               new TextRun({ text: names.join(', '), size: 20, color: BODY, font: 'Calibri' }),
             ],
@@ -160,19 +164,25 @@ export class ResumeDocxService {
 
       for (const cert of data.certifications) {
         const certWithDate = cert as typeof cert & { date?: string };
-        const issuerStr    = clean(cert.issuer);
-        const dateStr2     = clean(certWithDate.date);
-        const right        = issuerStr + (dateStr2 ? ` (${dateStr2})` : '');
+        const issuerStr = clean(cert.issuer);
+        const dateStr2 = clean(certWithDate.date);
+        const right = issuerStr + (dateStr2 ? ` (${dateStr2})` : '');
 
         children.push(
           new Paragraph({
             children: [
-              new TextRun({ text: clean(cert.name), bold: true, size: 20, color: DARK, font: 'Calibri' }),
               new TextRun({
-                text:  `  \u2014  ${right}`,
-                size:  20,
+                text: clean(cert.name),
+                bold: true,
+                size: 20,
+                color: DARK,
+                font: 'Calibri',
+              }),
+              new TextRun({
+                text: `  \u2014  ${right}`,
+                size: 20,
                 color: BODY,
-                font:  'Calibri',
+                font: 'Calibri',
               }),
             ],
             spacing: { after: 80 },
@@ -199,9 +209,9 @@ export class ResumeDocxService {
           // Heading 1 — candidate name
           heading1: {
             run: {
-              font:  'Calibri',
-              size:  52,  // 26pt
-              bold:  true,
+              font: 'Calibri',
+              size: 52, // 26pt
+              bold: true,
               color: DARK,
             },
             paragraph: { spacing: { after: 80 } },
@@ -209,10 +219,10 @@ export class ResumeDocxService {
           // Heading 2 — section titles
           heading2: {
             run: {
-              font:    'Calibri',
-              size:    20,  // 10pt
-              bold:    true,
-              color:   BLUE,
+              font: 'Calibri',
+              size: 20, // 10pt
+              bold: true,
+              color: BLUE,
               allCaps: true,
             },
             paragraph: {
@@ -220,7 +230,7 @@ export class ResumeDocxService {
               border: {
                 bottom: {
                   style: BorderStyle.SINGLE,
-                  size:  4,
+                  size: 4,
                   color: RULE,
                   space: 4,
                 },
@@ -246,14 +256,14 @@ export class ResumeDocxService {
   /** Candidate name — Heading 1 */
   private nameParagraph(name: string): Paragraph {
     return new Paragraph({
-      heading:  HeadingLevel.HEADING_1,
+      heading: HeadingLevel.HEADING_1,
       children: [
         new TextRun({
-          text:  name,
-          bold:  true,
-          size:  52,
+          text: name,
+          bold: true,
+          size: 52,
           color: DARK,
-          font:  'Calibri',
+          font: 'Calibri',
         }),
       ],
       spacing: { after: 80 },
@@ -265,17 +275,17 @@ export class ResumeDocxService {
     return new Paragraph({
       children: [
         new TextRun({
-          text:  parts.join('   \u00B7   '),
-          size:  18,
+          text: parts.join('   \u00B7   '),
+          size: 18,
           color: MUTED,
-          font:  'Calibri',
+          font: 'Calibri',
         }),
       ],
       spacing: { after: 200 },
       border: {
         bottom: {
           style: BorderStyle.THICK,
-          size:  12,
+          size: 12,
           color: BLUE,
           space: 6,
         },
@@ -286,15 +296,15 @@ export class ResumeDocxService {
   /** Section heading — Heading 2 with bottom rule */
   private sectionHeading(title: string): Paragraph {
     return new Paragraph({
-      heading:   HeadingLevel.HEADING_2,
+      heading: HeadingLevel.HEADING_2,
       alignment: AlignmentType.LEFT,
-      children:  [
+      children: [
         new TextRun({
-          text:    title,
-          bold:    true,
-          size:    20,
-          color:   BLUE,
-          font:    'Calibri',
+          text: title,
+          bold: true,
+          size: 20,
+          color: BLUE,
+          font: 'Calibri',
           allCaps: true,
         }),
       ],
@@ -315,7 +325,7 @@ export class ResumeDocxService {
       ],
       tabStops: [
         {
-          type:     TabStopType.RIGHT,
+          type: TabStopType.RIGHT,
           position: RIGHT_TAB,
         },
       ],
@@ -328,11 +338,11 @@ export class ResumeDocxService {
     return new Paragraph({
       children: [
         new TextRun({
-          text:    text,
-          size:    19,
-          color:   MUTED,
+          text: text,
+          size: 19,
+          color: MUTED,
           italics: true,
-          font:    'Calibri',
+          font: 'Calibri',
         }),
       ],
       spacing: { after: 60 },
@@ -343,7 +353,7 @@ export class ResumeDocxService {
   private bodyText(text: string): Paragraph {
     return new Paragraph({
       children: [new TextRun({ text, size: 20, color: BODY, font: 'Calibri' })],
-      spacing:  { after: 200 },
+      spacing: { after: 200 },
     });
   }
 
@@ -351,8 +361,8 @@ export class ResumeDocxService {
   private bulletItem(text: string): Paragraph {
     return new Paragraph({
       children: [new TextRun({ text, size: 20, color: BODY, font: 'Calibri' })],
-      bullet:   { level: 0 },
-      spacing:  { after: 40 },
+      bullet: { level: 0 },
+      spacing: { after: 40 },
     });
   }
 

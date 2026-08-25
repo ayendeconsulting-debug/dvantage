@@ -1,0 +1,57 @@
+# =============================================================================
+# CodeQL — static analysis
+#
+# Added 2026-08-24 alongside dependabot.yml and the pnpm audit step in ci.yml.
+# Together these are the first automated security scanning this repo has had.
+#
+# Runs on PRs into main (catch it before merge), on pushes to main (catch what
+# bypassed a PR), and weekly (catch newly-published queries against unchanged
+# code — the case the other two triggers miss entirely).
+# =============================================================================
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays 08:00 UTC — before the Dependabot PRs land at 09:00 Toronto.
+    - cron: '0 8 * * 1'
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      security-events: write   # required to upload results
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # security-extended adds lower-confidence queries. Worth it here:
+          # this codebase handles resume PII, Stripe webhooks and OAuth tokens,
+          # so a higher false-positive rate is an acceptable trade for coverage.
+          queries: security-extended
+
+      # No custom build step. CodeQL's javascript-typescript extractor analyses
+      # source directly; building the pnpm workspace first would add ~5 minutes
+      # for no additional coverage.
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'

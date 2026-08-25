@@ -5,10 +5,7 @@ import { createQueueConnection } from '@vantage/queue';
 import { resumeVersions } from '@vantage/database';
 import { ParsingService } from '@vantage/parsing';
 import { ResumeExtractor } from '@vantage/ai';
-import {
-  GetObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 // ---------------------------------------------------------------------------
 // Job payload — must match what ResumeService enqueues in M2-D
@@ -35,12 +32,12 @@ export class ResumeParseProcessor {
     private readonly parsingService: ParsingService,
     private readonly resumeExtractor: ResumeExtractor,
   ) {
-    const endpoint        = this.requireEnv('R2_ENDPOINT');
-    const accessKeyId     = this.requireEnv('R2_ACCESS_KEY_ID');
+    const endpoint = this.requireEnv('R2_ENDPOINT');
+    const accessKeyId = this.requireEnv('R2_ACCESS_KEY_ID');
     const secretAccessKey = this.requireEnv('R2_SECRET_ACCESS_KEY');
-    const region          = process.env['R2_REGION'] ?? 'auto';
-    const forcePathStyle  = process.env['R2_FORCE_PATH_STYLE'] === 'true';
-    this.bucket           = this.requireEnv('R2_BUCKET_RESUMES');
+    const region = process.env['R2_REGION'] ?? 'auto';
+    const forcePathStyle = process.env['R2_FORCE_PATH_STYLE'] === 'true';
+    this.bucket = this.requireEnv('R2_BUCKET_RESUMES');
 
     this.s3 = new S3Client({
       endpoint,
@@ -60,7 +57,10 @@ export class ResumeParseProcessor {
    * Process a single resume parse job.
    * Called by the BullMQ Worker registered in WorkerAiModule.
    */
-  async process(job: Job<ResumeParseJobPayload>, db: ReturnType<typeof import('@vantage/database').createDatabaseClient>): Promise<void> {
+  async process(
+    job: Job<ResumeParseJobPayload>,
+    db: ReturnType<typeof import('@vantage/database').createDatabaseClient>,
+  ): Promise<void> {
     const { resumeVersionId, storageKey, mimeType, fileName } = job.data;
 
     this.logger.log(`[job:${job.id}] Processing resume ${resumeVersionId}`);
@@ -131,9 +131,7 @@ export class ResumeParseProcessor {
   ): Promise<void> {
     if (!job) return;
     const { resumeVersionId } = job.data;
-    this.logger.error(
-      `[job:${job.id}] Failed for resume ${resumeVersionId}: ${error.message}`,
-    );
+    this.logger.error(`[job:${job.id}] Failed for resume ${resumeVersionId}: ${error.message}`);
     await db
       .update(resumeVersions)
       .set({

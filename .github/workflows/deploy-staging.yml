@@ -1,7 +1,31 @@
+# =============================================================================
+# Deploy — Staging
+#
+# FIXED 2026-08-24. This workflow was broken from the start:
+#   - It pointed at infra/fly/api.fly.toml and infra/fly/worker-ai.fly.toml.
+#     Neither file exists in this repo; the real configs are fly.api.toml and
+#     fly.worker.toml at the root. Every run failed at the flyctl invocation.
+#   - It triggered on `push: [main]` in parallel with CI, with no `needs` and
+#     no workflow_run gate — so a commit failing lint, typecheck and build
+#     would deploy anyway.
+#   - FLY_API_TOKEN was set at workflow level, exposing it to every step
+#     including third-party actions pinned to mutable refs (@master).
+#
+# It now gates on CI completing successfully for the same commit, resolves
+# configs that exist, pins actions to SHAs, and scopes the token per step.
+#
+# NOTE: the staging apps (vantage-api-staging, vantage-worker-ai-staging) may
+# not exist on Fly. If this fails with "Could not find App", either create them
+# or disable this workflow — a permanently red pipeline teaches the team to
+# ignore pipelines.
+# =============================================================================
+
 name: Deploy — Staging
 
 on:
-  push:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -9,10 +33,8 @@ concurrency:
   group: deploy-staging
   cancel-in-progress: false  # Never cancel an in-flight deploy
 
-env:
-  PNPM_VERSION: '9.15.0'
-  NODE_VERSION: '20'
-  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+permissions:
+  contents: read
 
 jobs:
   deploy-api:
@@ -20,22 +42,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: staging
-
-    permissions:
-      id-token: write   # OIDC for cloud auth
-      contents: read
+    # Only proceed when CI actually passed. On workflow_dispatch there is no
+    # triggering run, so allow the manual path through.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Deploy the exact commit CI validated, not whatever main points at now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
 
       - name: Deploy API to Fly.io (staging)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl deploy \
-            --config infra/fly/api.fly.toml \
+            --config fly.api.toml \
             --app vantage-api-staging \
             --remote-only \
             --wait-timeout 300
@@ -49,15 +77,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
 
       - name: Deploy worker-ai to Fly.io (staging)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl deploy \
-            --config infra/fly/worker-ai.fly.toml \
+            --config fly.worker.toml \
             --app vantage-worker-ai-staging \
             --remote-only \
             --wait-timeout 300
