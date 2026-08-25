@@ -51,10 +51,7 @@ export class OptimizeService {
       );
     }
 
-    if (
-      scoreRow.optimizationStatus === 'pending' ||
-      scoreRow.optimizationStatus === 'optimizing'
-    ) {
+    if (scoreRow.optimizationStatus === 'pending' || scoreRow.optimizationStatus === 'optimizing') {
       throw new UnprocessableEntityException(
         `Optimization is already in progress (status: "${scoreRow.optimizationStatus}").`,
       );
@@ -77,10 +74,10 @@ export class OptimizeService {
       'optimize',
       { atsScoreId: scoreId },
       {
-        attempts:         3,
-        backoff:          { type: 'exponential', delay: 10_000 },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 10_000 },
         removeOnComplete: 100,
-        removeOnFail:     100,
+        removeOnFail: 100,
       },
     );
 
@@ -89,9 +86,10 @@ export class OptimizeService {
     );
 
     return {
-      atsScoreId:         scoreId,
+      atsScoreId: scoreId,
       optimizationStatus: 'pending',
-      message:            'Optimization has started. Poll GET /v1/jobs/:id/scores/:scoreId/optimize until status is complete.',
+      message:
+        'Optimization has started. Poll GET /v1/jobs/:id/scores/:scoreId/optimize until status is complete.',
     };
   }
 
@@ -107,11 +105,11 @@ export class OptimizeService {
     const scoreRow = await this.findOwnedScore(user.id, jobId, scoreId);
 
     return {
-      atsScoreId:         scoreRow.id,
+      atsScoreId: scoreRow.id,
       optimizationStatus: scoreRow.optimizationStatus,
-      optimizedData:      scoreRow.optimizedStructuredData as ResumeData | null,
-      changeLog:          scoreRow.optimizationChangeLog as OptimizationChange[] | null,
-      optimizationError:  scoreRow.optimizationError,
+      optimizedData: scoreRow.optimizedStructuredData as ResumeData | null,
+      changeLog: scoreRow.optimizationChangeLog as OptimizationChange[] | null,
+      optimizationError: scoreRow.optimizationError,
     };
   }
 
@@ -168,12 +166,7 @@ export class OptimizeService {
     const [scoreRow] = await this.db
       .select()
       .from(atsScores)
-      .where(
-        and(
-          eq(atsScores.id, scoreId),
-          eq(atsScores.jobDescriptionId, jobId),
-        ),
-      )
+      .where(and(eq(atsScores.id, scoreId), eq(atsScores.jobDescriptionId, jobId)))
       .limit(1);
 
     if (!scoreRow) {

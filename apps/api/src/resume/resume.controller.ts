@@ -25,11 +25,14 @@ import { uploadUrlRequestSchema } from './dto/upload-url-request.dto';
 
 // Extend FastifyRequest to include multipart method added by @fastify/multipart
 type MultipartRequest = FastifyRequest & {
-  file: () => Promise<{
-    filename: string;
-    mimetype: string;
-    file: NodeJS.ReadableStream;
-  } | undefined>;
+  file: () => Promise<
+    | {
+        filename: string;
+        mimetype: string;
+        file: NodeJS.ReadableStream;
+      }
+    | undefined
+  >;
 };
 
 @Controller('resumes')
@@ -65,9 +68,7 @@ export class ResumeController {
 
     if (!this.storageService.isAllowedMimeType(mimetype)) {
       fileStream.resume();
-      throw new BadRequestException(
-        `Unsupported file type: ${mimetype}. Allowed: PDF, DOCX, TXT.`,
-      );
+      throw new BadRequestException(`Unsupported file type: ${mimetype}. Allowed: PDF, DOCX, TXT.`);
     }
 
     const chunks: Buffer[] = [];
@@ -85,10 +86,16 @@ export class ResumeController {
 
     const dto = {
       filename,
-      mimeType: mimetype as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'text/plain',
+      mimeType: mimetype as
+        | 'application/pdf'
+        | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        | 'text/plain',
       sizeBytes,
     };
-    const { resumeVersionId, storageKey } = await this.resumeService.createUploadUrlWithKey(user, dto);
+    const { resumeVersionId, storageKey } = await this.resumeService.createUploadUrlWithKey(
+      user,
+      dto,
+    );
 
     await this.storageService.putObject(storageKey, buffer, mimetype);
 
@@ -131,10 +138,7 @@ export class ResumeController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  async listVersions(
-    @CurrentUser() user: AuthUser,
-    @Query('cursor') cursor?: string,
-  ) {
+  async listVersions(@CurrentUser() user: AuthUser, @Query('cursor') cursor?: string) {
     return this.resumeService.listVersions(user, cursor);
   }
 
@@ -143,10 +147,7 @@ export class ResumeController {
   // ---------------------------------------------------------------------------
 
   @Get(':id')
-  async getVersion(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async getVersion(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.resumeService.getVersion(user, id);
   }
 
@@ -160,10 +161,7 @@ export class ResumeController {
    * (job title, company, date) to label a dropdown option in the UI.
    */
   @Get(':id/optimizations')
-  async listOptimizations(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async listOptimizations(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.resumeService.listOptimizationsForVersion(user, id);
   }
 
@@ -177,8 +175,7 @@ export class ResumeController {
     @Param('id') id: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const { structuredData, fileName } =
-      await this.resumeService.getVersionForExport(user, id);
+    const { structuredData, fileName } = await this.resumeService.getVersionForExport(user, id);
 
     const buffer = await this.resumePdfService.generate(structuredData, fileName);
     const baseName = encodeURIComponent(fileName.replace(/\.[^.]+$/, ''));
@@ -200,8 +197,7 @@ export class ResumeController {
     @Param('id') id: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const { structuredData, fileName } =
-      await this.resumeService.getVersionForExport(user, id);
+    const { structuredData, fileName } = await this.resumeService.getVersionForExport(user, id);
 
     const buffer = await this.resumeDocxService.generate(structuredData, fileName);
     const baseName = encodeURIComponent(fileName.replace(/\.[^.]+$/, ''));
@@ -220,10 +216,7 @@ export class ResumeController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  async deleteVersion(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async deleteVersion(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.resumeService.deleteVersion(user, id);
   }
 
@@ -233,9 +226,7 @@ export class ResumeController {
 
   private requireIdempotencyKey(key: string | undefined): void {
     if (!key || key.trim().length === 0) {
-      throw new BadRequestException(
-        'Idempotency-Key header is required for this request.',
-      );
+      throw new BadRequestException('Idempotency-Key header is required for this request.');
     }
   }
 
@@ -243,9 +234,7 @@ export class ResumeController {
     const result = uploadUrlRequestSchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException(
-        result.error.issues
-          .map((i) => `${i.path.join('.')}: ${i.message}`)
-          .join('; '),
+        result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
       );
     }
     return result.data;

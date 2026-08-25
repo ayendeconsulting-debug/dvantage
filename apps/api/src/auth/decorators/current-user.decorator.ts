@@ -3,7 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import type { AuthUser, AuthSession } from '../auth.service';
 
 // Internal keys used by AuthGuard to attach auth data to the request
-export const AUTH_USER_KEY    = '_authUser';
+export const AUTH_USER_KEY = '_authUser';
 export const AUTH_SESSION_KEY = '_authSession';
 
 /**

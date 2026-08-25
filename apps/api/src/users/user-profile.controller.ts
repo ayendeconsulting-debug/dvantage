@@ -47,24 +47,17 @@ export class UserProfileController {
 
   @Patch()
   @HttpCode(HttpStatus.OK)
-  async updateProfile(
-    @CurrentUser() user: AuthUser,
-    @Body() body: unknown,
-  ) {
+  async updateProfile(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const result = UpdateUserProfileSchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException(
-        result.error.issues
-          .map((i) => `${i.path.join('.')}: ${i.message}`)
-          .join('; '),
+        result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
       );
     }
 
     // Guard: at least one field must be provided
     if (result.data.phone === undefined && result.data.linkedinUrl === undefined) {
-      throw new BadRequestException(
-        'At least one of phone or linkedinUrl must be provided.',
-      );
+      throw new BadRequestException('At least one of phone or linkedinUrl must be provided.');
     }
 
     return this.userProfileService.updateProfile(user, result.data);
