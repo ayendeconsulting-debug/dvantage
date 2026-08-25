@@ -3,6 +3,6 @@ import { KmsService } from './kms.service';
 
 @Module({
   providers: [KmsService],
-  exports:   [KmsService],
+  exports: [KmsService],
 })
 export class KmsModule {}

@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
-import { JobService }         from './job.service';
-import { AtsScoreService }    from './ats-score.service';
-import { OptimizeService }    from './optimize.service';
-import { JobController }      from './job.controller';
-import { ResumePdfService }   from '../resume/export/resume-pdf.service';
-import { ResumeDocxService }  from '../resume/export/resume-docx.service';
-import { DatabaseModule }     from '../database/database.module';
+import { JobService } from './job.service';
+import { AtsScoreService } from './ats-score.service';
+import { OptimizeService } from './optimize.service';
+import { JobController } from './job.controller';
+import { ResumePdfService } from '../resume/export/resume-pdf.service';
+import { ResumeDocxService } from '../resume/export/resume-docx.service';
+import { DatabaseModule } from '../database/database.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 
 /**
@@ -20,9 +20,9 @@ import { SubscriptionModule } from '../subscription/subscription.module';
  * M5   — Optimized resume export PDF + DOCX
  */
 @Module({
-  imports:     [DatabaseModule, SubscriptionModule],
-  providers:   [JobService, AtsScoreService, OptimizeService, ResumePdfService, ResumeDocxService],
+  imports: [DatabaseModule, SubscriptionModule],
+  providers: [JobService, AtsScoreService, OptimizeService, ResumePdfService, ResumeDocxService],
   controllers: [JobController],
-  exports:     [JobService, AtsScoreService, OptimizeService],
+  exports: [JobService, AtsScoreService, OptimizeService],
 })
 export class JobModule {}
