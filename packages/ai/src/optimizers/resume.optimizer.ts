@@ -31,28 +31,31 @@ const OPTIMIZE_RESUME_TOOL: Anthropic.Tool = {
             type: 'object',
             required: ['name', 'email'],
             properties: {
-              name:     { type: 'string' },
-              email:    { type: 'string' },
-              phone:    { type: 'string' },
+              name: { type: 'string' },
+              email: { type: 'string' },
+              phone: { type: 'string' },
               location: { type: 'string' },
               linkedin: { type: 'string' },
-              github:   { type: 'string' },
+              github: { type: 'string' },
             },
           },
-          summary: { type: 'string', description: 'Rewritten to align with the target role and incorporate key JD terms.' },
+          summary: {
+            type: 'string',
+            description: 'Rewritten to align with the target role and incorporate key JD terms.',
+          },
           experience: {
             type: 'array',
             items: {
               type: 'object',
               required: ['company', 'title', 'startDate', 'current', 'description', 'highlights'],
               properties: {
-                company:     { type: 'string' },
-                title:       { type: 'string' },
-                startDate:   { type: 'string' },
-                endDate:     { type: 'string' },
-                current:     { type: 'boolean' },
+                company: { type: 'string' },
+                title: { type: 'string' },
+                startDate: { type: 'string' },
+                endDate: { type: 'string' },
+                current: { type: 'boolean' },
                 description: { type: 'string' },
-                highlights:  { type: 'array', items: { type: 'string' } },
+                highlights: { type: 'array', items: { type: 'string' } },
               },
             },
           },
@@ -63,11 +66,11 @@ const OPTIMIZE_RESUME_TOOL: Anthropic.Tool = {
               required: ['institution', 'degree', 'field', 'startDate'],
               properties: {
                 institution: { type: 'string' },
-                degree:      { type: 'string' },
-                field:       { type: 'string' },
-                startDate:   { type: 'string' },
-                endDate:     { type: 'string' },
-                gpa:         { type: 'string' },
+                degree: { type: 'string' },
+                field: { type: 'string' },
+                startDate: { type: 'string' },
+                endDate: { type: 'string' },
+                gpa: { type: 'string' },
               },
             },
           },
@@ -77,9 +80,9 @@ const OPTIMIZE_RESUME_TOOL: Anthropic.Tool = {
               type: 'object',
               required: ['name', 'category'],
               properties: {
-                name:     { type: 'string' },
+                name: { type: 'string' },
                 category: { type: 'string', enum: ['technical', 'soft', 'language', 'tool'] },
-                level:    { type: 'string', enum: ['beginner', 'intermediate', 'advanced', 'expert'] },
+                level: { type: 'string', enum: ['beginner', 'intermediate', 'advanced', 'expert'] },
               },
             },
           },
@@ -89,11 +92,11 @@ const OPTIMIZE_RESUME_TOOL: Anthropic.Tool = {
               type: 'object',
               required: ['name', 'issuer'],
               properties: {
-                name:       { type: 'string' },
-                issuer:     { type: 'string' },
-                date:       { type: 'string' },
+                name: { type: 'string' },
+                issuer: { type: 'string' },
+                date: { type: 'string' },
                 expiryDate: { type: 'string' },
-                url:        { type: 'string' },
+                url: { type: 'string' },
               },
             },
           },
@@ -101,15 +104,23 @@ const OPTIMIZE_RESUME_TOOL: Anthropic.Tool = {
       },
       change_log: {
         type: 'array',
-        description: 'Every change made, with its location, original text, replacement, and reason.',
+        description:
+          'Every change made, with its location, original text, replacement, and reason.',
         items: {
           type: 'object',
           required: ['section', 'original', 'optimized', 'reason'],
           properties: {
-            section:   { type: 'string', description: 'Human-readable path, e.g. "summary", "experience[0].highlights[2]", "skills".' },
-            original:  { type: 'string', description: 'The original text before optimization.' },
+            section: {
+              type: 'string',
+              description:
+                'Human-readable path, e.g. "summary", "experience[0].highlights[2]", "skills".',
+            },
+            original: { type: 'string', description: 'The original text before optimization.' },
             optimized: { type: 'string', description: 'The replacement text after optimization.' },
-            reason:    { type: 'string', description: 'Why this change closes a keyword gap or improves ATS alignment.' },
+            reason: {
+              type: 'string',
+              description: 'Why this change closes a keyword gap or improves ATS alignment.',
+            },
           },
         },
       },
@@ -150,7 +161,7 @@ Always call the optimize_resume tool — never reply with plain text.`;
 
 export interface OptimizationResult {
   optimizedData: ResumeData;
-  changeLog:     OptimizationChange[];
+  changeLog: OptimizationChange[];
 }
 
 // ---------------------------------------------------------------------------
@@ -192,14 +203,10 @@ export class ResumeOptimizer {
       `Section scores: skills=${atsScore.sections.skills}, experience=${atsScore.sections.experience}, education=${atsScore.sections.education}, keywords=${atsScore.sections.keywords}`,
       '',
       `## Keyword Gaps (missing from resume — incorporate where truthful)`,
-      atsScore.keyword_gaps.length > 0
-        ? atsScore.keyword_gaps.join(', ')
-        : 'None identified',
+      atsScore.keyword_gaps.length > 0 ? atsScore.keyword_gaps.join(', ') : 'None identified',
       '',
       '## Matched Keywords (already present — preserve these)',
-      atsScore.matched_keywords.length > 0
-        ? atsScore.matched_keywords.join(', ')
-        : 'None',
+      atsScore.matched_keywords.length > 0 ? atsScore.matched_keywords.join(', ') : 'None',
       '',
       '## Scoring Recommendations',
       atsScore.recommendations.map((r, i) => `${i + 1}. ${r}`).join('\n'),
@@ -209,14 +216,12 @@ export class ResumeOptimizer {
     ].join('\n');
 
     const response = await this.client.messages.create({
-      model:       this.model,
-      max_tokens:  8192, // optimization needs more tokens — full ResumeData + change log
-      system:      SYSTEM_PROMPT,
-      tools:       [OPTIMIZE_RESUME_TOOL],
+      model: this.model,
+      max_tokens: 8192, // optimization needs more tokens — full ResumeData + change log
+      system: SYSTEM_PROMPT,
+      tools: [OPTIMIZE_RESUME_TOOL],
       tool_choice: { type: 'any' },
-      messages: [
-        { role: 'user', content: userMessage },
-      ],
+      messages: [{ role: 'user', content: userMessage }],
     });
 
     const toolBlock = response.content.find(
@@ -237,15 +242,16 @@ export class ResumeOptimizer {
       throw new Error(
         `ResumeOptimizer: optimized_resume failed Zod validation: ` +
           resumeParseResult.error.issues
-            .map((i: { path: (string | number)[]; message: string }) => `${i.path.join('.')}: ${i.message}`)
+            .map(
+              (i: { path: (string | number)[]; message: string }) =>
+                `${i.path.join('.')}: ${i.message}`,
+            )
             .join(', '),
       );
     }
 
     // Change log — accept as-is (non-critical, best-effort)
-    const changeLog = Array.isArray(raw.change_log)
-      ? (raw.change_log as OptimizationChange[])
-      : [];
+    const changeLog = Array.isArray(raw.change_log) ? (raw.change_log as OptimizationChange[]) : [];
 
     return {
       optimizedData: resumeParseResult.data,

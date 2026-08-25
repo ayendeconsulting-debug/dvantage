@@ -5,31 +5,30 @@
  */
 
 const API_BASE =
-  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
-  'http://localhost:3001';
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) || 'http://localhost:3001';
 
 // ---------------------------------------------------------------------------
 // Types (mirrored from backend DTOs)
 // ---------------------------------------------------------------------------
 
-export type PlanType           = 'free' | 'premium';
+export type PlanType = 'free' | 'premium';
 export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete';
 
 export interface UsageSummary {
-  atsScoresUsed:      number;
-  atsScoresLimit:     number | null;
-  optimizationsUsed:  number;
+  atsScoresUsed: number;
+  atsScoresLimit: number | null;
+  optimizationsUsed: number;
   optimizationsLimit: number | null;
-  jobsCreatedUsed:    number;
-  jobsCreatedLimit:   number | null;
+  jobsCreatedUsed: number;
+  jobsCreatedLimit: number | null;
 }
 
 export interface SubscriptionStatus_ {
-  plan:              PlanType;
-  status:            SubscriptionStatus | null;
-  currentPeriodEnd:  string | null;
+  plan: PlanType;
+  status: SubscriptionStatus | null;
+  currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
-  usage:             UsageSummary;
+  usage: UsageSummary;
 }
 
 export interface CheckoutSession {
@@ -59,9 +58,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let message = `API error ${res.status}`;
     try {
-      const body = await res.json() as { detail?: string; title?: string };
+      const body = (await res.json()) as { detail?: string; title?: string };
       message = body.detail ?? body.title ?? message;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     throw new Error(message);
   }
 
@@ -80,14 +81,23 @@ export async function getSubscription(): Promise<SubscriptionStatus_> {
 /**
  * Create a Stripe Checkout session for upgrading to Premium.
  * Returns a URL — redirect the user to it.
+ *
+ * The client names an INTERVAL, never a price. The API resolves what that
+ * costs from server configuration.
+ *
+ * This used to send `priceId` straight through to Stripe's line_items, which
+ * meant any authenticated user could name any recurring price in the account —
+ * a legacy rate, a partner discount, a $1 test price — and still receive full
+ * Premium, because the entitlement grant never checked what was bought.
+ * NEXT_PUBLIC_STRIPE_PRICE_ID_PREMIUM_MONTHLY is no longer read by the app
+ * and can be removed from the Vercel environment.
  */
 export async function createCheckoutSession(payload: {
-  priceId:   string;
-  interval?: 'monthly' | 'annual';
+  interval: 'monthly' | 'annual';
 }): Promise<CheckoutSession> {
   return apiFetch<CheckoutSession>('/v1/subscription/checkout', {
     method: 'POST',
-    body:   JSON.stringify(payload),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -98,6 +108,6 @@ export async function createCheckoutSession(payload: {
 export async function createPortalSession(): Promise<PortalSession> {
   return apiFetch<PortalSession>('/v1/subscription/portal', {
     method: 'POST',
-    body:   '{}',
+    body: '{}',
   });
 }

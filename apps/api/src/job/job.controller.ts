@@ -18,15 +18,12 @@ import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/auth.service';
-import { JobService }         from './job.service';
-import { AtsScoreService }    from './ats-score.service';
-import { OptimizeService }    from './optimize.service';
-import { ResumePdfService }   from '../resume/export/resume-pdf.service';
-import { ResumeDocxService }  from '../resume/export/resume-docx.service';
-import {
-  createJobDescriptionSchema,
-  updateJobDescriptionSchema,
-} from '@vantage/validation';
+import { JobService } from './job.service';
+import { AtsScoreService } from './ats-score.service';
+import { OptimizeService } from './optimize.service';
+import { ResumePdfService } from '../resume/export/resume-pdf.service';
+import { ResumeDocxService } from '../resume/export/resume-docx.service';
+import { createJobDescriptionSchema, updateJobDescriptionSchema } from '@vantage/validation';
 
 // ---------------------------------------------------------------------------
 // Inline body schema for POST /v1/jobs/:id/scores
@@ -41,10 +38,10 @@ export class JobController {
   private readonly logger = new Logger(JobController.name);
 
   constructor(
-    private readonly jobService:        JobService,
-    private readonly atsScoreService:   AtsScoreService,
-    private readonly optimizeService:   OptimizeService,
-    private readonly resumePdfService:  ResumePdfService,
+    private readonly jobService: JobService,
+    private readonly atsScoreService: AtsScoreService,
+    private readonly optimizeService: OptimizeService,
+    private readonly resumePdfService: ResumePdfService,
     private readonly resumeDocxService: ResumeDocxService,
   ) {}
 
@@ -69,10 +66,7 @@ export class JobController {
   // ---------------------------------------------------------------------------
 
   @Get()
-  async listJobs(
-    @CurrentUser() user: AuthUser,
-    @Query('cursor') cursor?: string,
-  ) {
+  async listJobs(@CurrentUser() user: AuthUser, @Query('cursor') cursor?: string) {
     return this.jobService.listJobs(user, cursor);
   }
 
@@ -81,10 +75,7 @@ export class JobController {
   // ---------------------------------------------------------------------------
 
   @Get(':id')
-  async getJob(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async getJob(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.jobService.getJob(user, id);
   }
 
@@ -94,11 +85,7 @@ export class JobController {
 
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  async updateJob(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-    @Body() body: unknown,
-  ) {
+  async updateJob(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     const dto = this.parseBody(body, updateJobDescriptionSchema);
     return this.jobService.updateJob(user, id, dto);
   }
@@ -109,10 +96,7 @@ export class JobController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  async deleteJob(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async deleteJob(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.jobService.deleteJob(user, id);
   }
 
@@ -138,10 +122,7 @@ export class JobController {
   // ---------------------------------------------------------------------------
 
   @Get(':id/scores')
-  async listScores(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async listScores(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.atsScoreService.listScores(user, id);
   }
 
@@ -202,10 +183,13 @@ export class JobController {
     @Param('scoreId') scoreId: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const { optimizedData, contactName } =
-      await this.optimizeService.getOptimizedDataForExport(user, id, scoreId);
+    const { optimizedData, contactName } = await this.optimizeService.getOptimizedDataForExport(
+      user,
+      id,
+      scoreId,
+    );
 
-    const buffer   = await this.resumePdfService.generate(optimizedData, contactName);
+    const buffer = await this.resumePdfService.generate(optimizedData, contactName);
     const safeName = encodeURIComponent(contactName.replace(/\s+/g, '-')) + '-optimized';
 
     void reply
@@ -230,12 +214,15 @@ export class JobController {
     @Param('scoreId') scoreId: string,
     @Res() reply: FastifyReply,
   ): Promise<void> {
-    const { optimizedData, contactName } =
-      await this.optimizeService.getOptimizedDataForExport(user, id, scoreId);
+    const { optimizedData, contactName } = await this.optimizeService.getOptimizedDataForExport(
+      user,
+      id,
+      scoreId,
+    );
 
-    const buffer   = await this.resumeDocxService.generate(optimizedData, contactName);
+    const buffer = await this.resumeDocxService.generate(optimizedData, contactName);
     const safeName = encodeURIComponent(contactName.replace(/\s+/g, '-')) + '-optimized';
-    const mime     = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
     void reply
       .header('Content-Type', mime)
@@ -250,22 +237,24 @@ export class JobController {
 
   private requireIdempotencyKey(key: string | undefined): void {
     if (!key || key.trim().length === 0) {
-      throw new BadRequestException(
-        'Idempotency-Key header is required for this request.',
-      );
+      throw new BadRequestException('Idempotency-Key header is required for this request.');
     }
   }
 
   private parseBody<T>(
     body: unknown,
-    schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false; error: { issues: { path: (string | number)[]; message: string }[] } } },
+    schema: {
+      safeParse: (
+        v: unknown,
+      ) =>
+        | { success: true; data: T }
+        | { success: false; error: { issues: { path: (string | number)[]; message: string }[] } };
+    },
   ): T {
     const result = schema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException(
-        result.error.issues
-          .map((i) => `${i.path.join('.')}: ${i.message}`)
-          .join('; '),
+        result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
       );
     }
     return result.data;

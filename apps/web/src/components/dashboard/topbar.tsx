@@ -11,22 +11,22 @@ import { useTheme } from '@/lib/theme';
 // ---------------------------------------------------------------------------
 
 const LABELS: Record<string, string> = {
-  dashboard:    'Dashboard',
-  resume:       'Resumes',
-  upload:       'Upload',
-  jobs:         'Jobs',
-  scores:       'Scores',
-  optimize:     'Optimize',
+  dashboard: 'Dashboard',
+  resume: 'Resumes',
+  upload: 'Upload',
+  jobs: 'Jobs',
+  scores: 'Scores',
+  optimize: 'Optimize',
   applications: 'Applications',
-  settings:     'Settings',
-  billing:      'Billing',
+  settings: 'Settings',
+  billing: 'Billing',
 };
 
 function buildBreadcrumbs(pathname: string): { label: string; href: string }[] {
   const segments = pathname.split('/').filter(Boolean);
   return segments.map((seg, i) => ({
     label: LABELS[seg] ?? seg,
-    href:  '/' + segments.slice(0, i + 1).join('/'),
+    href: '/' + segments.slice(0, i + 1).join('/'),
   }));
 }
 
@@ -44,11 +44,11 @@ interface TopBarProps {
 // ---------------------------------------------------------------------------
 
 export function TopBar({ onBurgerClick }: TopBarProps) {
-  const pathname          = usePathname();
+  const pathname = usePathname();
   const { data: session } = useSession();
   const { theme, toggle } = useTheme();
-  const crumbs            = buildBreadcrumbs(pathname);
-  const user              = (session as { user?: { name?: string } } | null)?.user;
+  const crumbs = buildBreadcrumbs(pathname);
+  const user = (session as { user?: { name?: string } } | null)?.user;
 
   return (
     <header style={styles.topbar}>
@@ -130,88 +130,88 @@ export function TopBar({ onBurgerClick }: TopBarProps) {
 
 const styles = {
   topbar: {
-    height:          '52px',
-    borderBottom:    '1px solid var(--vt-surface-border)',
-    display:         'flex',
-    alignItems:      'center',
-    justifyContent:  'space-between',
-    padding:         '0 24px',
+    height: '52px',
+    borderBottom: '1px solid var(--vt-surface-border)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0 24px',
     backgroundColor: 'var(--vt-surface-raised)',
-    flexShrink:      0,
-    gap:             '8px',
-    transition:      'background-color 320ms cubic-bezier(0.4,0,0.2,1)',
+    flexShrink: 0,
+    gap: '8px',
+    transition: 'background-color 320ms cubic-bezier(0.4,0,0.2,1)',
   },
   breadcrumb: {
-    display:   'flex',
+    display: 'flex',
     alignItems: 'center',
-    gap:        '4px',
-    overflow:   'hidden',
+    gap: '4px',
+    overflow: 'hidden',
   },
   crumbGroup: {
-    display:    'flex',
+    display: 'flex',
     alignItems: 'center',
-    gap:        '4px',
+    gap: '4px',
     flexShrink: 0,
   },
   crumbLink: {
-    fontFamily:     'var(--vt-font-body)',
-    fontSize:       '13px',
-    color:          'var(--vt-text-secondary)',
+    fontFamily: 'var(--vt-font-body)',
+    fontSize: '13px',
+    color: 'var(--vt-text-secondary)',
     textDecoration: 'none',
-    whiteSpace:     'nowrap' as const,
+    whiteSpace: 'nowrap' as const,
   },
   crumbCurrent: {
-    fontFamily:  'var(--vt-font-body)',
-    fontSize:    '13px',
-    color:       'var(--vt-text-primary)',
-    fontWeight:  500,
-    whiteSpace:  'nowrap' as const,
-    overflow:    'hidden' as const,
+    fontFamily: 'var(--vt-font-body)',
+    fontSize: '13px',
+    color: 'var(--vt-text-primary)',
+    fontWeight: 500,
+    whiteSpace: 'nowrap' as const,
+    overflow: 'hidden' as const,
     textOverflow: 'ellipsis' as const,
   },
   rightGroup: {
-    display:    'flex',
+    display: 'flex',
     alignItems: 'center',
-    gap:        '10px',
+    gap: '10px',
     flexShrink: 0,
   },
   iconBtn: {
-    display:         'flex',
-    alignItems:      'center',
-    justifyContent:  'center',
-    width:           '32px',
-    height:          '32px',
-    borderRadius:    '8px',
-    border:          '1px solid var(--vt-surface-border)',
-    background:      'transparent',
-    color:           'var(--vt-text-muted)',
-    cursor:          'pointer',
-    transition:      'background 120ms ease, color 120ms ease, border-color 120ms ease',
-    flexShrink:      0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    border: '1px solid var(--vt-surface-border)',
+    background: 'transparent',
+    color: 'var(--vt-text-muted)',
+    cursor: 'pointer',
+    transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+    flexShrink: 0,
   },
   userPill: {
-    display:    'flex',
+    display: 'flex',
     alignItems: 'center',
-    gap:        '8px',
+    gap: '8px',
   },
   avatar: {
-    width:           '28px',
-    height:          '28px',
-    borderRadius:    '50%',
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
     backgroundColor: 'var(--vt-brand-600)',
-    display:         'flex',
-    alignItems:      'center',
-    justifyContent:  'center',
-    fontFamily:      'var(--vt-font-body)',
-    fontSize:        '12px',
-    fontWeight:      500,
-    color:           '#ffffff',
-    flexShrink:      0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'var(--vt-font-body)',
+    fontSize: '12px',
+    fontWeight: 500,
+    color: '#ffffff',
+    flexShrink: 0,
   },
   userName: {
     fontFamily: 'var(--vt-font-body)',
-    fontSize:   '13px',
-    color:      'var(--vt-text-secondary)',
+    fontSize: '13px',
+    color: 'var(--vt-text-secondary)',
     whiteSpace: 'nowrap' as const,
   },
 } as const;
