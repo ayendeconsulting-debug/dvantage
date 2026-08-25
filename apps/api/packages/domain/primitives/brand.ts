@@ -10,6 +10,8 @@ declare const __brand: unique symbol;
 
 export type Brand<T, B extends string> = T & { readonly [__brand]: B };
 
-export function brand<T extends Brand<unknown, string>>(value: T extends Brand<infer V, string> ? V : never): T {
+export function brand<T extends Brand<unknown, string>>(
+  value: T extends Brand<infer V, string> ? V : never,
+): T {
   return value as T;
 }

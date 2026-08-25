@@ -1,57 +1,48 @@
-import {
-  Module,
-  Inject,
-  Logger,
-  type OnModuleInit,
-} from '@nestjs/common';
-import { APP_GUARD }       from '@nestjs/core';
+import { Module, Inject, Logger, type OnModuleInit } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { HttpAdapterHost } from '@nestjs/core';
-import { Reflector }       from '@nestjs/core';
+import { Reflector } from '@nestjs/core';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { Redis }      from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { DatabaseClient } from '@vantage/database';
 
 import { DatabaseModule, DATABASE_CLIENT } from '../database/database.module';
-import { RedisModule, REDIS_CLIENT }       from '../redis/redis.module';
-import { KmsModule }                       from '../common/kms/kms.module';
-import { KmsService }                      from '../common/kms/kms.service';
-import { NotificationModule }              from '../notification/notification.module';
-import { NotificationService }             from '../notification/notification.service';
+import { RedisModule, REDIS_CLIENT } from '../redis/redis.module';
+import { KmsModule } from '../common/kms/kms.module';
+import { KmsService } from '../common/kms/kms.service';
+import { NotificationModule } from '../notification/notification.module';
+import { NotificationService } from '../notification/notification.service';
 
-import {
-  AUTH_INSTANCE,
-  createAuth,
-  type AuthInstance,
-} from './auth.config';
+import { AUTH_INSTANCE, createAuth, type AuthInstance } from './auth.config';
 import { AuthService } from './auth.service';
-import { AuthGuard }   from './guards/auth.guard';
+import { AuthGuard } from './guards/auth.guard';
 
 @Module({
   imports: [DatabaseModule, RedisModule, KmsModule, NotificationModule],
   providers: [
     {
-      provide:    AUTH_INSTANCE,
-      inject:     [DATABASE_CLIENT, REDIS_CLIENT, KmsService, NotificationService],
+      provide: AUTH_INSTANCE,
+      inject: [DATABASE_CLIENT, REDIS_CLIENT, KmsService, NotificationService],
       useFactory: async (
-        db:                  DatabaseClient,
-        redis:               Redis,
-        kmsService:          KmsService,
+        db: DatabaseClient,
+        redis: Redis,
+        kmsService: KmsService,
         notificationService: NotificationService,
       ): Promise<AuthInstance> =>
         createAuth({
           db,
           redis,
           env: {
-            authSecret:            process.env['AUTH_SECRET']             ?? '',
-            apiUrl:                process.env['API_URL']                 ?? 'http://localhost:3001',
-            appUrl:                process.env['APP_URL']                 ?? 'http://localhost:3000',
-            googleClientId:        process.env['GOOGLE_CLIENT_ID']        ?? '',
-            googleClientSecret:    process.env['GOOGLE_CLIENT_SECRET']    ?? '',
-            microsoftClientId:     process.env['MICROSOFT_CLIENT_ID']     ?? '',
+            authSecret: process.env['AUTH_SECRET'] ?? '',
+            apiUrl: process.env['API_URL'] ?? 'http://localhost:3001',
+            appUrl: process.env['APP_URL'] ?? 'http://localhost:3000',
+            googleClientId: process.env['GOOGLE_CLIENT_ID'] ?? '',
+            googleClientSecret: process.env['GOOGLE_CLIENT_SECRET'] ?? '',
+            microsoftClientId: process.env['MICROSOFT_CLIENT_ID'] ?? '',
             microsoftClientSecret: process.env['MICROSOFT_CLIENT_SECRET'] ?? '',
           },
-          encryptToken:           (v) => kmsService.encrypt(v),
-          sendVerificationEmail:  (email, url) =>
+          encryptToken: (v) => kmsService.encrypt(v),
+          sendVerificationEmail: (email, url) =>
             notificationService.sendVerificationEmail(email, url),
           sendPasswordResetEmail: (email, url) =>
             notificationService.sendPasswordResetEmail(email, url),
@@ -74,8 +65,7 @@ export class AuthModule implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    const fastify = this.httpAdapterHost.httpAdapter
-      .getInstance<FastifyInstance>();
+    const fastify = this.httpAdapterHost.httpAdapter.getInstance<FastifyInstance>();
 
     // Fly.io terminates TLS at the edge and forwards requests internally as
     // plain HTTP. request.protocol is always 'http' — we must use API_URL to
@@ -87,17 +77,15 @@ export class AuthModule implements OnModuleInit {
 
       const reqHeaders = new Headers();
       for (const [key, value] of Object.entries(request.headers)) {
-        if (typeof value === 'string')  reqHeaders.set(key, value);
-        else if (Array.isArray(value))  value.forEach((v) => reqHeaders.append(key, v));
+        if (typeof value === 'string') reqHeaders.set(key, value);
+        else if (Array.isArray(value)) value.forEach((v) => reqHeaders.append(key, v));
       }
 
       const hasBody = !['GET', 'HEAD'].includes(request.method.toUpperCase());
-      const body    = hasBody && request.body != null
-        ? JSON.stringify(request.body)
-        : undefined;
+      const body = hasBody && request.body != null ? JSON.stringify(request.body) : undefined;
 
       const webRequest = new Request(url, {
-        method:  request.method,
+        method: request.method,
         headers: reqHeaders,
         ...(body !== undefined ? { body } : {}),
       });
@@ -106,10 +94,7 @@ export class AuthModule implements OnModuleInit {
       try {
         response = await this.auth.handler(webRequest);
       } catch (err) {
-        this.logger.error(
-          `better-auth error: ${(err as Error).message}`,
-          (err as Error).stack,
-        );
+        this.logger.error(`better-auth error: ${(err as Error).message}`, (err as Error).stack);
         return reply.status(500).send({ error: 'Internal server error' });
       }
 
@@ -127,9 +112,8 @@ export class AuthModule implements OnModuleInit {
       // Forward each Set-Cookie value as a separate header (Node 18+ API).
       type HeadersPlus = Headers & { getSetCookie?: () => string[] };
       const setCookieFn = (response.headers as HeadersPlus).getSetCookie;
-      const cookies: string[] = typeof setCookieFn === 'function'
-        ? setCookieFn.call(response.headers)
-        : [];
+      const cookies: string[] =
+        typeof setCookieFn === 'function' ? setCookieFn.call(response.headers) : [];
       for (const cookie of cookies) {
         void reply.header('set-cookie', cookie);
       }

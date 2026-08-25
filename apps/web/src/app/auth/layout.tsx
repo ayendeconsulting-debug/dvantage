@@ -1,11 +1,11 @@
-import type { Metadata }  from 'next';
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import Link               from 'next/link';
-import { DVantageLogo }   from '@/components/logo/dvantage-logo';
+import Link from 'next/link';
+import { DVantageLogo } from '@/components/logo/dvantage-logo';
 
 export const metadata: Metadata = {
   title: {
-    default:  "D'Vantage",
+    default: "D'Vantage",
     template: "%s · D'Vantage",
   },
 };
@@ -33,74 +33,85 @@ function IllustrationPanel() {
           ═══════════════════════════════════════════════════ */}
 
       {/* Background crossing diagonal — very faint, creates X tension */}
-      <line x1="460" y1="18" x2="22" y2="748"
-        stroke="rgba(59,130,246,0.09)" strokeWidth="1" />
+      <line x1="460" y1="18" x2="22" y2="748" stroke="rgba(59,130,246,0.09)" strokeWidth="1" />
 
       {/* Top-left corner → RESUME → PARSE */}
-      <line x1="22" y1="22" x2="65" y2="132"
-        stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
-      <line x1="65" y1="132" x2="185" y2="300"
-        stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
+      <line x1="22" y1="22" x2="65" y2="132" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
+      <line x1="65" y1="132" x2="185" y2="300" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
 
       {/* Top-right corner → PARSE */}
-      <line x1="460" y1="18" x2="185" y2="300"
-        stroke="rgba(59,130,246,0.22)" strokeWidth="1" />
+      <line x1="460" y1="18" x2="185" y2="300" stroke="rgba(59,130,246,0.22)" strokeWidth="1" />
 
       {/* PARSE → SCORE */}
-      <line x1="185" y1="300" x2="305" y2="458"
-        stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
+      <line x1="185" y1="300" x2="305" y2="458" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
 
       {/* PARSE → right edge (solid horizontal) */}
-      <line x1="185" y1="300" x2="460" y2="300"
-        stroke="rgba(59,130,246,0.22)" strokeWidth="1" />
+      <line x1="185" y1="300" x2="460" y2="300" stroke="rgba(59,130,246,0.22)" strokeWidth="1" />
 
       {/* SCORE → MATCH */}
-      <line x1="305" y1="458" x2="390" y2="605"
-        stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
+      <line x1="305" y1="458" x2="390" y2="605" stroke="rgba(59,130,246,0.3)" strokeWidth="1" />
 
       {/* SCORE → right edge (dashed horizontal) */}
-      <line x1="305" y1="458" x2="460" y2="458"
-        stroke="rgba(59,130,246,0.18)" strokeWidth="1"
-        strokeDasharray="5 5" />
+      <line
+        x1="305"
+        y1="458"
+        x2="460"
+        y2="458"
+        stroke="rgba(59,130,246,0.18)"
+        strokeWidth="1"
+        strokeDasharray="5 5"
+      />
 
       {/* Left edge → MATCH (dashed horizontal) */}
-      <line x1="22" y1="605" x2="390" y2="605"
-        stroke="rgba(59,130,246,0.14)" strokeWidth="1"
-        strokeDasharray="4 6" />
+      <line
+        x1="22"
+        y1="605"
+        x2="390"
+        y2="605"
+        stroke="rgba(59,130,246,0.14)"
+        strokeWidth="1"
+        strokeDasharray="4 6"
+      />
 
       {/* MATCH → lower-right continuation */}
-      <line x1="390" y1="605" x2="460" y2="660"
-        stroke="rgba(59,130,246,0.22)" strokeWidth="1" />
+      <line x1="390" y1="605" x2="460" y2="660" stroke="rgba(59,130,246,0.22)" strokeWidth="1" />
 
       {/* ═══════════════════════════════════════════════════════
           WAYPOINT DOTS — signal markers at line endpoints
           ═══════════════════════════════════════════════════ */}
 
-      <circle cx="22"  cy="22"  r="3.5" fill="rgba(59,130,246,0.45)" />
-      <circle cx="460" cy="18"  r="3.5" fill="rgba(59,130,246,0.45)" />
+      <circle cx="22" cy="22" r="3.5" fill="rgba(59,130,246,0.45)" />
+      <circle cx="460" cy="18" r="3.5" fill="rgba(59,130,246,0.45)" />
       <circle cx="460" cy="300" r="3.5" fill="rgba(59,130,246,0.45)" />
       <circle cx="460" cy="458" r="3.5" fill="rgba(59,130,246,0.35)" />
-      <circle cx="22"  cy="605" r="3.5" fill="rgba(59,130,246,0.35)" />
+      <circle cx="22" cy="605" r="3.5" fill="rgba(59,130,246,0.35)" />
       <circle cx="460" cy="660" r="3.5" fill="rgba(59,130,246,0.45)" />
 
       {/* ═══════════════════════════════════════════════════════
           RESUME — small labeled endpoint node
           ═══════════════════════════════════════════════════ */}
 
-      <circle cx="65" cy="132" r="13"
-        fill="none" stroke="rgba(59,130,246,0.2)" strokeWidth="1" />
-      <circle cx="65" cy="132" r="5"
-        fill="rgba(59,130,246,0.5)" />
-      <circle cx="65" cy="132" r="2.5"
-        fill="#60A5FA" />
-      <text x="83" y="128"
-        fontSize="9" fontFamily="Geist Mono,monospace"
-        fill="rgba(96,165,250,0.85)" letterSpacing="0.13em">
+      <circle cx="65" cy="132" r="13" fill="none" stroke="rgba(59,130,246,0.2)" strokeWidth="1" />
+      <circle cx="65" cy="132" r="5" fill="rgba(59,130,246,0.5)" />
+      <circle cx="65" cy="132" r="2.5" fill="#60A5FA" />
+      <text
+        x="83"
+        y="128"
+        fontSize="9"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(96,165,250,0.85)"
+        letterSpacing="0.13em"
+      >
         RESUME
       </text>
-      <text x="83" y="141"
-        fontSize="8" fontFamily="Geist Mono,monospace"
-        fill="rgba(59,130,246,0.35)" letterSpacing="0.09em">
+      <text
+        x="83"
+        y="141"
+        fontSize="8"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(59,130,246,0.35)"
+        letterSpacing="0.09em"
+      >
         NODE_01
       </text>
 
@@ -108,26 +119,52 @@ function IllustrationPanel() {
           PARSE — primary active node (three concentric rings)
           ═══════════════════════════════════════════════════ */}
 
-      <circle cx="185" cy="300" r="54"
-        fill="none" stroke="#3B82F6" strokeWidth="1"
-        className="vt-ring-outer" />
-      <circle cx="185" cy="300" r="40"
-        fill="none" stroke="#3B82F6" strokeWidth="1"
-        className="vt-ring-mid" />
-      <circle cx="185" cy="300" r="27"
-        fill="none" stroke="rgba(59,130,246,0.5)" strokeWidth="1.5" />
-      <circle cx="185" cy="300" r="8"
-        fill="rgba(59,130,246,0.85)" />
-      <circle cx="185" cy="300" r="3.5"
-        fill="#93C5FD" />
-      <text x="216" y="296"
-        fontSize="10" fontFamily="Geist Mono,monospace"
-        fill="rgba(96,165,250,0.9)" letterSpacing="0.13em">
+      <circle
+        cx="185"
+        cy="300"
+        r="54"
+        fill="none"
+        stroke="#3B82F6"
+        strokeWidth="1"
+        className="vt-ring-outer"
+      />
+      <circle
+        cx="185"
+        cy="300"
+        r="40"
+        fill="none"
+        stroke="#3B82F6"
+        strokeWidth="1"
+        className="vt-ring-mid"
+      />
+      <circle
+        cx="185"
+        cy="300"
+        r="27"
+        fill="none"
+        stroke="rgba(59,130,246,0.5)"
+        strokeWidth="1.5"
+      />
+      <circle cx="185" cy="300" r="8" fill="rgba(59,130,246,0.85)" />
+      <circle cx="185" cy="300" r="3.5" fill="#93C5FD" />
+      <text
+        x="216"
+        y="296"
+        fontSize="10"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(96,165,250,0.9)"
+        letterSpacing="0.13em"
+      >
         PARSE
       </text>
-      <text x="216" y="310"
-        fontSize="8" fontFamily="Geist Mono,monospace"
-        fill="rgba(59,130,246,0.38)" letterSpacing="0.09em">
+      <text
+        x="216"
+        y="310"
+        fontSize="8"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(59,130,246,0.38)"
+        letterSpacing="0.09em"
+      >
         AI · EXTRACT
       </text>
 
@@ -135,26 +172,52 @@ function IllustrationPanel() {
           SCORE — secondary active node (three rings, staggered)
           ═══════════════════════════════════════════════════ */}
 
-      <circle cx="305" cy="458" r="50"
-        fill="none" stroke="#3B82F6" strokeWidth="1"
-        className="vt-ring-outer vt-ring-delay-1" />
-      <circle cx="305" cy="458" r="36"
-        fill="none" stroke="#3B82F6" strokeWidth="1"
-        className="vt-ring-mid vt-ring-delay-1" />
-      <circle cx="305" cy="458" r="24"
-        fill="none" stroke="rgba(59,130,246,0.5)" strokeWidth="1.5" />
-      <circle cx="305" cy="458" r="8"
-        fill="rgba(59,130,246,0.85)" />
-      <circle cx="305" cy="458" r="3.5"
-        fill="#93C5FD" />
-      <text x="334" y="454"
-        fontSize="10" fontFamily="Geist Mono,monospace"
-        fill="rgba(96,165,250,0.9)" letterSpacing="0.13em">
+      <circle
+        cx="305"
+        cy="458"
+        r="50"
+        fill="none"
+        stroke="#3B82F6"
+        strokeWidth="1"
+        className="vt-ring-outer vt-ring-delay-1"
+      />
+      <circle
+        cx="305"
+        cy="458"
+        r="36"
+        fill="none"
+        stroke="#3B82F6"
+        strokeWidth="1"
+        className="vt-ring-mid vt-ring-delay-1"
+      />
+      <circle
+        cx="305"
+        cy="458"
+        r="24"
+        fill="none"
+        stroke="rgba(59,130,246,0.5)"
+        strokeWidth="1.5"
+      />
+      <circle cx="305" cy="458" r="8" fill="rgba(59,130,246,0.85)" />
+      <circle cx="305" cy="458" r="3.5" fill="#93C5FD" />
+      <text
+        x="334"
+        y="454"
+        fontSize="10"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(96,165,250,0.9)"
+        letterSpacing="0.13em"
+      >
         SCORE
       </text>
-      <text x="334" y="468"
-        fontSize="8" fontFamily="Geist Mono,monospace"
-        fill="rgba(59,130,246,0.38)" letterSpacing="0.09em">
+      <text
+        x="334"
+        y="468"
+        fontSize="8"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(59,130,246,0.38)"
+        letterSpacing="0.09em"
+      >
         ATS · RANK
       </text>
 
@@ -162,25 +225,44 @@ function IllustrationPanel() {
           MATCH — tertiary active node (two rings, most delayed)
           ═══════════════════════════════════════════════════ */}
 
-      <circle cx="390" cy="605" r="38"
-        fill="none" stroke="#3B82F6" strokeWidth="1"
-        className="vt-ring-outer vt-ring-delay-2" />
-      <circle cx="390" cy="605" r="26"
-        fill="none" stroke="rgba(59,130,246,0.4)" strokeWidth="1" />
-      <circle cx="390" cy="605" r="17"
-        fill="none" stroke="rgba(59,130,246,0.5)" strokeWidth="1.5" />
-      <circle cx="390" cy="605" r="6"
-        fill="rgba(59,130,246,0.85)" />
-      <circle cx="390" cy="605" r="2.5"
-        fill="#93C5FD" />
-      <text x="412" y="601"
-        fontSize="10" fontFamily="Geist Mono,monospace"
-        fill="rgba(96,165,250,0.85)" letterSpacing="0.13em">
+      <circle
+        cx="390"
+        cy="605"
+        r="38"
+        fill="none"
+        stroke="#3B82F6"
+        strokeWidth="1"
+        className="vt-ring-outer vt-ring-delay-2"
+      />
+      <circle cx="390" cy="605" r="26" fill="none" stroke="rgba(59,130,246,0.4)" strokeWidth="1" />
+      <circle
+        cx="390"
+        cy="605"
+        r="17"
+        fill="none"
+        stroke="rgba(59,130,246,0.5)"
+        strokeWidth="1.5"
+      />
+      <circle cx="390" cy="605" r="6" fill="rgba(59,130,246,0.85)" />
+      <circle cx="390" cy="605" r="2.5" fill="#93C5FD" />
+      <text
+        x="412"
+        y="601"
+        fontSize="10"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(96,165,250,0.85)"
+        letterSpacing="0.13em"
+      >
         MATCH
       </text>
-      <text x="412" y="615"
-        fontSize="8" fontFamily="Geist Mono,monospace"
-        fill="rgba(59,130,246,0.38)" letterSpacing="0.09em">
+      <text
+        x="412"
+        y="615"
+        fontSize="8"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(59,130,246,0.38)"
+        letterSpacing="0.09em"
+      >
         JOB · FIT
       </text>
 
@@ -188,27 +270,47 @@ function IllustrationPanel() {
           BRAND — bottom-left lockup
           ═══════════════════════════════════════════════════ */}
 
-      <text x="28" y="668"
-        fontSize="9" fontFamily="Geist Mono,monospace"
-        fill="rgba(59,130,246,0.28)" letterSpacing="0.16em">
+      <text
+        x="28"
+        y="668"
+        fontSize="9"
+        fontFamily="Geist Mono,monospace"
+        fill="rgba(59,130,246,0.28)"
+        letterSpacing="0.16em"
+      >
         D'VANTAGE INTELLIGENCE
       </text>
-      <text x="28" y="696"
-        fontSize="23" fontWeight="700"
+      <text
+        x="28"
+        y="696"
+        fontSize="23"
+        fontWeight="700"
         fontFamily="Outfit,sans-serif"
-        fill="#F2F6FF" letterSpacing="-0.5">
+        fill="#F2F6FF"
+        letterSpacing="-0.5"
+      >
         Resume.
       </text>
-      <text x="28" y="724"
-        fontSize="23" fontWeight="700"
+      <text
+        x="28"
+        y="724"
+        fontSize="23"
+        fontWeight="700"
         fontFamily="Outfit,sans-serif"
-        fill="#60A5FA" letterSpacing="-0.5">
+        fill="#60A5FA"
+        letterSpacing="-0.5"
+      >
         Intelligently
       </text>
-      <text x="28" y="752"
-        fontSize="23" fontWeight="700"
+      <text
+        x="28"
+        y="752"
+        fontSize="23"
+        fontWeight="700"
         fontFamily="Outfit,sans-serif"
-        fill="#F2F6FF" letterSpacing="-0.5">
+        fill="#F2F6FF"
+        letterSpacing="-0.5"
+      >
         scored.
       </text>
     </svg>
@@ -326,14 +428,14 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 }
 
 const logoLink: React.CSSProperties = {
-  display:        'inline-flex',
+  display: 'inline-flex',
   textDecoration: 'none',
 };
 
 const footer: React.CSSProperties = {
-  fontFamily:    'var(--vt-font-body)',
-  fontSize:      'var(--vt-text-xs)',
-  color:         'var(--vt-text-disabled)',
-  margin:        0,
+  fontFamily: 'var(--vt-font-body)',
+  fontSize: 'var(--vt-text-xs)',
+  color: 'var(--vt-text-disabled)',
+  margin: 0,
   letterSpacing: '0.01em',
 };

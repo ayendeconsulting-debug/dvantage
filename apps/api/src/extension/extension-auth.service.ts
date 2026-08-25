@@ -17,9 +17,9 @@
 // ---------------------------------------------------------------------------
 
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { and, eq, isNull }                               from 'drizzle-orm';
-import { createHash, randomBytes }                       from 'node:crypto';
-import { uuidv7 }                                        from 'uuidv7';
+import { and, eq, isNull } from 'drizzle-orm';
+import { createHash, randomBytes } from 'node:crypto';
+import { uuidv7 } from 'uuidv7';
 
 import {
   extensionTokens,
@@ -28,13 +28,13 @@ import {
   type DatabaseClient,
   type ExtensionToken,
 } from '@vantage/database';
-import type { AuthUser }    from '../auth/auth.service';
-import { DATABASE_CLIENT }  from '../database/database.module';
+import type { AuthUser } from '../auth/auth.service';
+import { DATABASE_CLIENT } from '../database/database.module';
 import type {
   ExchangeResponseDto,
   RefreshResponseDto,
   UserProfileDto,
-}                           from './dto/extension-auth-response.dto';
+} from './dto/extension-auth-response.dto';
 
 /** 30-day sliding window in milliseconds. Matches TOKEN_LIFETIME_MS in the extension. */
 const TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -43,34 +43,32 @@ const TOKEN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 export class ExtensionAuthService {
   private readonly logger = new Logger(ExtensionAuthService.name);
 
-  constructor(
-    @Inject(DATABASE_CLIENT) private readonly db: DatabaseClient,
-  ) {}
+  constructor(@Inject(DATABASE_CLIENT) private readonly db: DatabaseClient) {}
 
   // ---------------------------------------------------------------------------
   // exchange — mint a new token
   // ---------------------------------------------------------------------------
 
   async exchange(user: AuthUser, userAgent?: string): Promise<ExchangeResponseDto> {
-    const rawToken  = randomBytes(32).toString('hex'); // 64-char hex, 256 bits entropy
+    const rawToken = randomBytes(32).toString('hex'); // 64-char hex, 256 bits entropy
     const tokenHash = this.sha256(rawToken);
-    const id        = uuidv7();
-    const now       = new Date();
+    const id = uuidv7();
+    const now = new Date();
 
     await this.db.insert(extensionTokens).values({
       id,
-      userId:     user.id,
+      userId: user.id,
       tokenHash,
       lastSeenAt: now,
-      userAgent:  userAgent ?? null,
-      createdAt:  now,
+      userAgent: userAgent ?? null,
+      createdAt: now,
     });
 
     this.logger.log(`Extension token minted — user=${user.id} tokenId=${id}`);
 
     const expiresAt = new Date(now.getTime() + TOKEN_LIFETIME_MS);
     return {
-      token:     rawToken,
+      token: rawToken,
       expiresAt: expiresAt.toISOString(),
     };
   }
@@ -122,12 +120,7 @@ export class ExtensionAuthService {
     await this.db
       .update(extensionTokens)
       .set({ revokedAt: new Date() })
-      .where(
-        and(
-          eq(extensionTokens.userId, userId),
-          isNull(extensionTokens.revokedAt),
-        ),
-      );
+      .where(and(eq(extensionTokens.userId, userId), isNull(extensionTokens.revokedAt)));
 
     this.logger.log(`All active extension tokens revoked — userId=${userId}`);
   }
@@ -142,12 +135,7 @@ export class ExtensionAuthService {
     const [row] = await this.db
       .select()
       .from(extensionTokens)
-      .where(
-        and(
-          eq(extensionTokens.tokenHash, tokenHash),
-          isNull(extensionTokens.revokedAt),
-        ),
-      )
+      .where(and(eq(extensionTokens.tokenHash, tokenHash), isNull(extensionTokens.revokedAt)))
       .limit(1);
 
     return row ?? null;
@@ -166,9 +154,9 @@ export class ExtensionAuthService {
   async getProfile(token: ExtensionToken): Promise<UserProfileDto> {
     const [row] = await this.db
       .select({
-        name:  users.name,
+        name: users.name,
         email: users.email,
-        plan:  subscriptions.plan,
+        plan: subscriptions.plan,
       })
       .from(users)
       .leftJoin(subscriptions, eq(subscriptions.userId, users.id))
@@ -181,10 +169,10 @@ export class ExtensionAuthService {
     }
 
     return {
-      name:  row.name,
+      name: row.name,
       email: row.email,
       // Left join: plan is null when no subscription row exists → default free.
-      plan:  row.plan ?? 'free',
+      plan: row.plan ?? 'free',
     };
   }
 

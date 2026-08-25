@@ -6,83 +6,82 @@
  */
 
 const API_BASE =
-  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
-  'http://localhost:3001';
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) || 'http://localhost:3001';
 
 // ---------------------------------------------------------------------------
 // Shared types (mirrored from backend DTOs)
 // ---------------------------------------------------------------------------
 
-export type ScoringStatus     = 'pending' | 'scoring' | 'complete' | 'failed';
+export type ScoringStatus = 'pending' | 'scoring' | 'complete' | 'failed';
 export type OptimizationStatus = 'none' | 'pending' | 'optimizing' | 'complete' | 'failed';
 
 export interface JobDescriptionListItem {
-  id:            string;
-  title:         string | null;
-  company:       string | null;
-  url:           string | null;
+  id: string;
+  title: string | null;
+  company: string | null;
+  url: string | null;
   contentLength: number;
-  createdAt:     string;
-  updatedAt:     string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface JobDescriptionDetail {
-  id:        string;
-  title:     string | null;
-  company:   string | null;
-  url:       string | null;
-  content:   string;
+  id: string;
+  title: string | null;
+  company: string | null;
+  url: string | null;
+  content: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface JobDescriptionListResponse {
-  data:       JobDescriptionListItem[];
+  data: JobDescriptionListItem[];
   nextCursor: string | null;
-  total:      number;
+  total: number;
 }
 
 export interface ATSSectionScores {
-  skills:     number;
+  skills: number;
   experience: number;
-  education:  number;
-  keywords:   number;
+  education: number;
+  keywords: number;
 }
 
 export interface AtsScoreListItem {
-  id:               string;
-  resumeVersionId:  string;
+  id: string;
+  resumeVersionId: string;
   jobDescriptionId: string;
-  scoringStatus:    ScoringStatus;
-  overallScore:     number | null;
-  createdAt:        string;
-  updatedAt:        string;
+  scoringStatus: ScoringStatus;
+  overallScore: number | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AtsScoreListResponse {
-  data:  AtsScoreListItem[];
+  data: AtsScoreListItem[];
   total: number;
 }
 
 export interface AtsScoreDetail {
-  id:               string;
-  resumeVersionId:  string;
+  id: string;
+  resumeVersionId: string;
   jobDescriptionId: string;
 
   // Original resume scoring
-  scoringStatus:    ScoringStatus;
-  overallScore:     number | null;
-  sectionScores:    ATSSectionScores | null;
-  keywordGaps:      string[] | null;
-  matchedKeywords:  string[] | null;
-  recommendations:  string[] | null;
-  scoreError:       string | null;
+  scoringStatus: ScoringStatus;
+  overallScore: number | null;
+  sectionScores: ATSSectionScores | null;
+  keywordGaps: string[] | null;
+  matchedKeywords: string[] | null;
+  recommendations: string[] | null;
+  scoreError: string | null;
 
   // Optimization
   optimizationStatus: OptimizationStatus;
 
   // Post-optimization re-score — null until optimizationStatus === 'complete'
-  optimizedOverallScore:  number | null;
+  optimizedOverallScore: number | null;
   optimizedSectionScores: ATSSectionScores | null;
 
   createdAt: string;
@@ -90,65 +89,71 @@ export interface AtsScoreDetail {
 }
 
 export interface CreateAtsScoreResponse {
-  atsScoreId:    string;
+  atsScoreId: string;
   scoringStatus: ScoringStatus;
-  message:       string;
+  message: string;
 }
 
 export interface OptimizationChange {
-  section:   string;
-  original:  string;
+  section: string;
+  original: string;
   optimized: string;
-  reason:    string;
+  reason: string;
 }
 
 // Minimal ResumeData shape used for diff rendering
 export interface ResumeContact {
-  name:      string;
-  email:     string;
-  phone?:    string;
+  name: string;
+  email: string;
+  phone?: string;
   location?: string;
   linkedin?: string;
-  github?:   string;
+  github?: string;
 }
 
 export interface ResumeExperience {
-  company:     string;
-  title:       string;
-  startDate:   string;
-  endDate?:    string;
-  current:     boolean;
+  company: string;
+  title: string;
+  startDate: string;
+  endDate?: string;
+  current: boolean;
   description: string;
-  highlights:  string[];
+  highlights: string[];
 }
 
 export interface ResumeSkill {
-  name:      string;
-  category:  'technical' | 'soft' | 'language' | 'tool';
-  level?:    string;
+  name: string;
+  category: 'technical' | 'soft' | 'language' | 'tool';
+  level?: string;
 }
 
 export interface ResumeData {
-  contact:        ResumeContact;
-  summary:        string;
-  experience:     ResumeExperience[];
-  education:      { institution: string; degree: string; field: string; startDate: string; endDate?: string }[];
-  skills:         ResumeSkill[];
+  contact: ResumeContact;
+  summary: string;
+  experience: ResumeExperience[];
+  education: {
+    institution: string;
+    degree: string;
+    field: string;
+    startDate: string;
+    endDate?: string;
+  }[];
+  skills: ResumeSkill[];
   certifications: { name: string; issuer: string }[];
 }
 
 export interface OptimizationResult {
-  atsScoreId:         string;
+  atsScoreId: string;
   optimizationStatus: OptimizationStatus;
-  optimizedData:      ResumeData | null;
-  changeLog:          OptimizationChange[] | null;
-  optimizationError:  string | null;
+  optimizedData: ResumeData | null;
+  changeLog: OptimizationChange[] | null;
+  optimizationError: string | null;
 }
 
 export interface OptimizationStatusResponse {
-  atsScoreId:         string;
+  atsScoreId: string;
   optimizationStatus: OptimizationStatus;
-  message:            string;
+  message: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,9 +179,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let message = `API error ${res.status}`;
     try {
-      const body = await res.json() as { detail?: string; title?: string };
+      const body = (await res.json()) as { detail?: string; title?: string };
       message = body.detail ?? body.title ?? message;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     throw new Error(message);
   }
 
@@ -189,14 +196,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function createJob(payload: {
   content: string;
-  title?:   string;
+  title?: string;
   company?: string;
-  url?:     string;
+  url?: string;
 }): Promise<JobDescriptionDetail> {
   return apiFetch<JobDescriptionDetail>('/v1/jobs', {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey() },
-    body:    JSON.stringify(payload),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -215,7 +222,7 @@ export async function updateJob(
 ): Promise<JobDescriptionDetail> {
   return apiFetch<JobDescriptionDetail>(`/v1/jobs/${id}`, {
     method: 'PATCH',
-    body:   JSON.stringify(payload),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -232,9 +239,9 @@ export async function createScore(
   resumeVersionId: string,
 ): Promise<CreateAtsScoreResponse> {
   return apiFetch<CreateAtsScoreResponse>(`/v1/jobs/${jobId}/scores`, {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey() },
-    body:    JSON.stringify({ resumeVersionId }),
+    body: JSON.stringify({ resumeVersionId }),
   });
 }
 
@@ -254,21 +261,13 @@ export async function requestOptimization(
   jobId: string,
   scoreId: string,
 ): Promise<OptimizationStatusResponse> {
-  return apiFetch<OptimizationStatusResponse>(
-    `/v1/jobs/${jobId}/scores/${scoreId}/optimize`,
-    {
-      method:  'POST',
-      headers: { 'Idempotency-Key': idempotencyKey() },
-      body:    '{}',
-    },
-  );
+  return apiFetch<OptimizationStatusResponse>(`/v1/jobs/${jobId}/scores/${scoreId}/optimize`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey() },
+    body: '{}',
+  });
 }
 
-export async function getOptimization(
-  jobId: string,
-  scoreId: string,
-): Promise<OptimizationResult> {
-  return apiFetch<OptimizationResult>(
-    `/v1/jobs/${jobId}/scores/${scoreId}/optimize`,
-  );
+export async function getOptimization(jobId: string, scoreId: string): Promise<OptimizationResult> {
+  return apiFetch<OptimizationResult>(`/v1/jobs/${jobId}/scores/${scoreId}/optimize`);
 }

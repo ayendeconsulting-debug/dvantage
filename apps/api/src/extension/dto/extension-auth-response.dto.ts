@@ -16,7 +16,7 @@
  */
 export interface ExchangeResponseDto {
   /** Raw 64-char hex bearer token. */
-  token:     string;
+  token: string;
   /** ISO 8601 timestamp — 30-day window from time of exchange. */
   expiresAt: string;
 }
@@ -44,12 +44,12 @@ export interface ExtensionAuthAckDto {
  */
 export interface UserProfileDto {
   /** Display name from the users table. */
-  name:  string;
+  name: string;
   /** Email address from the users table. */
   email: string;
   /**
    * Current subscription plan.
    * Defaults to 'free' when no subscription row exists for the user.
    */
-  plan:  'free' | 'premium';
+  plan: 'free' | 'premium';
 }
