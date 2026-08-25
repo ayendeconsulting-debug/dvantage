@@ -7,11 +7,7 @@ export const requestPasswordResetSchema = z.object({
 export const resetPasswordSchema = z
   .object({
     token: z.string().min(1),
-    password: z
-      .string()
-      .min(8)
-      .regex(/[A-Z]/)
-      .regex(/[0-9]/),
+    password: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
     confirmPassword: z.string().min(1),
   })
   .refine((data) => data.password === data.confirmPassword, {

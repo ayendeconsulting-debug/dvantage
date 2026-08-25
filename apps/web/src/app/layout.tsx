@@ -4,7 +4,7 @@ import { ThemeProvider } from '@/lib/theme';
 
 export const metadata: Metadata = {
   title: {
-    default:  "D'Vantage",
+    default: "D'Vantage",
     template: "%s · D'Vantage",
   },
   description: 'From applied to interview.',

@@ -74,5 +74,5 @@ export const userProfiles = pgTable(
  * Named to avoid collision with UserProfile in apps/extension/src/shared/types.ts,
  * which is the assembled DTO returned to the extension.
  */
-export type UserProfileRow    = typeof userProfiles.$inferSelect;
+export type UserProfileRow = typeof userProfiles.$inferSelect;
 export type NewUserProfileRow = typeof userProfiles.$inferInsert;

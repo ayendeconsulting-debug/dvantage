@@ -16,9 +16,9 @@ import { tap } from 'rxjs/operators';
 @Injectable()
 export class RequestIdInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const http    = context.switchToHttp();
+    const http = context.switchToHttp();
     const request = http.getRequest<FastifyRequest>();
-    const reply   = http.getResponse<FastifyReply>();
+    const reply = http.getResponse<FastifyReply>();
 
     const requestId =
       (request.headers['x-request-id'] as string | undefined) ?? crypto.randomUUID();

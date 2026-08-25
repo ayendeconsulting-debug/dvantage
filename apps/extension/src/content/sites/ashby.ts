@@ -22,11 +22,11 @@ import { resolveProfileValue } from '../../shared/profile-resolver';
 const ADAPTER_NAME = 'ashby';
 
 const JD_SELECTORS = {
-  title:        'h1',
-  orgName:      '[data-testid="org-name"]',
-  location:     '[data-testid="location"]',
-  descPrimary:  '.ashby-job-posting-description',
-  descTestId:   '[data-testid="job-description"]',
+  title: 'h1',
+  orgName: '[data-testid="org-name"]',
+  location: '[data-testid="location"]',
+  descPrimary: '.ashby-job-posting-description',
+  descTestId: '[data-testid="job-description"]',
   descFallback: 'main',
 } as const;
 
@@ -57,8 +57,14 @@ function firstMatch(...selectors: string[]): string | null {
   return null;
 }
 
-const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
-const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+const nativeInputSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLInputElement.prototype,
+  'value',
+)?.set;
+const nativeTextareaSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLTextAreaElement.prototype,
+  'value',
+)?.set;
 
 function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   if (el instanceof HTMLTextAreaElement) {
@@ -68,7 +74,7 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
     if (nativeInputSetter) nativeInputSetter.call(el, value);
     else el.value = value;
   }
-  el.dispatchEvent(new Event('input',  { bubbles: true }));
+  el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
@@ -86,7 +92,7 @@ function extractCompany(): string | null {
     if (candidate) return candidate;
   }
 
-  const title   = document.title;
+  const title = document.title;
   const atMatch = title.match(/\bat\s+(.+?)(?:\s*[|—\-]|\s*$)/i);
   if (atMatch?.[1]) {
     const candidate = cleanText(atMatch[1]);
@@ -114,9 +120,7 @@ function isApplicationPage(): boolean {
 // Form detection — label-text-based
 // ---------------------------------------------------------------------------
 
-function findInputByLabel(
-  labelText: string,
-): HTMLInputElement | HTMLTextAreaElement | null {
+function findInputByLabel(labelText: string): HTMLInputElement | HTMLTextAreaElement | null {
   const labels = Array.from(document.querySelectorAll<HTMLLabelElement>('label'));
   for (const label of labels) {
     const text = cleanText(label.innerText);
@@ -140,19 +144,29 @@ function findInputByLabel(
  * D13 Tier A: added location and github/website probes.
  */
 const FIELD_DEFS: Array<{
-  profileKey:   string;
+  profileKey: string;
   displayLabel: string;
-  required:     boolean;
-  labelSearch:  string;  // text to search in label innerText
+  required: boolean;
+  labelSearch: string; // text to search in label innerText
 }> = [
-  { profileKey: 'firstName',   displayLabel: 'First name',       required: true,  labelSearch: 'first' },
-  { profileKey: 'lastName',    displayLabel: 'Last name',        required: true,  labelSearch: 'last' },
-  { profileKey: 'email',       displayLabel: 'Email',            required: true,  labelSearch: 'email' },
-  { profileKey: 'phone',       displayLabel: 'Phone',            required: false, labelSearch: 'phone' },
-  { profileKey: 'linkedinUrl', displayLabel: 'LinkedIn URL',     required: false, labelSearch: 'linkedin' },
-  { profileKey: 'github',      displayLabel: 'GitHub / Website', required: false, labelSearch: 'github' },
-  { profileKey: 'location',    displayLabel: 'Location',         required: false, labelSearch: 'location' },
-  { profileKey: 'summary',     displayLabel: 'Cover letter',     required: false, labelSearch: 'cover' },
+  { profileKey: 'firstName', displayLabel: 'First name', required: true, labelSearch: 'first' },
+  { profileKey: 'lastName', displayLabel: 'Last name', required: true, labelSearch: 'last' },
+  { profileKey: 'email', displayLabel: 'Email', required: true, labelSearch: 'email' },
+  { profileKey: 'phone', displayLabel: 'Phone', required: false, labelSearch: 'phone' },
+  {
+    profileKey: 'linkedinUrl',
+    displayLabel: 'LinkedIn URL',
+    required: false,
+    labelSearch: 'linkedin',
+  },
+  {
+    profileKey: 'github',
+    displayLabel: 'GitHub / Website',
+    required: false,
+    labelSearch: 'github',
+  },
+  { profileKey: 'location', displayLabel: 'Location', required: false, labelSearch: 'location' },
+  { profileKey: 'summary', displayLabel: 'Cover letter', required: false, labelSearch: 'cover' },
 ];
 
 function detectAshbyForm(): FormField[] {
@@ -166,20 +180,24 @@ function detectAshbyForm(): FormField[] {
     const el = findInputByLabel(def.labelSearch);
     if (!el) continue;
 
-    const tag  = el.tagName.toLowerCase();
+    const tag = el.tagName.toLowerCase();
     const type = (el as HTMLInputElement).type;
     fields.push({
-      name:        def.profileKey,
-      type:        tag === 'textarea' ? 'textarea'
-                 : type === 'email'   ? 'email'
-                 : type === 'tel'     ? 'tel'
-                 : 'text',
-      label:       def.displayLabel,
+      name: def.profileKey,
+      type:
+        tag === 'textarea'
+          ? 'textarea'
+          : type === 'email'
+            ? 'email'
+            : type === 'tel'
+              ? 'tel'
+              : 'text',
+      label: def.displayLabel,
       placeholder: (el as HTMLInputElement).placeholder || null,
-      required:    def.required,
+      required: def.required,
       // Label-based adapters don't have stable CSS selectors.
       // Tier B AI fill uses labelSearch fallback when selector is ''.
-      selector:    el.id ? `#${el.id}` : '',
+      selector: el.id ? `#${el.id}` : '',
     });
   }
 
@@ -212,15 +230,20 @@ export const ashbyAdapter: SiteAdapter = {
 
     const job: ExtractedJob = {
       title,
-      company:     extractCompany(),
-      location:    firstMatch(JD_SELECTORS.location),
-      description: firstMatch(JD_SELECTORS.descPrimary, JD_SELECTORS.descTestId, JD_SELECTORS.descFallback) ?? '',
-      sourceUrl:   window.location.href,
+      company: extractCompany(),
+      location: firstMatch(JD_SELECTORS.location),
+      description:
+        firstMatch(JD_SELECTORS.descPrimary, JD_SELECTORS.descTestId, JD_SELECTORS.descFallback) ??
+        '',
+      sourceUrl: window.location.href,
       extractedAt: new Date().toISOString(),
     };
 
     console.debug(`[DVantage][${ADAPTER_NAME}] detected job:`, {
-      title: job.title, company: job.company, location: job.location, descLength: job.description.length,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      descLength: job.description.length,
     });
 
     return job;
@@ -248,10 +271,10 @@ export const ashbyAdapter: SiteAdapter = {
 
       if (!value) {
         skipped.push({
-          label:     def.displayLabel,
-          selector:  '',  // label-based — Tier B uses def.labelSearch for fallback
+          label: def.displayLabel,
+          selector: '', // label-based — Tier B uses def.labelSearch for fallback
           fieldType: 'text',
-          required:  def.required,
+          required: def.required,
         });
         continue;
       }
@@ -269,7 +292,7 @@ export const ashbyAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map(s => s.label).join(', ')}]`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map((s) => s.label).join(', ')}]`,
     );
 
     return { filled, skipped };
