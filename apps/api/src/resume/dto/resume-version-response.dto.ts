@@ -19,14 +19,14 @@ export interface UploadUrlResponseDto {
 // ---------------------------------------------------------------------------
 
 export interface ResumeVersionListItemDto {
-  id:            string;
+  id: string;
   versionNumber: number;
-  fileName:      string;
-  fileSize:      number;
-  mimeType:      string;
-  parseStatus:   ParseStatus;
-  createdAt:     string; // ISO 8601
-  updatedAt:     string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  parseStatus: ParseStatus;
+  createdAt: string; // ISO 8601
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,10 +34,10 @@ export interface ResumeVersionListItemDto {
 // ---------------------------------------------------------------------------
 
 export interface ResumeVersionListResponseDto {
-  data:       ResumeVersionListItemDto[];
+  data: ResumeVersionListItemDto[];
   /** Opaque cursor for the next page. Null if this is the last page. */
   nextCursor: string | null;
-  total:      number;
+  total: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,20 +45,20 @@ export interface ResumeVersionListResponseDto {
 // ---------------------------------------------------------------------------
 
 export interface ResumeVersionDetailDto {
-  id:              string;
-  versionNumber:   number;
-  fileName:        string;
-  fileSize:        number;
-  mimeType:        string;
-  parseStatus:     ParseStatus;
-  rawText:         string | null;
-  structuredData:  ResumeData | null;
-  parseError:      string | null;
+  id: string;
+  versionNumber: number;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  parseStatus: ParseStatus;
+  rawText: string | null;
+  structuredData: ResumeData | null;
+  parseError: string | null;
   /** Presigned GET URL valid for 1 hour. Only present when parseStatus is complete. */
-  downloadUrl:     string | null;
+  downloadUrl: string | null;
   downloadUrlExpiresAt: string | null; // ISO 8601
-  createdAt:       string;
-  updatedAt:       string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,8 +67,8 @@ export interface ResumeVersionDetailDto {
 
 export interface ConfirmUploadResponseDto {
   resumeVersionId: string;
-  parseStatus:     ParseStatus;
-  message:         string;
+  parseStatus: ParseStatus;
+  message: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,5 +77,5 @@ export interface ConfirmUploadResponseDto {
 
 export interface DeleteResumeResponseDto {
   resumeVersionId: string;
-  deleted:         true;
+  deleted: true;
 }

@@ -1,11 +1,4 @@
-import {
-  date,
-  index,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-} from 'drizzle-orm/pg-core';
+import { date, index, pgEnum, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { users } from './auth';
 import { jobDescriptions } from './job';
 
@@ -53,8 +46,9 @@ export const applications = pgTable(
      * Optional link to a saved job description.
      * SET NULL when the JD is deleted — preserves the application record.
      */
-    jobDescriptionId: text('job_description_id')
-      .references(() => jobDescriptions.id, { onDelete: 'set null' }),
+    jobDescriptionId: text('job_description_id').references(() => jobDescriptions.id, {
+      onDelete: 'set null',
+    }),
 
     /** Company name, e.g. "Google". Required. */
     company: text('company').notNull(),
@@ -85,16 +79,12 @@ export const applications = pgTable(
     /** Free-text notes — interview prep, recruiter name, salary range, etc. */
     notes: text('notes'),
 
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    userIdx:   index('applications_user_idx').on(t.userId),
+    userIdx: index('applications_user_idx').on(t.userId),
     statusIdx: index('applications_status_idx').on(t.status),
     // Note: partial unique index uq_applications_user_source_date
     // is defined in migration 0010 — not expressible via Drizzle table config.
@@ -105,5 +95,5 @@ export const applications = pgTable(
 // Inferred types
 // ---------------------------------------------------------------------------
 
-export type Application    = typeof applications.$inferSelect;
+export type Application = typeof applications.$inferSelect;
 export type NewApplication = typeof applications.$inferInsert;

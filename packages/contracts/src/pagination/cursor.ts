@@ -14,8 +14,8 @@ export const paginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =
     total: z.number().int().optional(),
   });
 
-export type PaginatedResponse<T> = {
+export interface PaginatedResponse<T> {
   data: T[];
   nextCursor: string | null;
   total?: number;
-};
+}

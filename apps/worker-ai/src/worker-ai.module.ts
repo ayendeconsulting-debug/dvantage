@@ -2,9 +2,12 @@ import { Module, type OnApplicationShutdown, Logger } from '@nestjs/common';
 import { ParsingModule } from '@vantage/parsing';
 import { ResumeExtractor, AtsScorer, ResumeOptimizer } from '@vantage/ai';
 import { createDatabaseClient } from '@vantage/database';
-import { ResumeParseProcessor, createResumeParseWorker }     from './processors/resume-parse.processor';
-import { AtsScoreProcessor, createAtsScoreWorker }           from './processors/ats-score.processor';
-import { ResumeOptimizeProcessor, createResumeOptimizeWorker } from './processors/resume-optimize.processor';
+import { ResumeParseProcessor, createResumeParseWorker } from './processors/resume-parse.processor';
+import { AtsScoreProcessor, createAtsScoreWorker } from './processors/ats-score.processor';
+import {
+  ResumeOptimizeProcessor,
+  createResumeOptimizeWorker,
+} from './processors/resume-optimize.processor';
 import type { Worker } from 'bullmq';
 
 const DATABASE_CLIENT = Symbol('DATABASE_CLIENT');

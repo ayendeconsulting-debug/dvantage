@@ -21,7 +21,7 @@ async function bootstrap(): Promise<void> {
 
 void bootstrap().catch((err: unknown) => {
   // Use console here — Logger may not be initialised yet if bootstrap itself throws.
-  // eslint-disable-next-line no-console
+   
   console.error('[worker-ai] Fatal bootstrap error:', err);
   process.exit(1);
 });

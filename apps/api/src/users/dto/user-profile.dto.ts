@@ -9,11 +9,7 @@ import { z } from 'zod';
  * Null explicitly clears the field in the DB.
  */
 export const UpdateUserProfileSchema = z.object({
-  phone: z
-    .string()
-    .max(32, 'Phone must be 32 characters or fewer')
-    .nullable()
-    .optional(),
+  phone: z.string().max(32, 'Phone must be 32 characters or fewer').nullable().optional(),
 
   linkedinUrl: z
     .string()
@@ -30,6 +26,6 @@ export type UpdateUserProfileDto = z.infer<typeof UpdateUserProfileSchema>;
 // ---------------------------------------------------------------------------
 
 export interface UserProfileResponseDto {
-  phone:       string | null;
+  phone: string | null;
   linkedinUrl: string | null;
 }

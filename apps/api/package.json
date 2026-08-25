@@ -36,7 +36,7 @@
     "@opentelemetry/sdk-node": "^0.53.0",
     "@opentelemetry/semantic-conventions": "^1.27.0",
     "@sentry/nestjs": "^8.0.0",
-    "@sentry/node": "^8.0.0",
+    "@sentry/node": "^10.70.0",
     "@vantage/ai": "workspace:^",
     "@vantage/config": "workspace:*",
     "@vantage/contracts": "workspace:*",
