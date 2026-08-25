@@ -26,10 +26,10 @@ import {
 } from '@nestjs/common';
 import { ZodError } from 'zod';
 
-import { Public }                          from '../auth/decorators/public.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentExtensionToken, ExtensionAuthGuard } from './extension-auth.guard';
-import type { ExtensionToken }             from '@vantage/database';
-import { ExtensionProfileService }         from './extension-profile.service';
+import type { ExtensionToken } from '@vantage/database';
+import { ExtensionProfileService } from './extension-profile.service';
 import {
   ExtensionProfileUpdateSchema,
   type ExtensionProfileResponseDto,
@@ -85,9 +85,7 @@ export class ExtensionProfileController {
       dto = ExtensionProfileUpdateSchema.parse(body);
     } catch (err) {
       if (err instanceof ZodError) {
-        throw new BadRequestException(
-          err.errors.map((e) => e.message).join('; '),
-        );
+        throw new BadRequestException(err.errors.map((e) => e.message).join('; '));
       }
       throw err;
     }

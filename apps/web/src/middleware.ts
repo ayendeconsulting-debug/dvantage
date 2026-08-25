@@ -26,22 +26,18 @@ const PUBLIC_PATHS = [
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/mfa/verify',
-  '/extension/done',   // Extension auth callback — must be reachable when authed
+  '/extension/done', // Extension auth callback — must be reachable when authed
 ];
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
   // Let Next.js internals and static files through unconditionally
-  if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api')   ||
-    pathname.includes('.')
-  ) {
+  if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.includes('.')) {
     return NextResponse.next();
   }
 
-  const isPublic   = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   const hasSession = request.cookies.has(SESSION_COOKIE);
 
   // Unauthenticated user hitting a protected route → sign in
@@ -65,10 +61,10 @@ export function middleware(request: NextRequest): NextResponse {
     // to /dashboard. Absolute URLs are never followed (open-redirect guard).
     if (rawCallback.startsWith('/extension/')) {
       url.pathname = rawCallback;
-      url.search   = '';
+      url.search = '';
     } else {
       url.pathname = '/dashboard';
-      url.search   = '';
+      url.search = '';
     }
 
     return NextResponse.redirect(url);
