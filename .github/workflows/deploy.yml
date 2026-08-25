@@ -1,0 +1,190 @@
+# =============================================================================
+# Deploy — Production (manual)
+#
+# Deploys one Fly app on demand from the GitHub UI:
+#   Actions → "Deploy — Production" → Run workflow → pick an app → Run
+#
+# WHY THIS EXISTS
+#   Deploys previously required flyctl on a developer machine. On the primary
+#   dev box, Windows Application Control blocks the unsigned flyctl binary
+#   outright, so nobody could deploy at all (discovered 2026-08-24, during the
+#   Redis outage). Running flyctl on a GitHub runner removes the dependency on
+#   any particular workstation.
+#
+#   It also replaces deploy-staging.yml's broken invocation, which pointed at
+#   infra/fly/api.fly.toml and infra/fly/worker-ai.fly.toml — neither of which
+#   exists in this repo. That workflow has been failing (or never running) on
+#   every push to main.
+#
+# DESIGN
+#   - workflow_dispatch only. Deploys are deliberate, never a side effect of
+#     merging. Production is not a push target.
+#   - One app per run, chosen from a fixed list. No free-text app names.
+#   - CI must be green for the commit being deployed, with an explicit,
+#     audited override for emergencies.
+#   - Third-party actions pinned to full commit SHAs, not mutable tags.
+#   - FLY_API_TOKEN is scoped to the single step that needs it, never to the
+#     workflow or job, so checkout and setup steps never see it.
+#
+# SECRETS REQUIRED
+#   FLY_API_TOKEN — repo or environment secret. Prefer a deploy token scoped
+#   to these apps (`fly tokens create deploy -a <app>`) over an org token.
+# =============================================================================
+
+name: Deploy — Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app to deploy'
+        required: true
+        type: choice
+        options:
+          - dvantage-api
+          - dvantage-worker
+          - dvantage-valkey
+      skip_ci_check:
+        description: 'EMERGENCY ONLY — deploy without a green CI run. Say why in the reason field.'
+        required: false
+        type: boolean
+        default: false
+      reason:
+        description: 'Why are you deploying? (shown in the run summary and audit log)'
+        required: true
+        type: string
+
+concurrency:
+  # Serialise per app. Never cancel an in-flight deploy — a half-applied
+  # machine update is worse than a queued one.
+  group: deploy-${{ inputs.app }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  # ── Gate ──────────────────────────────────────────────────────────────────
+  gate:
+    name: Verify CI is green
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      config: ${{ steps.resolve.outputs.config }}
+    steps:
+      - name: Resolve Fly config path
+        id: resolve
+        run: |
+          case "${{ inputs.app }}" in
+            dvantage-api)    CONFIG="fly.api.toml" ;;
+            dvantage-worker) CONFIG="fly.worker.toml" ;;
+            dvantage-valkey) CONFIG="infra/valkey/fly.valkey.toml" ;;
+            *) echo "::error::Unknown app '${{ inputs.app }}'"; exit 1 ;;
+          esac
+          echo "config=$CONFIG" >> "$GITHUB_OUTPUT"
+          echo "Deploying ${{ inputs.app }} using $CONFIG"
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Confirm the config file exists
+        run: |
+          CONFIG="${{ steps.resolve.outputs.config }}"
+          if [ ! -f "$CONFIG" ]; then
+            echo "::error::$CONFIG not found at ${{ github.sha }}."
+            echo "::error::This is the failure mode that silently broke deploy-staging.yml."
+            exit 1
+          fi
+          echo "Found $CONFIG"
+
+      - name: Require a green CI run for this commit
+        if: ${{ !inputs.skip_ci_check }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking CI conclusion for ${{ github.sha }}…"
+          CONCLUSION=$(gh api \
+            "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&status=completed" \
+            --jq '[.workflow_runs[] | select(.name == "CI")] | first | .conclusion // "none"')
+
+          echo "CI conclusion: $CONCLUSION"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::CI is '$CONCLUSION' for this commit. Fix CI, or re-run with skip_ci_check and a reason."
+            exit 1
+          fi
+
+      - name: Record override
+        if: ${{ inputs.skip_ci_check }}
+        run: |
+          echo "::warning::CI check SKIPPED by ${{ github.actor }} — reason: ${{ inputs.reason }}"
+
+      - name: Run summary
+        run: |
+          {
+            echo "### Deploy: ${{ inputs.app }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Config | \`${{ steps.resolve.outputs.config }}\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Actor | @${{ github.actor }} |"
+            echo "| CI check | ${{ inputs.skip_ci_check && '**SKIPPED**' || 'passed' }} |"
+            echo "| Reason | ${{ inputs.reason }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Deploy ────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy ${{ inputs.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: gate
+    environment: production   # add required reviewers here for a manual approval gate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
+      # FLY_API_TOKEN is scoped to this step only. Checkout and setup above
+      # never see it, so a compromised action in either cannot exfiltrate it.
+      - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --config "${{ needs.gate.outputs.config }}" \
+            --app "${{ inputs.app }}" \
+            --remote-only \
+            --wait-timeout 600
+
+      - name: Post-deploy status
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl status --app "${{ inputs.app }}"
+
+      # dvantage-api only: prove the deploy is actually serving, and surface a
+      # degraded cache rather than letting it pass silently. /health returns 200
+      # when Redis is down by design (see health.controller.ts), so a status-code
+      # check alone is not enough — we inspect the body too.
+      - name: Smoke test /health
+        if: ${{ inputs.app == 'dvantage-api' }}
+        run: |
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' https://api.dvantage.ca/health || echo 000)
+            if [ "$CODE" = "200" ]; then
+              echo "Health 200 on attempt $i"
+              cat /tmp/health.json
+              if grep -q '"degraded":true' /tmp/health.json; then
+                echo "::warning::API is UP but Redis is DEGRADED — check dvantage-valkey."
+              fi
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $CODE — retrying in 15s"
+            sleep 15
+          done
+          echo "::error::/health did not return 200 after 10 attempts."
+          cat /tmp/health.json || true
+          exit 1

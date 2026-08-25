@@ -9,8 +9,18 @@
 // ---------------------------------------------------------------------------
 
 import { STORAGE_KEYS, API_BASE, PROFILE_CACHE_TTL_MS } from '../shared/constants';
-import type { ScoreResult, ActiveForm, UserProfile, CachedProfile, SkippedField } from '../shared/types';
-import type { AutofillExecutionResponse, AiFillExecutionResponse, SubmitExecutionResponse } from '../shared/messages';
+import type {
+  ScoreResult,
+  ActiveForm,
+  UserProfile,
+  CachedProfile,
+  SkippedField,
+} from '../shared/types';
+import type {
+  AutofillExecutionResponse,
+  AiFillExecutionResponse,
+  SubmitExecutionResponse,
+} from '../shared/messages';
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -20,14 +30,11 @@ function isValidJobDetectedPayload(
   payload: unknown,
 ): payload is { job: { description: string; sourceUrl: string; [key: string]: unknown } } {
   if (typeof payload !== 'object' || payload === null) return false;
-  const p   = payload as Record<string, unknown>;
+  const p = payload as Record<string, unknown>;
   const job = p['job'];
   if (typeof job !== 'object' || job === null) return false;
   const j = job as Record<string, unknown>;
-  return (
-    typeof j['description'] === 'string' &&
-    typeof j['sourceUrl']   === 'string'
-  );
+  return typeof j['description'] === 'string' && typeof j['sourceUrl'] === 'string';
 }
 
 function isValidScorePayload(
@@ -41,29 +48,25 @@ function isValidScorePayload(
   );
 }
 
-function isValidFormDetectedPayload(
-  payload: unknown,
-): payload is {
-  fieldCount:        number;
+function isValidFormDetectedPayload(payload: unknown): payload is {
+  fieldCount: number;
   unknownFieldCount: number;
-  pageUrl:           string;
-  fillableFields:    unknown[];
-  manualFields:      unknown[];
+  pageUrl: string;
+  fillableFields: unknown[];
+  manualFields: unknown[];
 } {
   if (typeof payload !== 'object' || payload === null) return false;
   const p = payload as Record<string, unknown>;
   return (
-    typeof p['fieldCount']        === 'number'  &&
-    typeof p['unknownFieldCount'] === 'number'  &&
-    typeof p['pageUrl']           === 'string'  &&
-    Array.isArray(p['fillableFields'])           &&
+    typeof p['fieldCount'] === 'number' &&
+    typeof p['unknownFieldCount'] === 'number' &&
+    typeof p['pageUrl'] === 'string' &&
+    Array.isArray(p['fillableFields']) &&
     (p['manualFields'] === undefined || Array.isArray(p['manualFields']))
   );
 }
 
-function isValidAutofillPayload(
-  payload: unknown,
-): payload is { pageUrl: string } {
+function isValidAutofillPayload(payload: unknown): payload is { pageUrl: string } {
   if (typeof payload !== 'object' || payload === null) return false;
   const p = payload as Record<string, unknown>;
   return typeof p['pageUrl'] === 'string';
@@ -75,7 +78,7 @@ function isValidProfileUpdatePayload(
   if (typeof payload !== 'object' || payload === null) return false;
   const p = payload as Record<string, unknown>;
   return (
-    (p['phone']       === null || typeof p['phone']       === 'string') &&
+    (p['phone'] === null || typeof p['phone'] === 'string') &&
     (p['linkedinUrl'] === null || typeof p['linkedinUrl'] === 'string')
   );
 }
@@ -87,7 +90,7 @@ function isValidCapturePayload(
   const p = payload as Record<string, unknown>;
   return (
     (p['company'] === null || typeof p['company'] === 'string') &&
-    (p['role']    === null || typeof p['role']    === 'string') &&
+    (p['role'] === null || typeof p['role'] === 'string') &&
     typeof p['pageUrl'] === 'string'
   );
 }
@@ -99,7 +102,7 @@ function isValidCapturePayload(
 async function getCachedProfile(): Promise<UserProfile | null> {
   try {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.CACHED_PROFILE]);
-    const entry  = stored[STORAGE_KEYS.CACHED_PROFILE] as CachedProfile | undefined;
+    const entry = stored[STORAGE_KEYS.CACHED_PROFILE] as CachedProfile | undefined;
     if (!entry?.profile || !entry?.cachedAt) return null;
     const ageMs = Date.now() - new Date(entry.cachedAt).getTime();
     if (ageMs > PROFILE_CACHE_TTL_MS) {
@@ -120,11 +123,11 @@ function writeCachedProfile(profile: UserProfile): void {
 
 async function fetchProfile(token: string): Promise<UserProfile> {
   const response = await fetch(`${API_BASE}/v1/extension/profile`, {
-    method:  'GET',
-    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
   if (!response.ok) throw new Error(`GET /v1/extension/profile → HTTP ${response.status}`);
-  const data = await response.json() as unknown;
+  const data = (await response.json()) as unknown;
   if (typeof data !== 'object' || data === null) {
     throw new Error('GET /v1/extension/profile → invalid JSON response shape');
   }
@@ -138,7 +141,7 @@ async function resolveProfile(): Promise<UserProfile> {
     return cached;
   }
   const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
-  const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+  const token = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
   if (!token) throw new Error('not_authenticated');
   const profile = await fetchProfile(token);
   writeCachedProfile(profile);
@@ -162,7 +165,8 @@ function handleJobDetected(payload: unknown): void {
     console.log(
       '[DVantage Router] ACTIVE_JOB stored — title:',
       (payload.job as Record<string, unknown>)['title'] ?? '(untitled)',
-      '| source:', payload.job.sourceUrl,
+      '| source:',
+      payload.job.sourceUrl,
     );
   });
 }
@@ -177,21 +181,24 @@ function handleFormDetected(payload: unknown): void {
     return;
   }
   const activeForm: ActiveForm = {
-    fieldCount:        payload.fieldCount,
+    fieldCount: payload.fieldCount,
     unknownFieldCount: payload.unknownFieldCount,
-    pageUrl:           payload.pageUrl,
-    fillableFields:    payload.fillableFields as ActiveForm['fillableFields'],
-    manualFields:      (payload.manualFields ?? []) as ActiveForm['manualFields'],
+    pageUrl: payload.pageUrl,
+    fillableFields: payload.fillableFields as ActiveForm['fillableFields'],
+    manualFields: (payload.manualFields ?? []) as ActiveForm['manualFields'],
   };
   chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_FORM]: activeForm }, () => {
     if (chrome.runtime.lastError) {
-      console.error('[DVantage Router] ACTIVE_FORM write failed:', chrome.runtime.lastError.message);
+      console.error(
+        '[DVantage Router] ACTIVE_FORM write failed:',
+        chrome.runtime.lastError.message,
+      );
       return;
     }
     console.log(
       `[DVantage Router] ACTIVE_FORM stored — fields:${payload.fieldCount} ` +
-      `manual:${activeForm.manualFields.length} ` +
-      `unknown:${payload.unknownFieldCount} url:${payload.pageUrl}`,
+        `manual:${activeForm.manualFields.length} ` +
+        `unknown:${payload.unknownFieldCount} url:${payload.pageUrl}`,
     );
   });
 }
@@ -214,10 +221,7 @@ function handleFormCleared(): void {
 // REQUEST_SCORE handler
 // ---------------------------------------------------------------------------
 
-function handleRequestScore(
-  payload:      unknown,
-  sendResponse: (response: unknown) => void,
-): void {
+function handleRequestScore(payload: unknown, sendResponse: (response: unknown) => void): void {
   if (!isValidScorePayload(payload)) {
     sendResponse({ ok: false, error: 'invalid_payload' });
     return;
@@ -225,14 +229,14 @@ function handleRequestScore(
 
   void (async (): Promise<void> => {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
-    const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+    const token = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
     if (!token) {
       sendResponse({ ok: false, error: 'not_authenticated' });
       return;
     }
 
     const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 30_000);
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
 
     let response: Response;
     try {
@@ -240,12 +244,12 @@ function handleRequestScore(
         method: 'POST',
         signal: controller.signal,
         headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           jobDescription: payload.jobDescription,
-          resumeId:       payload.resumeId,
+          resumeId: payload.resumeId,
         }),
       });
     } catch (err) {
@@ -258,31 +262,44 @@ function handleRequestScore(
 
     clearTimeout(timeoutId);
 
-    if (response.status === 401) { sendResponse({ ok: false, error: 'auth_expired' }); return; }
+    if (response.status === 401) {
+      sendResponse({ ok: false, error: 'auth_expired' });
+      return;
+    }
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       sendResponse({ ok: false, error: 'scoring_failed' });
-      console.error(`[DVantage Router] REQUEST_SCORE — API error ${response.status}:`, errText.slice(0, 200));
+      console.error(
+        `[DVantage Router] REQUEST_SCORE — API error ${response.status}:`,
+        errText.slice(0, 200),
+      );
       return;
     }
 
     let data: unknown;
-    try { data = await response.json() as unknown; }
-    catch { sendResponse({ ok: false, error: 'invalid_response' }); return; }
+    try {
+      data = (await response.json()) as unknown;
+    } catch {
+      sendResponse({ ok: false, error: 'invalid_response' });
+      return;
+    }
 
     sendResponse({ ok: true, result: data });
 
-    const score = typeof data === 'object' && data !== null
-      ? (data as Record<string, unknown>)['score'] : '?';
+    const score =
+      typeof data === 'object' && data !== null ? (data as Record<string, unknown>)['score'] : '?';
     console.log('[DVantage Router] REQUEST_SCORE — score received:', score);
 
     void (async (): Promise<void> => {
       try {
         const jobStored = await chrome.storage.local.get([STORAGE_KEYS.ACTIVE_JOB]);
         const activeJob = jobStored[STORAGE_KEYS.ACTIVE_JOB] as Record<string, unknown> | undefined;
-        const sourceUrl = typeof activeJob?.['sourceUrl'] === 'string' ? activeJob['sourceUrl'] : null;
+        const sourceUrl =
+          typeof activeJob?.['sourceUrl'] === 'string' ? activeJob['sourceUrl'] : null;
         if (!sourceUrl) return;
-        await chrome.storage.local.set({ [STORAGE_KEYS.CACHED_SCORE]: { sourceUrl, result: data } });
+        await chrome.storage.local.set({
+          [STORAGE_KEYS.CACHED_SCORE]: { sourceUrl, result: data },
+        });
         console.log('[DVantage Router] CACHED_SCORE written — url:', sourceUrl);
       } catch (err) {
         console.warn('[DVantage Router] CACHED_SCORE write failed:', err);
@@ -312,10 +329,7 @@ function handleRequestProfile(sendResponse: (response: unknown) => void): void {
 // REQUEST_AUTOFILL handler
 // ---------------------------------------------------------------------------
 
-function handleRequestAutofill(
-  payload:      unknown,
-  sendResponse: (response: unknown) => void,
-): void {
+function handleRequestAutofill(payload: unknown, sendResponse: (response: unknown) => void): void {
   if (!isValidAutofillPayload(payload)) {
     sendResponse({ ok: false, error: 'invalid_payload' });
     return;
@@ -346,16 +360,20 @@ function handleRequestAutofill(
 
     let result: AutofillExecutionResponse;
     try {
-      result = await chrome.tabs.sendMessage(tabId, {
-        type: 'EXECUTE_AUTOFILL', payload: { profile },
-      }) as AutofillExecutionResponse;
+      result = (await chrome.tabs.sendMessage(tabId, {
+        type: 'EXECUTE_AUTOFILL',
+        payload: { profile },
+      })) as AutofillExecutionResponse;
     } catch (err) {
       sendResponse({ ok: false, error: 'content_script_error' });
       console.error('[DVantage Router] REQUEST_AUTOFILL — sendMessage failed:', err);
       return;
     }
 
-    if (!result.ok) { sendResponse({ ok: false, error: result.error }); return; }
+    if (!result.ok) {
+      sendResponse({ ok: false, error: result.error });
+      return;
+    }
 
     // D13 Tier A: result.skipped is now SkippedField[] — forwarded as-is to the panel
     sendResponse({ ok: true, fieldsFilled: result.filled, skipped: result.skipped });
@@ -370,7 +388,7 @@ function handleRequestAutofill(
 // ---------------------------------------------------------------------------
 
 function handleRequestProfileUpdate(
-  payload:      unknown,
+  payload: unknown,
   sendResponse: (response: unknown) => void,
 ): void {
   if (!isValidProfileUpdatePayload(payload)) {
@@ -380,17 +398,20 @@ function handleRequestProfileUpdate(
 
   void (async (): Promise<void> => {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
-    const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
-    if (!token) { sendResponse({ ok: false, error: 'not_authenticated' }); return; }
+    const token = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+    if (!token) {
+      sendResponse({ ok: false, error: 'not_authenticated' });
+      return;
+    }
 
     let response: Response;
     try {
       response = await fetch(`${API_BASE}/v1/extension/profile`, {
-        method:  'PATCH',
+        method: 'PATCH',
         headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept':        'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
         },
         body: JSON.stringify({ phone: payload.phone, linkedinUrl: payload.linkedinUrl }),
       });
@@ -400,17 +421,23 @@ function handleRequestProfileUpdate(
       return;
     }
 
-    if (response.status === 401) { sendResponse({ ok: false, error: 'not_authenticated' }); return; }
+    if (response.status === 401) {
+      sendResponse({ ok: false, error: 'not_authenticated' });
+      return;
+    }
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       sendResponse({ ok: false, error: 'update_failed' });
-      console.error(`[DVantage Router] REQUEST_PROFILE_UPDATE — API error ${response.status}:`, errText.slice(0, 200));
+      console.error(
+        `[DVantage Router] REQUEST_PROFILE_UPDATE — API error ${response.status}:`,
+        errText.slice(0, 200),
+      );
       return;
     }
 
     let freshProfile: UserProfile;
     try {
-      const data = await response.json() as unknown;
+      const data = (await response.json()) as unknown;
       if (typeof data !== 'object' || data === null) throw new Error('invalid shape');
       freshProfile = data as UserProfile;
     } catch (err) {
@@ -437,7 +464,7 @@ function handleRequestCapture(payload: unknown): void {
 
   void (async (): Promise<void> => {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
-    const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+    const token = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
     if (!token) {
       console.warn('[DVantage Router] REQUEST_CAPTURE — no token, skipping');
       return;
@@ -446,15 +473,15 @@ function handleRequestCapture(payload: unknown): void {
     let response: Response;
     try {
       response = await fetch(`${API_BASE}/v1/extension/applications`, {
-        method:  'POST',
+        method: 'POST',
         headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept':        'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
         },
         body: JSON.stringify({
           company: payload.company,
-          role:    payload.role,
+          role: payload.role,
           pageUrl: payload.pageUrl,
         }),
       });
@@ -469,10 +496,10 @@ function handleRequestCapture(payload: unknown): void {
     }
 
     try {
-      const data = await response.json() as Record<string, unknown>;
+      const data = (await response.json()) as Record<string, unknown>;
       console.log(
         `[DVantage Router] REQUEST_CAPTURE complete — id=${data['id'] ?? '?'} ` +
-        `company="${data['company'] ?? '?'}" role="${data['role'] ?? '?'}"`,
+          `company="${data['company'] ?? '?'}" role="${data['role'] ?? '?'}"`,
       );
     } catch {
       console.log('[DVantage Router] REQUEST_CAPTURE complete (response parse skipped)');
@@ -498,30 +525,41 @@ function isValidAiFillPayload(
   );
 }
 
-function handleRequestAiFill(
-  payload:      unknown,
-  sendResponse: (r: unknown) => void,
-): void {
-  if (!isValidAiFillPayload(payload)) { sendResponse({ ok: false, error: 'invalid_payload' }); return; }
+function handleRequestAiFill(payload: unknown, sendResponse: (r: unknown) => void): void {
+  if (!isValidAiFillPayload(payload)) {
+    sendResponse({ ok: false, error: 'invalid_payload' });
+    return;
+  }
   const { resumeId, fields } = payload;
 
   void (async (): Promise<void> => {
     const stored = await chrome.storage.local.get([STORAGE_KEYS.EXTENSION_TOKEN]);
-    const token  = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
-    if (!token) { sendResponse({ ok: false, error: 'not_authenticated' }); return; }
+    const token = stored[STORAGE_KEYS.EXTENSION_TOKEN] as string | undefined;
+    if (!token) {
+      sendResponse({ ok: false, error: 'not_authenticated' });
+      return;
+    }
 
     const controller = new AbortController();
-    const timeoutId  = setTimeout(() => controller.abort(), 20_000);
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
 
     let response: Response;
     try {
       response = await fetch(`${API_BASE}/v1/extension/ai-fill`, {
         method: 'POST',
         signal: controller.signal,
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
         body: JSON.stringify({
           resumeId,
-          fields: fields.map((f) => ({ label: f.label, fieldType: f.fieldType, required: f.required })),
+          fields: fields.map((f) => ({
+            label: f.label,
+            fieldType: f.fieldType,
+            required: f.required,
+          })),
         }),
       });
     } catch (err) {
@@ -539,36 +577,101 @@ function handleRequestAiFill(
       return;
     }
 
-    let apiData: { answers: Array<{ label: string; value: string | null }> };
-    try { apiData = await response.json() as typeof apiData; }
-    catch { sendResponse({ ok: true, aiFilled: 0, remaining: fields }); return; }
+    let apiData: { answers?: Array<{ label?: unknown; value?: unknown }> };
+    try {
+      apiData = (await response.json()) as typeof apiData;
+    } catch {
+      sendResponse({ ok: true, aiFilled: 0, remaining: fields });
+      return;
+    }
+
+    // A 200 with valid JSON says nothing about the shape. Previously this went
+    // straight to apiData.answers.forEach(...) — if the body was `{}` or an
+    // error envelope, that threw a TypeError inside this void-ed async IIFE,
+    // sendResponse was never called, and the side panel sat in `ai-filling`
+    // forever with no timeout and no error state.
+    if (!Array.isArray(apiData.answers)) {
+      console.warn('[DVantage Router] REQUEST_AI_FILL — response has no answers array');
+      sendResponse({ ok: true, aiFilled: 0, remaining: fields });
+      return;
+    }
 
     const toFill: Array<{ label: string; value: string; selector: string; fieldType: string }> = [];
     const remaining: SkippedField[] = [];
 
-    apiData.answers.forEach((answer, i) => {
-      const field = fields[i];
-      if (!field) return;
-      if (answer.value?.trim()) {
-        toFill.push({ label: field.label, value: answer.value.trim(), selector: field.selector, fieldType: field.fieldType });
+    // Correlate by LABEL, not by array position.
+    //
+    // This used to be `fields[i]` against `answers[i]`. The producer is an
+    // LLM-backed endpoint; if it dropped one answer or reordered them, every
+    // answer after that point was written into the WRONG input — a salary
+    // figure into a work-authorisation question, cover-letter prose into
+    // "City" — and the panel still reported "N fields filled by AI" with full
+    // confidence. The user then submits a scrambled application.
+    //
+    // The server now echoes the input label verbatim and guarantees one answer
+    // per field, so this is belt-and-braces. Keep it anyway: it makes the
+    // client correct independently of the server's guarantee.
+    const byLabel = new Map(fields.map((f) => [f.label, f]));
+    const matched = new Set<string>();
+
+    for (const answer of apiData.answers) {
+      if (typeof answer?.label !== 'string') continue;
+      const field = byLabel.get(answer.label);
+      if (!field) {
+        console.warn(
+          `[DVantage Router] REQUEST_AI_FILL — unknown label from API: "${answer.label}"`,
+        );
+        continue;
+      }
+      matched.add(answer.label);
+
+      const value = typeof answer.value === 'string' ? answer.value.trim() : '';
+      if (value) {
+        toFill.push({
+          label: field.label,
+          value,
+          selector: field.selector,
+          fieldType: field.fieldType,
+        });
       } else {
         remaining.push(field);
       }
-    });
+    }
 
-    console.log(`[DVantage Router] REQUEST_AI_FILL — toFill:${toFill.length} remaining:${remaining.length}`);
+    // Any field the API never answered stays in `remaining` so the user is
+    // told about it, rather than silently disappearing from both lists.
+    for (const field of fields) {
+      if (!matched.has(field.label)) remaining.push(field);
+    }
 
-    if (toFill.length === 0) { sendResponse({ ok: true, aiFilled: 0, remaining }); return; }
+    console.log(
+      `[DVantage Router] REQUEST_AI_FILL — toFill:${toFill.length} remaining:${remaining.length}`,
+    );
+
+    if (toFill.length === 0) {
+      sendResponse({ ok: true, aiFilled: 0, remaining });
+      return;
+    }
 
     let tabId: number | undefined;
-    try { const tabs = await chrome.tabs.query({ active: true, currentWindow: true }); tabId = tabs[0]?.id; }
-    catch { /* ignore */ }
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tabs[0]?.id;
+    } catch {
+      /* ignore */
+    }
 
-    if (!tabId) { sendResponse({ ok: true, aiFilled: 0, remaining: fields }); return; }
+    if (!tabId) {
+      sendResponse({ ok: true, aiFilled: 0, remaining: fields });
+      return;
+    }
 
     let fillResult: AiFillExecutionResponse;
     try {
-      fillResult = await chrome.tabs.sendMessage(tabId, { type: 'EXECUTE_AI_FILL', payload: { answers: toFill } }) as AiFillExecutionResponse;
+      fillResult = (await chrome.tabs.sendMessage(tabId, {
+        type: 'EXECUTE_AI_FILL',
+        payload: { answers: toFill },
+      })) as AiFillExecutionResponse;
     } catch (err) {
       console.warn('[DVantage Router] REQUEST_AI_FILL — EXECUTE_AI_FILL failed:', err);
       sendResponse({ ok: true, aiFilled: 0, remaining: fields });
@@ -580,7 +683,6 @@ function handleRequestAiFill(
     console.log(`[DVantage Router] REQUEST_AI_FILL complete — aiFilled:${aiFilled}`);
   })();
 }
-
 
 // ---------------------------------------------------------------------------
 // D13 Tier C: REQUEST_SUBMIT handler
@@ -597,13 +699,20 @@ function handleRequestSubmit(sendResponse: (r: unknown) => void): void {
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       tabId = tabs[0]?.id;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
-    if (!tabId) { sendResponse({ ok: false, error: 'no_active_tab' }); return; }
+    if (!tabId) {
+      sendResponse({ ok: false, error: 'no_active_tab' });
+      return;
+    }
 
     let result: SubmitExecutionResponse;
     try {
-      result = await chrome.tabs.sendMessage(tabId, { type: 'EXECUTE_SUBMIT' }) as SubmitExecutionResponse;
+      result = (await chrome.tabs.sendMessage(tabId, {
+        type: 'EXECUTE_SUBMIT',
+      })) as SubmitExecutionResponse;
     } catch (err) {
       console.warn('[DVantage Router] REQUEST_SUBMIT — sendMessage failed:', err);
       sendResponse({ ok: false, error: 'submit_failed' });
@@ -620,27 +729,62 @@ function handleRequestSubmit(sendResponse: (r: unknown) => void): void {
 // ---------------------------------------------------------------------------
 
 export function routeMessage(
-  message:      unknown,
-  sender:       chrome.runtime.MessageSender,
+  message: unknown,
+  sender: chrome.runtime.MessageSender,
   sendResponse: (response: unknown) => void,
 ): boolean | undefined {
   if (typeof message !== 'object' || message === null) return undefined;
 
-  const m    = message as Record<string, unknown>;
+  const m = message as Record<string, unknown>;
   const type = m['type'];
 
   switch (type) {
-    case 'JOB_DETECTED':   { if (!sender.tab) return undefined; handleJobDetected(m['payload']); return undefined; }
-    case 'FORM_DETECTED':  { if (!sender.tab) return undefined; handleFormDetected(m['payload']); return undefined; }
-    case 'FORM_CLEARED':   { if (!sender.tab) return undefined; handleFormCleared(); return undefined; }
-    case 'REQUEST_SCORE':  { if (sender.tab)  return undefined; handleRequestScore(m['payload'], sendResponse); return true; }
-    case 'REQUEST_PROFILE':         { handleRequestProfile(sendResponse); return true; }
-    case 'REQUEST_AUTOFILL':        { handleRequestAutofill(m['payload'], sendResponse); return true; }
-    case 'REQUEST_PROFILE_UPDATE':  { handleRequestProfileUpdate(m['payload'], sendResponse); return true; }
-    case 'REQUEST_CAPTURE':         { handleRequestCapture(m['payload']); return undefined; }
-    case 'REQUEST_AI_FILL':         { handleRequestAiFill(m['payload'], sendResponse); return true; }
-    case 'REQUEST_SUBMIT':           { handleRequestSubmit(sendResponse); return true; }
-    default: return undefined;
+    case 'JOB_DETECTED': {
+      if (!sender.tab) return undefined;
+      handleJobDetected(m['payload']);
+      return undefined;
+    }
+    case 'FORM_DETECTED': {
+      if (!sender.tab) return undefined;
+      handleFormDetected(m['payload']);
+      return undefined;
+    }
+    case 'FORM_CLEARED': {
+      if (!sender.tab) return undefined;
+      handleFormCleared();
+      return undefined;
+    }
+    case 'REQUEST_SCORE': {
+      if (sender.tab) return undefined;
+      handleRequestScore(m['payload'], sendResponse);
+      return true;
+    }
+    case 'REQUEST_PROFILE': {
+      handleRequestProfile(sendResponse);
+      return true;
+    }
+    case 'REQUEST_AUTOFILL': {
+      handleRequestAutofill(m['payload'], sendResponse);
+      return true;
+    }
+    case 'REQUEST_PROFILE_UPDATE': {
+      handleRequestProfileUpdate(m['payload'], sendResponse);
+      return true;
+    }
+    case 'REQUEST_CAPTURE': {
+      handleRequestCapture(m['payload']);
+      return undefined;
+    }
+    case 'REQUEST_AI_FILL': {
+      handleRequestAiFill(m['payload'], sendResponse);
+      return true;
+    }
+    case 'REQUEST_SUBMIT': {
+      handleRequestSubmit(sendResponse);
+      return true;
+    }
+    default:
+      return undefined;
   }
 }
 
