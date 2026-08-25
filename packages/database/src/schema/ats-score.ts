@@ -1,12 +1,4 @@
-import {
-  integer,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  index,
-} from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgEnum, pgTable, text, timestamp, index } from 'drizzle-orm/pg-core';
 import { resumeVersions } from './resume';
 import { jobDescriptions } from './job';
 
@@ -15,20 +7,20 @@ import { jobDescriptions } from './job';
 // ---------------------------------------------------------------------------
 
 export const scoringStatusEnum = pgEnum('scoring_status', [
-  'pending',   // row created, job not yet picked up
-  'scoring',   // worker-ai is running the two-step AI call
-  'complete',  // scores populated
-  'failed',    // score_error populated
+  'pending', // row created, job not yet picked up
+  'scoring', // worker-ai is running the two-step AI call
+  'complete', // scores populated
+  'failed', // score_error populated
 ]);
 
 export type ScoringStatus = (typeof scoringStatusEnum.enumValues)[number];
 
 export const optimizationStatusEnum = pgEnum('optimization_status', [
-  'none',       // no optimization requested yet
-  'pending',    // optimization job enqueued
+  'none', // no optimization requested yet
+  'pending', // optimization job enqueued
   'optimizing', // worker-ai is running the optimizer
-  'complete',   // optimized_structured_data + optimization_change_log populated
-  'failed',     // optimization_error populated
+  'complete', // optimized_structured_data + optimization_change_log populated
+  'failed', // optimization_error populated
 ]);
 
 export type OptimizationStatus = (typeof optimizationStatusEnum.enumValues)[number];
@@ -89,9 +81,7 @@ export const atsScores = pgTable(
     // All nullable until the user requests optimization.
     // -----------------------------------------------------------------------
 
-    optimizationStatus: optimizationStatusEnum('optimization_status')
-      .notNull()
-      .default('none'),
+    optimizationStatus: optimizationStatusEnum('optimization_status').notNull().default('none'),
 
     /**
      * AI-rewritten ResumeData tailored to this JD.
@@ -127,19 +117,15 @@ export const atsScores = pgTable(
      */
     optimizedSectionScores: jsonb('optimized_section_scores'),
 
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     /** List scores by JD efficiently (GET /v1/jobs/:id/scores). */
     jobDescriptionIdx: index('ats_scores_job_description_idx').on(t.jobDescriptionId),
     /** List scores by resume version for future cross-JD views. */
-    resumeVersionIdx:  index('ats_scores_resume_version_idx').on(t.resumeVersionId),
+    resumeVersionIdx: index('ats_scores_resume_version_idx').on(t.resumeVersionId),
   }),
 );
 
@@ -147,5 +133,5 @@ export const atsScores = pgTable(
 // Inferred types
 // ---------------------------------------------------------------------------
 
-export type AtsScore    = typeof atsScores.$inferSelect;
+export type AtsScore = typeof atsScores.$inferSelect;
 export type NewAtsScore = typeof atsScores.$inferInsert;

@@ -13,9 +13,7 @@ export class DashboardController {
    * Protected by the global AuthGuard — no @Public() needed.
    */
   @Get()
-  getSummary(
-    @CurrentUser() user: { id: string },
-  ): Promise<DashboardResponseDto> {
+  getSummary(@CurrentUser() user: { id: string }): Promise<DashboardResponseDto> {
     return this.dashboardService.getSummary(user.id);
   }
 }

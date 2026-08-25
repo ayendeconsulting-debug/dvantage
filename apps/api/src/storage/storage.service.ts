@@ -1,10 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as https from 'node:https';
 import * as crypto from 'node:crypto';
-import {
-  ALLOWED_RESUME_MIME_TYPES,
-  RESUME_MAX_SIZE_BYTES,
-} from '@vantage/validation';
+import { ALLOWED_RESUME_MIME_TYPES, RESUME_MAX_SIZE_BYTES } from '@vantage/validation';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -73,18 +70,18 @@ function encodeS3Key(key: string): string {
 }
 
 interface SigV4Config {
-  accessKeyId:     string;
+  accessKeyId: string;
   secretAccessKey: string;
-  region:          string;
-  service:         string;
+  region: string;
+  service: string;
 }
 
 interface RawS3Options {
-  method:      'PUT' | 'HEAD' | 'DELETE';
-  hostname:    string;
-  path:        string;            // must start with /
-  headers:     Record<string, string>;
-  body?:       Buffer;
+  method: 'PUT' | 'HEAD' | 'DELETE';
+  hostname: string;
+  path: string; // must start with /
+  headers: Record<string, string>;
+  body?: Buffer;
 }
 
 /**
@@ -106,28 +103,29 @@ function signRequest(
   headers: Record<string, string>,
   bodyHash: string,
 ): { authorization: string; amzDate: string } {
-  const now      = new Date();
-  const amzDate  = now.toISOString().replace(/[:-]/g, '').replace(/\..+/, '') + 'Z';
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]/g, '').replace(/\..+/, '') + 'Z';
   const dateStamp = amzDate.slice(0, 8);
 
   // Canonical headers — sorted alphabetically by lowercase header name
   const allHeaders: Record<string, string> = {
     ...headers,
-    host:                 hostname,
-    'x-amz-date':        amzDate,
+    host: hostname,
+    'x-amz-date': amzDate,
     'x-amz-content-sha256': bodyHash,
   };
 
-  const sortedKeys = Object.keys(allHeaders).map((k) => k.toLowerCase()).sort();
-  const canonicalHeaders = sortedKeys
-    .map((k) => `${k}:${(allHeaders[k] ?? '').trim()}`)
-    .join('\n') + '\n';
+  const sortedKeys = Object.keys(allHeaders)
+    .map((k) => k.toLowerCase())
+    .sort();
+  const canonicalHeaders =
+    sortedKeys.map((k) => `${k}:${(allHeaders[k] ?? '').trim()}`).join('\n') + '\n';
   const signedHeaders = sortedKeys.join(';');
 
   const canonicalRequest = [
     method,
     path,
-    '',               // no query string
+    '', // no query string
     canonicalHeaders,
     signedHeaders,
     bodyHash,
@@ -142,17 +140,14 @@ function signRequest(
   ].join('\n');
 
   const signingKey = hmac(
-    hmac(
-      hmac(
-        hmac(Buffer.from(`AWS4${cfg.secretAccessKey}`), dateStamp),
-        cfg.region,
-      ),
-      cfg.service,
-    ),
+    hmac(hmac(hmac(Buffer.from(`AWS4${cfg.secretAccessKey}`), dateStamp), cfg.region), cfg.service),
     'aws4_request',
   );
 
-  const signature     = crypto.createHmac('sha256', signingKey).update(stringToSign, 'utf8').digest('hex');
+  const signature = crypto
+    .createHmac('sha256', signingKey)
+    .update(stringToSign, 'utf8')
+    .digest('hex');
   const authorization = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
   return { authorization, amzDate };
@@ -164,9 +159,9 @@ function rawS3Request(opts: RawS3Options): Promise<void> {
     const req = https.request(
       {
         hostname: opts.hostname,
-        path:     opts.path,
-        method:   opts.method,
-        headers:  opts.headers,
+        path: opts.path,
+        method: opts.method,
+        headers: opts.headers,
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -205,7 +200,7 @@ export interface PresignedDownloadResult {
   expiresAt: Date;
 }
 
-const UPLOAD_TTL_SECONDS   = 15 * 60;
+const UPLOAD_TTL_SECONDS = 15 * 60;
 const DOWNLOAD_TTL_SECONDS = 60 * 60;
 
 function requireEnv(key: string): string {
@@ -223,31 +218,29 @@ export class StorageService {
   // SDK client kept for presign-only operations (getSignedUrl does not hit R2)
   private readonly client: S3Client;
 
-  private readonly bucket:          string;
-  private readonly sigCfg:          SigV4Config;
-  private readonly r2Hostname:      string;   // virtual hosted style hostname for the bucket
-  private readonly forcePathStyle:  boolean;
-  private readonly rawHostname:     string;   // account endpoint hostname
+  private readonly bucket: string;
+  private readonly sigCfg: SigV4Config;
+  private readonly r2Hostname: string; // virtual hosted style hostname for the bucket
+  private readonly forcePathStyle: boolean;
+  private readonly rawHostname: string; // account endpoint hostname
 
   readonly maxFileSizeBytes: number = RESUME_MAX_SIZE_BYTES;
 
   constructor() {
-    const endpoint        = requireEnv('R2_ENDPOINT');
-    const accessKeyId     = requireEnv('R2_ACCESS_KEY_ID');
+    const endpoint = requireEnv('R2_ENDPOINT');
+    const accessKeyId = requireEnv('R2_ACCESS_KEY_ID');
     const secretAccessKey = requireEnv('R2_SECRET_ACCESS_KEY');
-    const region          = process.env['R2_REGION'] ?? 'auto';
-    const forcePathStyle  = process.env['R2_FORCE_PATH_STYLE'] === 'true';
+    const region = process.env['R2_REGION'] ?? 'auto';
+    const forcePathStyle = process.env['R2_FORCE_PATH_STYLE'] === 'true';
 
-    this.bucket         = requireEnv('R2_BUCKET_RESUMES');
+    this.bucket = requireEnv('R2_BUCKET_RESUMES');
     this.forcePathStyle = forcePathStyle;
-    this.sigCfg         = { accessKeyId, secretAccessKey, region, service: 's3' };
+    this.sigCfg = { accessKeyId, secretAccessKey, region, service: 's3' };
 
     // Derive the bare hostname from the endpoint URL
-    const endpointUrl   = new URL(endpoint);
-    this.rawHostname    = endpointUrl.hostname;
-    this.r2Hostname     = forcePathStyle
-      ? this.rawHostname
-      : `${this.bucket}.${this.rawHostname}`;
+    const endpointUrl = new URL(endpoint);
+    this.rawHostname = endpointUrl.hostname;
+    this.r2Hostname = forcePathStyle ? this.rawHostname : `${this.bucket}.${this.rawHostname}`;
 
     // SDK client — used ONLY for getSignedUrl (no actual HTTP calls to R2)
     this.client = new S3Client({
@@ -261,7 +254,7 @@ export class StorageService {
 
     this.logger.log(
       `StorageService initialised — bucket=${this.bucket} endpoint=${endpoint} ` +
-      `forcePathStyle=${forcePathStyle} hostname=${this.r2Hostname}`,
+        `forcePathStyle=${forcePathStyle} hostname=${this.r2Hostname}`,
     );
   }
 
@@ -274,10 +267,10 @@ export class StorageService {
     this.logger.debug(`putObject — key=${storageKey} bytes=${body.length} type=${contentType}`);
 
     const bodyHash = sha256Hex(body);
-    const path     = this.buildPath(storageKey);
+    const path = this.buildPath(storageKey);
 
     const extraHeaders: Record<string, string> = {
-      'content-type':   contentType,
+      'content-type': contentType,
       'content-length': String(body.length),
     };
 
@@ -291,16 +284,16 @@ export class StorageService {
     );
 
     await rawS3Request({
-      method:   'PUT',
+      method: 'PUT',
       hostname: this.r2Hostname,
       path,
       body,
       headers: {
-        'Content-Type':          contentType,
-        'Content-Length':        String(body.length),
-        'x-amz-date':            amzDate,
-        'x-amz-content-sha256':  bodyHash,
-        'Authorization':         authorization,
+        'Content-Type': contentType,
+        'Content-Length': String(body.length),
+        'x-amz-date': amzDate,
+        'x-amz-content-sha256': bodyHash,
+        Authorization: authorization,
       },
     });
 
@@ -325,13 +318,13 @@ export class StorageService {
 
     try {
       await rawS3Request({
-        method:   'HEAD',
+        method: 'HEAD',
         hostname: this.r2Hostname,
         path,
         headers: {
-          'x-amz-date':           amzDate,
+          'x-amz-date': amzDate,
           'x-amz-content-sha256': EMPTY_BODY_SHA256,
-          'Authorization':        authorization,
+          Authorization: authorization,
         },
       });
       return true;
@@ -353,8 +346,8 @@ export class StorageService {
     expiresInSeconds = UPLOAD_TTL_SECONDS,
   ): Promise<PresignedUploadResult> {
     const command = new PutObjectCommand({
-      Bucket:      this.bucket,
-      Key:         storageKey,
+      Bucket: this.bucket,
+      Key: storageKey,
       ContentType: mimeType,
     });
 
@@ -378,7 +371,7 @@ export class StorageService {
     storageKey: string,
     expiresInSeconds = DOWNLOAD_TTL_SECONDS,
   ): Promise<PresignedDownloadResult> {
-    const command     = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: storageKey });
     const downloadUrl = await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
     return {
       downloadUrl,
@@ -392,9 +385,7 @@ export class StorageService {
 
   async deleteObject(storageKey: string): Promise<void> {
     try {
-      await this.client.send(
-        new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }),
-      );
+      await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: storageKey }));
     } catch (err) {
       // Re-throw — caller (ResumeService.deleteVersion) catches and logs
       throw err;
@@ -424,8 +415,6 @@ export class StorageService {
 
   private buildPath(storageKey: string): string {
     const encodedKey = encodeS3Key(storageKey);
-    return this.forcePathStyle
-      ? `/${this.bucket}/${encodedKey}`
-      : `/${encodedKey}`;
+    return this.forcePathStyle ? `/${this.bucket}/${encodedKey}` : `/${encodedKey}`;
   }
 }

@@ -22,8 +22,8 @@
 // ---------------------------------------------------------------------------
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, isNull }      from 'drizzle-orm';
-import { uuidv7 }                     from 'uuidv7';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { uuidv7 } from 'uuidv7';
 
 import {
   resumeVersions,
@@ -35,7 +35,7 @@ import {
 import type { ResumeData } from '@vantage/validation';
 
 import { DATABASE_CLIENT } from '../database/database.module';
-import { StorageService }  from '../storage/storage.service';
+import { StorageService } from '../storage/storage.service';
 import type {
   ExtensionProfileResponseDto,
   ExtensionProfileUpdateDto,
@@ -50,10 +50,10 @@ import type {
 // ---------------------------------------------------------------------------
 
 const LEVEL_RANK: Readonly<Record<string, number>> = {
-  expert:       4,
-  advanced:     3,
+  expert: 4,
+  advanced: 3,
   intermediate: 2,
-  beginner:     1,
+  beginner: 1,
 };
 
 const TOP_SKILLS_COUNT = 5;
@@ -99,7 +99,7 @@ export class ExtensionProfileService {
         .from(resumeVersions)
         .where(
           and(
-            eq(resumeVersions.userId,      userId),
+            eq(resumeVersions.userId, userId),
             eq(resumeVersions.parseStatus, 'complete'),
             isNull(resumeVersions.deletedAt),
           ),
@@ -112,33 +112,33 @@ export class ExtensionProfileService {
     // ── Name split ───────────────────────────────────────────────────────────
     const nameParts = (userRow?.name ?? '').trim().split(/\s+/);
     const firstName = nameParts[0] ?? '';
-    const lastName  = nameParts.slice(1).join(' ');
+    const lastName = nameParts.slice(1).join(' ');
 
     // ── Resume structured data ───────────────────────────────────────────────
     const resumeData = (resumeRow?.structuredData as ResumeData | null) ?? null;
 
     // ── Derived convenience fields ───────────────────────────────────────────
-    const summary     = resumeData?.summary?.trim() || null;
-    const topSkills   = resumeData?.skills ? this.topSkills(resumeData.skills) : [];
+    const summary = resumeData?.summary?.trim() || null;
+    const topSkills = resumeData?.skills ? this.topSkills(resumeData.skills) : [];
     const currentRole = resumeData?.experience?.length
       ? this.resolveCurrentRole(resumeData.experience)
       : null;
 
     // ── Contact fields (D13 Tier A) ──────────────────────────────────────────
     const location = resumeData?.contact?.location?.trim() || null;
-    const github   = resumeData?.contact?.github?.trim()   || null;
+    const github = resumeData?.contact?.github?.trim() || null;
 
     // ── Full resume arrays (D13 Tier A) ──────────────────────────────────────
-    const experience:     ExperienceEntry[]     = this.mapExperience(resumeData);
-    const education:      EducationEntry[]      = this.mapEducation(resumeData);
-    const certifications: CertificationEntry[]  = this.mapCertifications(resumeData);
-    const allSkills:      SkillEntry[]          = this.mapAllSkills(resumeData);
+    const experience: ExperienceEntry[] = this.mapExperience(resumeData);
+    const education: EducationEntry[] = this.mapEducation(resumeData);
+    const certifications: CertificationEntry[] = this.mapCertifications(resumeData);
+    const allSkills: SkillEntry[] = this.mapAllSkills(resumeData);
 
     // ── Resume download URL ───────────────────────────────────────────────────
     let defaultResumeUrl: string | null = null;
     if (resumeRow?.storageKey) {
       try {
-        const presigned  = await this.storage.presignDownload(resumeRow.storageKey);
+        const presigned = await this.storage.presignDownload(resumeRow.storageKey);
         defaultResumeUrl = presigned.downloadUrl;
       } catch (err) {
         this.logger.warn(
@@ -149,17 +149,17 @@ export class ExtensionProfileService {
 
     this.logger.log(
       `Extension profile assembled — user=${userId} ` +
-      `hasPhone=${!!profileRow?.phone} hasLinkedIn=${!!profileRow?.linkedinUrl} ` +
-      `hasResume=${!!resumeRow} skills=${topSkills.length} ` +
-      `exp=${experience.length} edu=${education.length}`,
+        `hasPhone=${!!profileRow?.phone} hasLinkedIn=${!!profileRow?.linkedinUrl} ` +
+        `hasResume=${!!resumeRow} skills=${topSkills.length} ` +
+        `exp=${experience.length} edu=${education.length}`,
     );
 
     return {
       firstName,
       lastName,
-      email:           userRow?.email         ?? '',
-      phone:           profileRow?.phone       ?? null,
-      linkedinUrl:     profileRow?.linkedinUrl ?? null,
+      email: userRow?.email ?? '',
+      phone: profileRow?.phone ?? null,
+      linkedinUrl: profileRow?.linkedinUrl ?? null,
       location,
       github,
       summary,
@@ -169,7 +169,7 @@ export class ExtensionProfileService {
       education,
       certifications,
       allSkills,
-      defaultResumeId: resumeRow?.id          ?? null,
+      defaultResumeId: resumeRow?.id ?? null,
       defaultResumeUrl,
     };
   }
@@ -180,10 +180,10 @@ export class ExtensionProfileService {
 
   async updateProfile(
     token: ExtensionToken,
-    dto:   ExtensionProfileUpdateDto,
+    dto: ExtensionProfileUpdateDto,
   ): Promise<ExtensionProfileResponseDto> {
     const userId = token.userId;
-    const now    = new Date();
+    const now = new Date();
 
     const existing = await this.db
       .select({ id: userProfiles.id })
@@ -194,28 +194,25 @@ export class ExtensionProfileService {
 
     if (existing) {
       const updateSet: Record<string, unknown> = { updatedAt: now };
-      if (dto.phone       !== undefined) updateSet['phone']       = dto.phone;
+      if (dto.phone !== undefined) updateSet['phone'] = dto.phone;
       if (dto.linkedinUrl !== undefined) updateSet['linkedinUrl'] = dto.linkedinUrl;
 
-      await this.db
-        .update(userProfiles)
-        .set(updateSet)
-        .where(eq(userProfiles.userId, userId));
+      await this.db.update(userProfiles).set(updateSet).where(eq(userProfiles.userId, userId));
     } else {
       await this.db.insert(userProfiles).values({
-        id:          uuidv7(),
+        id: uuidv7(),
         userId,
-        phone:       dto.phone       ?? null,
+        phone: dto.phone ?? null,
         linkedinUrl: dto.linkedinUrl ?? null,
-        createdAt:   now,
-        updatedAt:   now,
+        createdAt: now,
+        updatedAt: now,
       });
     }
 
     this.logger.log(
       `Extension profile updated — user=${userId} ` +
-      `phone=${dto.phone !== undefined ? 'set' : 'unchanged'} ` +
-      `linkedin=${dto.linkedinUrl !== undefined ? 'set' : 'unchanged'}`,
+        `phone=${dto.phone !== undefined ? 'set' : 'unchanged'} ` +
+        `linkedin=${dto.linkedinUrl !== undefined ? 'set' : 'unchanged'}`,
     );
 
     return this.getProfile(token);
@@ -228,12 +225,12 @@ export class ExtensionProfileService {
   private mapExperience(resumeData: ResumeData | null): ExperienceEntry[] {
     if (!resumeData?.experience?.length) return [];
     return resumeData.experience.map((e) => ({
-      company:    e.company?.trim()   ?? '',
-      title:      e.title?.trim()     ?? '',
-      startDate:  e.startDate         ?? '',
-      endDate:    e.endDate           ?? null,
-      current:    e.current           ?? false,
-      highlights: e.highlights        ?? [],
+      company: e.company?.trim() ?? '',
+      title: e.title?.trim() ?? '',
+      startDate: e.startDate ?? '',
+      endDate: e.endDate ?? null,
+      current: e.current ?? false,
+      highlights: e.highlights ?? [],
     }));
   }
 
@@ -241,29 +238,29 @@ export class ExtensionProfileService {
     if (!resumeData?.education?.length) return [];
     return resumeData.education.map((e) => ({
       institution: e.institution?.trim() ?? '',
-      degree:      e.degree?.trim()      ?? '',
-      field:       e.field?.trim()       ?? '',
-      startDate:   e.startDate           ?? '',
-      endDate:     e.endDate             ?? null,
-      gpa:         e.gpa                 ?? null,
+      degree: e.degree?.trim() ?? '',
+      field: e.field?.trim() ?? '',
+      startDate: e.startDate ?? '',
+      endDate: e.endDate ?? null,
+      gpa: e.gpa ?? null,
     }));
   }
 
   private mapCertifications(resumeData: ResumeData | null): CertificationEntry[] {
     if (!resumeData?.certifications?.length) return [];
     return resumeData.certifications.map((c) => ({
-      name:   c.name?.trim()   ?? '',
+      name: c.name?.trim() ?? '',
       issuer: c.issuer?.trim() ?? '',
-      date:   c.date           ?? null,
+      date: c.date ?? null,
     }));
   }
 
   private mapAllSkills(resumeData: ResumeData | null): SkillEntry[] {
     if (!resumeData?.skills?.length) return [];
     return resumeData.skills.map((s) => ({
-      name:     s.name     ?? '',
+      name: s.name ?? '',
       category: s.category ?? 'technical',
-      level:    s.level    ?? null,
+      level: s.level ?? null,
     }));
   }
 
@@ -281,11 +278,11 @@ export class ExtensionProfileService {
   private resolveCurrentRole(experience: ResumeData['experience']): string | null {
     const entry = experience.find((e) => e.current) ?? experience[0];
     if (!entry) return null;
-    const title   = entry.title?.trim()   ?? '';
+    const title = entry.title?.trim() ?? '';
     const company = entry.company?.trim() ?? '';
     if (!title && !company) return null;
-    if (!company)           return title;
-    if (!title)             return company;
+    if (!company) return title;
+    if (!title) return company;
     return `${title} @ ${company}`;
   }
 }

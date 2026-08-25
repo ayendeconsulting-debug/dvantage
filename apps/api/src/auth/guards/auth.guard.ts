@@ -4,11 +4,11 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Reflector }    from '@nestjs/core';
+import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { IS_PUBLIC_KEY }             from '../decorators/public.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { AUTH_USER_KEY, AUTH_SESSION_KEY } from '../decorators/current-user.decorator';
-import { AuthService }               from '../auth.service';
+import { AuthService } from '../auth.service';
 
 /**
  * Global HTTP auth guard.
@@ -24,7 +24,7 @@ import { AuthService }               from '../auth.service';
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
-    private readonly reflector:   Reflector,
+    private readonly reflector: Reflector,
     private readonly authService: AuthService,
   ) {}
 
@@ -37,7 +37,7 @@ export class AuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<FastifyRequest>();
-    const result  = await this.authService.getSession(request);
+    const result = await this.authService.getSession(request);
 
     if (!result) {
       throw new UnauthorizedException('Invalid or expired session.');
@@ -45,7 +45,7 @@ export class AuthGuard implements CanActivate {
 
     // Attach for @CurrentUser() / @CurrentSession() decorators
     const req = request as unknown as Record<string, unknown>;
-    req[AUTH_USER_KEY]    = result.user;
+    req[AUTH_USER_KEY] = result.user;
     req[AUTH_SESSION_KEY] = result.session;
 
     return true;

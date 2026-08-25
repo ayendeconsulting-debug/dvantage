@@ -43,9 +43,7 @@ type RecentScoreRow = {
 
 @Injectable()
 export class DashboardService {
-  constructor(
-    @Inject(DATABASE_CLIENT) private readonly db: DatabaseClient,
-  ) {}
+  constructor(@Inject(DATABASE_CLIENT) private readonly db: DatabaseClient) {}
 
   async getSummary(userId: string): Promise<DashboardResponseDto> {
     const [plan, recentResumes, recentScores, usageCounts] = await Promise.all([
@@ -138,9 +136,7 @@ export class DashboardService {
       .limit(5) as Promise<RecentScoreRow[]>;
   }
 
-  private async getMonthlyUsageCounts(
-    userId: string,
-  ): Promise<Record<UsageEventType, number>> {
+  private async getMonthlyUsageCounts(userId: string): Promise<Record<UsageEventType, number>> {
     const rows = await (this.db as any)
       .select({
         eventType: usageEvents.eventType,
