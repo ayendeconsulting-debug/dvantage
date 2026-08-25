@@ -30,10 +30,10 @@
 import type { ExternalAck } from '../shared/messages';
 
 const TOKEN_EVENT = 'dvantage:ext:token' as const;
-const ACK_EVENT   = 'dvantage:ext:ack'   as const;
+const ACK_EVENT = 'dvantage:ext:ack' as const;
 
 interface TokenEventDetail {
-  token:     string;
+  token: string;
   expiresAt: string;
 }
 
@@ -41,8 +41,10 @@ function isTokenDetail(detail: unknown): detail is TokenEventDetail {
   if (typeof detail !== 'object' || detail === null) return false;
   const d = detail as Record<string, unknown>;
   return (
-    typeof d['token']     === 'string' && d['token'].length     > 0 &&
-    typeof d['expiresAt'] === 'string' && d['expiresAt'].length > 0
+    typeof d['token'] === 'string' &&
+    d['token'].length > 0 &&
+    typeof d['expiresAt'] === 'string' &&
+    d['expiresAt'].length > 0
   );
 }
 
@@ -64,7 +66,7 @@ window.addEventListener(
 
     chrome.runtime.sendMessage(
       {
-        type:    'AUTH_BRIDGE_TOKEN',
+        type: 'AUTH_BRIDGE_TOKEN',
         payload: { token: detail.token, expiresAt: detail.expiresAt },
       },
       (response: ExternalAck) => {
