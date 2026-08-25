@@ -22,11 +22,11 @@ import { resolveProfileValue } from '../../shared/profile-resolver';
 const ADAPTER_NAME = 'linkedin';
 
 const TOP_CARD = {
-  title:           '.job-details-jobs-unified-top-card__job-title h1',
-  companyLink:     '.job-details-jobs-unified-top-card__company-name a',
-  companyWrapper:  '.job-details-jobs-unified-top-card__company-name',
+  title: '.job-details-jobs-unified-top-card__job-title h1',
+  companyLink: '.job-details-jobs-unified-top-card__company-name a',
+  companyWrapper: '.job-details-jobs-unified-top-card__company-name',
   locationPrimary: '.job-details-jobs-unified-top-card__primary-description-container .tvm__text',
-  locationBullet:  '.job-details-jobs-unified-top-card__bullet',
+  locationBullet: '.job-details-jobs-unified-top-card__bullet',
 } as const;
 
 const DESCRIPTION = {
@@ -44,12 +44,27 @@ const MODAL_SELECTORS = [
   'div[role="dialog"][aria-label*="easy apply" i]',
 ] as const;
 
-// Next button selectors — tried in order
+// Next button selectors — tried in order.
+//
+// This is an ALLOWLIST and must stay one. Auto-advance clicks a button only
+// when it matches an entry here AND fails the submit check below. There is
+// deliberately no positional fallback — see scheduleAutoAdvance.
 const NEXT_BUTTON_SELECTORS = [
   'button[aria-label="Continue to next step"]',
   '[data-easy-apply-next-button]',
   'button[aria-label*="next step" i]',
+  // Review is a step, not a submission — LinkedIn shows it before the final
+  // Submit, so advancing to it is safe and covers more of the flow.
+  'button[aria-label*="review your application" i]',
 ] as const;
+
+// Words that indicate a button submits rather than advances.
+//
+// Covers LinkedIn's major serving locales: EN, FR, ES, DE, IT, PT, NL, PL,
+// plus JA/ZH/KO. Matched case-insensitively against aria-label + textContent.
+// Over-inclusive by design: see isSubmitButton.
+const SUBMIT_PATTERN =
+  /submit|send application|apply now|envoyer|soumettre|postuler|enviar|postular|absenden|bewerbung senden|invia|candidati|inscrever|verzenden|solliciteer|wy[sś]lij|aplikuj|送信|応募する|提交|申请|제출|지원하기/i;
 
 // ---------------------------------------------------------------------------
 // Text helpers
@@ -78,8 +93,14 @@ function firstMatch(...selectors: string[]): string | null {
   return null;
 }
 
-const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
-const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+const nativeInputSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLInputElement.prototype,
+  'value',
+)?.set;
+const nativeTextareaSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLTextAreaElement.prototype,
+  'value',
+)?.set;
 
 function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   if (el instanceof HTMLTextAreaElement) {
@@ -89,20 +110,20 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
     if (nativeInputSetter) nativeInputSetter.call(el, value);
     else el.value = value;
   }
-  el.dispatchEvent(new Event('input',  { bubbles: true }));
+  el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 function extractCompanyFromTitle(): string | null {
   const title = document.title;
   const pipePattern = /^.+?\s*\|\s*(.+?)\s*\|\s*LinkedIn\s*$/i;
-  const pipeMatch   = title.match(pipePattern);
+  const pipeMatch = title.match(pipePattern);
   if (pipeMatch?.[1]) {
     const candidate = cleanText(pipeMatch[1]);
     if (candidate) return candidate;
   }
   const atPattern = /\bat\s+(.+?)\s*(?:\||\s*$)/i;
-  const atMatch   = title.match(atPattern);
+  const atMatch = title.match(atPattern);
   if (atMatch?.[1]) {
     const candidate = cleanText(atMatch[1]);
     if (candidate) return candidate;
@@ -127,7 +148,7 @@ function resolveModal(): Element | null {
 // ---------------------------------------------------------------------------
 
 function findInputByLabel(
-  root:        Element,
+  root: Element,
   labelSearch: string,
 ): HTMLInputElement | HTMLTextAreaElement | null {
   const labels = Array.from(root.querySelectorAll<HTMLLabelElement>('label'));
@@ -156,39 +177,39 @@ function findInputByLabel(
 // ---------------------------------------------------------------------------
 
 const FIELD_DEFS: Array<{
-  profileKey:    string;
-  displayLabel:  string;
-  required:      boolean;
+  profileKey: string;
+  displayLabel: string;
+  required: boolean;
   labelSearches: string[];
 }> = [
   {
-    profileKey:    'firstName',
-    displayLabel:  'First name',
-    required:      true,
+    profileKey: 'firstName',
+    displayLabel: 'First name',
+    required: true,
     labelSearches: ['first name', 'first'],
   },
   {
-    profileKey:    'lastName',
-    displayLabel:  'Last name',
-    required:      true,
+    profileKey: 'lastName',
+    displayLabel: 'Last name',
+    required: true,
     labelSearches: ['last name', 'last', 'surname', 'family name'],
   },
   {
-    profileKey:    'email',
-    displayLabel:  'Email',
-    required:      true,
+    profileKey: 'email',
+    displayLabel: 'Email',
+    required: true,
     labelSearches: ['email'],
   },
   {
-    profileKey:    'phone',
-    displayLabel:  'Phone number',
-    required:      false,
+    profileKey: 'phone',
+    displayLabel: 'Phone number',
+    required: false,
     labelSearches: ['mobile phone', 'phone number', 'phone'],
   },
   {
-    profileKey:    'location',
-    displayLabel:  'City',
-    required:      false,
+    profileKey: 'location',
+    displayLabel: 'City',
+    required: false,
     labelSearches: ['city', 'location', 'city, state'],
   },
 ];
@@ -211,19 +232,23 @@ function detectLinkedInForm(): FormField[] {
       const el = findInputByLabel(modal, search);
       if (!el) continue;
 
-      const tag  = el.tagName.toLowerCase();
+      const tag = el.tagName.toLowerCase();
       const type = (el as HTMLInputElement).type ?? 'text';
 
       fields.push({
-        name:        def.profileKey,
-        type:        tag === 'textarea' ? 'textarea'
-                   : type === 'email'   ? 'email'
-                   : type === 'tel'     ? 'tel'
-                   : 'text',
-        label:       def.displayLabel,
+        name: def.profileKey,
+        type:
+          tag === 'textarea'
+            ? 'textarea'
+            : type === 'email'
+              ? 'email'
+              : type === 'tel'
+                ? 'tel'
+                : 'text',
+        label: def.displayLabel,
         placeholder: (el as HTMLInputElement).placeholder || null,
-        required:    def.required,
-        selector:    el.id ? `#${el.id}` : '',
+        required: def.required,
+        selector: el.id ? `#${el.id}` : '',
       });
       break;
     }
@@ -244,23 +269,69 @@ function scheduleAutoAdvance(modal: Element): void {
   setTimeout(() => {
     for (const sel of NEXT_BUTTON_SELECTORS) {
       const btn = modal.querySelector<HTMLButtonElement>(sel);
-      if (btn && !btn.disabled) {
-        console.debug(`[DVantage][${ADAPTER_NAME}] auto-advancing to step 2 via:`, sel);
-        btn.click();
+      if (!btn || btn.disabled) continue;
+
+      // Even a matched selector is checked. LinkedIn changes aria-labels
+      // frequently, and a selector that matches Submit is indistinguishable
+      // from one that matches Next until you read the button.
+      if (isSubmitButton(btn)) {
+        console.warn(
+          `[DVantage][${ADAPTER_NAME}] auto-advance ABORTED — "${sel}" matched a submit ` +
+            `control ("${describeButton(btn)}"). Submission is user-initiated only.`,
+        );
         return;
       }
+
+      console.debug(`[DVantage][${ADAPTER_NAME}] auto-advancing to step 2 via:`, sel);
+      btn.click();
+      return;
     }
-    // Fallback: last non-Back button in the modal footer
-    const footer = modal.querySelector('footer, [class*="footer"]');
-    if (footer) {
-      const buttons = Array.from(footer.querySelectorAll<HTMLButtonElement>('button[type="button"]'));
-      const nextBtn = buttons.at(-1);
-      if (nextBtn && !nextBtn.disabled) {
-        console.debug(`[DVantage][${ADAPTER_NAME}] auto-advancing via footer last button`);
-        nextBtn.click();
-      }
-    }
+
+    // No positional fallback. There was one here — "last non-Back button in
+    // the modal footer" — and it was removed 2026-08-24.
+    //
+    // NEXT_BUTTON_SELECTORS only matches the English strings "Continue to next
+    // step" / "next step". On a non-English LinkedIn UI, or after any of
+    // LinkedIn's frequent aria-label experiments, none matched and control fell
+    // through to `buttons.at(-1)`. In a single-step Easy Apply (contact info
+    // only — very common) the last button[type="button"] in that footer IS
+    // "Submit application". The extension could therefore submit a real job
+    // application on the user's behalf, 800ms after they clicked Autofill,
+    // with no confirmation — bypassing the two-click confirming-submit flow in
+    // AutofillPanel entirely, and contradicting the manifest's own promise of
+    // "No mass auto-submit".
+    //
+    // Never guess a button by position. If no known Next selector matches, do
+    // nothing: the user clicks Next themselves, which costs one click and
+    // cannot cost them a misfired application.
+    console.debug(
+      `[DVantage][${ADAPTER_NAME}] no known Next button matched — leaving navigation to the user`,
+    );
   }, 800);
+}
+
+/**
+ * Text of a button, for logging. Prefers aria-label, falls back to visible text.
+ */
+function describeButton(btn: HTMLButtonElement): string {
+  return (btn.getAttribute('aria-label') ?? btn.textContent ?? '').trim().slice(0, 80);
+}
+
+/**
+ * True when a button looks like it submits the application rather than
+ * advancing a step.
+ *
+ * Deliberately over-inclusive: a false positive costs the user one manual
+ * click, a false negative submits a job application they never approved. The
+ * asymmetry is the whole point, so err heavily toward refusing to click.
+ *
+ * Covers the locales LinkedIn serves that we can reasonably enumerate. This
+ * list is a safety net, not a substitute for the allowlist above — the primary
+ * guarantee is that we only click buttons matching a known Next selector.
+ */
+function isSubmitButton(btn: HTMLButtonElement): boolean {
+  const haystack = `${btn.getAttribute('aria-label') ?? ''} ${btn.textContent ?? ''}`.toLowerCase();
+  return SUBMIT_PATTERN.test(haystack);
 }
 
 // ---------------------------------------------------------------------------
@@ -309,10 +380,9 @@ export const linkedinAdapter: SiteAdapter = {
     }
 
     const company =
-      firstMatch(TOP_CARD.companyLink, TOP_CARD.companyWrapper) ??
-      extractCompanyFromTitle();
+      firstMatch(TOP_CARD.companyLink, TOP_CARD.companyWrapper) ?? extractCompanyFromTitle();
 
-    const location    = firstMatch(TOP_CARD.locationPrimary, TOP_CARD.locationBullet);
+    const location = firstMatch(TOP_CARD.locationPrimary, TOP_CARD.locationBullet);
     const description = firstMatch(DESCRIPTION.inner, DESCRIPTION.outer, DESCRIPTION.broad) ?? '';
 
     const job: ExtractedJob = {
@@ -320,12 +390,15 @@ export const linkedinAdapter: SiteAdapter = {
       company,
       location,
       description,
-      sourceUrl:   window.location.href,
+      sourceUrl: window.location.href,
       extractedAt: new Date().toISOString(),
     };
 
     console.debug(`[DVantage][${ADAPTER_NAME}] detected job:`, {
-      title: job.title, company: job.company, location: job.location, descLength: job.description.length,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      descLength: job.description.length,
     });
 
     return job;
@@ -357,10 +430,10 @@ export const linkedinAdapter: SiteAdapter = {
 
       if (!value) {
         skipped.push({
-          label:     def.displayLabel,
-          selector:  '',   // label-based — Tier B uses labelSearch fallback
+          label: def.displayLabel,
+          selector: '', // label-based — Tier B uses labelSearch fallback
           fieldType: 'text',
-          required:  def.required,
+          required: def.required,
         });
         continue;
       }
@@ -379,10 +452,10 @@ export const linkedinAdapter: SiteAdapter = {
       if (el.readOnly || el.disabled) {
         console.debug(`[DVantage][${ADAPTER_NAME}] field locked — skipping: ${def.displayLabel}`);
         skipped.push({
-          label:     def.displayLabel,
-          selector:  '',
+          label: def.displayLabel,
+          selector: '',
           fieldType: 'text',
-          required:  def.required,
+          required: def.required,
         });
         continue;
       }
@@ -392,7 +465,7 @@ export const linkedinAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map(s => s.label).join(', ')}]`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map((s) => s.label).join(', ')}]`,
     );
 
     // Auto-advance to step 2 after step 1 fill — only if at least one field was filled

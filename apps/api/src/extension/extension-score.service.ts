@@ -26,13 +26,14 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 
-import { AtsScorer }                             from '@vantage/ai';
+import { AtsScorer } from '@vantage/ai';
 import { resumeVersions, type DatabaseClient, type ExtensionToken } from '@vantage/database';
-import type { ResumeData }                       from '@vantage/validation';
+import type { ResumeData } from '@vantage/validation';
 
-import { DATABASE_CLIENT }                       from '../database/database.module';
-import type { ExtensionScoreRequestDto }         from './dto/extension-score-request.dto';
-import type { ExtensionScoreResponseDto }        from './dto/extension-score-response.dto';
+import { DATABASE_CLIENT } from '../database/database.module';
+import { SubscriptionService } from '../subscription/subscription.service';
+import type { ExtensionScoreRequestDto } from './dto/extension-score-request.dto';
+import type { ExtensionScoreResponseDto } from './dto/extension-score-response.dto';
 
 // Web app base URL — used for the optimization deep link returned to the extension.
 // D13 replaces this with a per-job deep link once the application row is captured.
@@ -45,6 +46,7 @@ export class ExtensionScoreService {
   constructor(
     @Inject(DATABASE_CLIENT) private readonly db: DatabaseClient,
     private readonly atsScorer: AtsScorer,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -58,13 +60,27 @@ export class ExtensionScoreService {
    */
   async score(
     token: ExtensionToken,
-    dto:   ExtensionScoreRequestDto,
+    dto: ExtensionScoreRequestDto,
   ): Promise<ExtensionScoreResponseDto> {
+    // Entitlement check BEFORE any Claude spend. Throws PaymentRequiredException
+    // (402) with an upgradeUrl when a free user is over their monthly limit.
+    //
+    // Meters against 'ats_score' — the same bucket as the web endpoint, on
+    // purpose. It is the same product action; a user who scores three jobs
+    // should have used three scores regardless of which surface they used.
+    // Doing it this way also needs no enum migration.
+    //
+    // Known limitation (audit BILL-4, deferred): assertQuota is a read-then-act
+    // with no lock, so concurrent requests can each pass a limit of N. The
+    // @Throttle on this route caps the burst that could exploit it. The real
+    // fix is an atomic usage counter and is tracked separately.
+    await this.subscriptionService.assertCanScore(token.userId);
+
     const resume = await this.resolveResume(token.userId, dto.resumeId);
 
     this.logger.log(
       `Extension score start — user=${token.userId} resume=${resume.id} ` +
-      `jdLength=${dto.jobDescription.length} explicit=${dto.resumeId !== null}`,
+        `jdLength=${dto.jobDescription.length} explicit=${dto.resumeId !== null}`,
     );
 
     const atsScore = await this.atsScorer.score(
@@ -72,14 +88,18 @@ export class ExtensionScoreService {
       dto.jobDescription,
     );
 
-    this.logger.log(
-      `Extension score complete — user=${token.userId} overall=${atsScore.overall}`,
-    );
+    // Recorded AFTER the model call succeeds. If AtsScorer throws — an
+    // Anthropic 429/529, a validation failure — the user is not charged a
+    // score for work they did not receive. Safe to do here because this path
+    // is synchronous; the queued web path cannot make the same guarantee.
+    await this.subscriptionService.recordUsage(token.userId, 'ats_score');
+
+    this.logger.log(`Extension score complete — user=${token.userId} overall=${atsScore.overall}`);
 
     return {
-      score:           atsScore.overall,
-      keywordGaps:     atsScore.keyword_gaps,
-      semanticGaps:    atsScore.recommendations,
+      score: atsScore.overall,
+      keywordGaps: atsScore.keyword_gaps,
+      semanticGaps: atsScore.recommendations,
       optimizationUrl: `${APP_BASE_URL}/dashboard`,
     };
   }
@@ -102,7 +122,7 @@ export class ExtensionScoreService {
    *   422 — explicit resume not fully parsed, or no complete resume exists at all
    */
   private async resolveResume(
-    userId:   string,
+    userId: string,
     resumeId: string | null,
   ): Promise<ReturnType<typeof this.assertComplete>> {
     if (resumeId !== null) {
@@ -111,7 +131,7 @@ export class ExtensionScoreService {
         .from(resumeVersions)
         .where(
           and(
-            eq(resumeVersions.id,     resumeId),
+            eq(resumeVersions.id, resumeId),
             eq(resumeVersions.userId, userId),
             isNull(resumeVersions.deletedAt),
           ),
@@ -133,7 +153,7 @@ export class ExtensionScoreService {
       .from(resumeVersions)
       .where(
         and(
-          eq(resumeVersions.userId,      userId),
+          eq(resumeVersions.userId, userId),
           eq(resumeVersions.parseStatus, 'complete'),
           isNull(resumeVersions.deletedAt),
         ),
@@ -155,13 +175,13 @@ export class ExtensionScoreService {
    * Throws 422 with a clear message if the assertion fails.
    */
   private assertComplete<T extends { parseStatus: string; structuredData: unknown; id: string }>(
-    row:      T,
+    row: T,
     resumeId: string,
   ): T {
     if (row.parseStatus !== 'complete' || !row.structuredData) {
       throw new UnprocessableEntityException(
         `Resume version "${resumeId}" is not fully parsed ` +
-        `(status: ${row.parseStatus}). Scoring requires parse status "complete".`,
+          `(status: ${row.parseStatus}). Scoring requires parse status "complete".`,
       );
     }
     return row;
