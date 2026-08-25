@@ -6,20 +6,19 @@
  */
 
 const API_BASE =
-  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
-  'http://localhost:3001';
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) || 'http://localhost:3001';
 
 // ---------------------------------------------------------------------------
 // Types (mirrored from backend DTOs)
 // ---------------------------------------------------------------------------
 
 export interface UserProfileData {
-  phone:       string | null;
+  phone: string | null;
   linkedinUrl: string | null;
 }
 
 export interface UpdateUserProfileInput {
-  phone?:       string | null;
+  phone?: string | null;
   linkedinUrl?: string | null;
 }
 
@@ -42,9 +41,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let message = `API error ${res.status}`;
     try {
-      const body = await res.json() as { detail?: string; title?: string; message?: string };
+      const body = (await res.json()) as { detail?: string; title?: string; message?: string };
       message = body.detail ?? body.title ?? body.message ?? message;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     throw new Error(message);
   }
 
@@ -64,11 +65,9 @@ export async function getUserProfile(): Promise<UserProfileData> {
  * Update phone and/or LinkedIn URL.
  * Omit a field to leave it unchanged; pass null to clear it.
  */
-export async function updateUserProfile(
-  input: UpdateUserProfileInput,
-): Promise<UserProfileData> {
+export async function updateUserProfile(input: UpdateUserProfileInput): Promise<UserProfileData> {
   return apiFetch<UserProfileData>('/v1/users/me/profile', {
     method: 'PATCH',
-    body:   JSON.stringify(input),
+    body: JSON.stringify(input),
   });
 }

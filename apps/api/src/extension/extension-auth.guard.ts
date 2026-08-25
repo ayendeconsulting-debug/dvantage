@@ -22,9 +22,9 @@ import {
   UnauthorizedException,
   createParamDecorator,
 } from '@nestjs/common';
-import type { FastifyRequest }       from 'fastify';
-import type { ExtensionToken }       from '@vantage/database';
-import { ExtensionAuthService }      from './extension-auth.service';
+import type { FastifyRequest } from 'fastify';
+import type { ExtensionToken } from '@vantage/database';
+import { ExtensionAuthService } from './extension-auth.service';
 
 /** Request-scoped key under which the validated ExtensionToken is stored. */
 export const EXTENSION_TOKEN_KEY = '_extensionToken';
@@ -51,7 +51,7 @@ export class ExtensionAuthGuard implements CanActivate {
   constructor(private readonly extensionAuthService: ExtensionAuthService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request  = context.switchToHttp().getRequest<FastifyRequest>();
+    const request = context.switchToHttp().getRequest<FastifyRequest>();
     const rawToken = this.extractBearerToken(request);
 
     if (!rawToken) {

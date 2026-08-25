@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { SubscriptionService }       from './subscription.service';
-import { SubscriptionController }    from './subscription.controller';
-import { StripeWebhookController }   from './stripe-webhook.controller';
-import { DatabaseModule }            from '../database/database.module';
+import { SubscriptionService } from './subscription.service';
+import { SubscriptionController } from './subscription.controller';
+import { StripeWebhookController } from './stripe-webhook.controller';
+import { DatabaseModule } from '../database/database.module';
 
 /**
  * SubscriptionModule
@@ -16,9 +16,9 @@ import { DatabaseModule }            from '../database/database.module';
  * OptimizeService can inject it for entitlement enforcement in M4-C.
  */
 @Module({
-  imports:     [DatabaseModule],
-  providers:   [SubscriptionService],
+  imports: [DatabaseModule],
+  providers: [SubscriptionService],
   controllers: [SubscriptionController, StripeWebhookController],
-  exports:     [SubscriptionService],
+  exports: [SubscriptionService],
 })
 export class SubscriptionModule {}

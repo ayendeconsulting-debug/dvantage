@@ -11,11 +11,11 @@ import { z } from 'zod';
  */
 export const AiFillFieldSchema = z.object({
   /** Human-readable label shown in the form (e.g. "Years of experience"). */
-  label:     z.string().min(1).max(200),
+  label: z.string().min(1).max(200),
   /** Input type — tells the AI how long/formatted the answer should be. */
   fieldType: z.enum(['text', 'email', 'tel', 'textarea']),
   /** Whether the field is marked required in the form — context for AI. */
-  required:  z.boolean(),
+  required: z.boolean(),
 });
 
 export const AiFillRequestSchema = z.object({
@@ -34,8 +34,8 @@ export const AiFillRequestSchema = z.object({
     .max(20, 'fields must contain 20 or fewer entries'),
 });
 
-export type AiFillRequestDto  = z.infer<typeof AiFillRequestSchema>;
-export type AiFillFieldDto    = z.infer<typeof AiFillFieldSchema>;
+export type AiFillRequestDto = z.infer<typeof AiFillRequestSchema>;
+export type AiFillFieldDto = z.infer<typeof AiFillFieldSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /v1/extension/ai-fill — Response DTO
