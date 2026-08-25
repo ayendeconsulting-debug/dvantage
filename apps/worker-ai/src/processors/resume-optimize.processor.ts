@@ -96,11 +96,11 @@ export class ResumeOptimizeProcessor {
 
     // Build ATSScore from stored fields (already validated when written by scorer)
     const atsScore: ATSScore = {
-      overall:          scoreRow.overallScore ?? 0,
-      sections:         scoreRow.sectionScores as ATSScore['sections'],
-      keyword_gaps:     (scoreRow.keywordGaps     as string[]) ?? [],
+      overall: scoreRow.overallScore ?? 0,
+      sections: scoreRow.sectionScores as ATSScore['sections'],
+      keyword_gaps: (scoreRow.keywordGaps as string[]) ?? [],
       matched_keywords: (scoreRow.matchedKeywords as string[]) ?? [],
-      recommendations:  (scoreRow.recommendations as string[]) ?? [],
+      recommendations: (scoreRow.recommendations as string[]) ?? [],
     };
 
     // 5. Mark as optimizing
@@ -120,9 +120,7 @@ export class ResumeOptimizeProcessor {
       jdRow.content,
     );
 
-    this.logger.log(
-      `[job:${job.id}] Optimization complete — ${changeLog.length} changes made`,
-    );
+    this.logger.log(`[job:${job.id}] Optimization complete — ${changeLog.length} changes made`);
 
     // 7. Re-score the optimized resume against the same JD.
     //    This produces the "after" score for the before/after delta UI.
@@ -141,14 +139,14 @@ export class ResumeOptimizeProcessor {
     await db
       .update(atsScores)
       .set({
-        optimizationStatus:      'complete',
+        optimizationStatus: 'complete',
         optimizedStructuredData: optimizedData,
-        optimizationChangeLog:   changeLog as unknown as OptimizationChange[],
-        optimizationError:       null,
+        optimizationChangeLog: changeLog,
+        optimizationError: null,
         // Post-optimization re-score
-        optimizedOverallScore:   optimizedAtsScore.overall,
-        optimizedSectionScores:  optimizedAtsScore.sections,
-        updatedAt:               new Date(),
+        optimizedOverallScore: optimizedAtsScore.overall,
+        optimizedSectionScores: optimizedAtsScore.sections,
+        updatedAt: new Date(),
       })
       .where(eq(atsScores.id, atsScoreId));
 
@@ -175,8 +173,8 @@ export class ResumeOptimizeProcessor {
       .update(atsScores)
       .set({
         optimizationStatus: 'failed',
-        optimizationError:  error.message.slice(0, 2000),
-        updatedAt:          new Date(),
+        optimizationError: error.message.slice(0, 2000),
+        updatedAt: new Date(),
       })
       .where(eq(atsScores.id, atsScoreId));
   }

@@ -63,9 +63,7 @@ export class AtsScoreProcessor {
       .limit(1);
 
     if (!resumeRow) {
-      throw new Error(
-        `AtsScoreProcessor: resume_version "${scoreRow.resumeVersionId}" not found`,
-      );
+      throw new Error(`AtsScoreProcessor: resume_version "${scoreRow.resumeVersionId}" not found`);
     }
 
     if (!resumeRow.structuredData) {
@@ -109,14 +107,14 @@ export class AtsScoreProcessor {
     await db
       .update(atsScores)
       .set({
-        scoringStatus:    'complete',
-        overallScore:     atsScore.overall,
-        sectionScores:    atsScore.sections,
-        keywordGaps:      atsScore.keyword_gaps,
-        matchedKeywords:  atsScore.matched_keywords,
-        recommendations:  atsScore.recommendations,
-        scoreError:       null,
-        updatedAt:        new Date(),
+        scoringStatus: 'complete',
+        overallScore: atsScore.overall,
+        sectionScores: atsScore.sections,
+        keywordGaps: atsScore.keyword_gaps,
+        matchedKeywords: atsScore.matched_keywords,
+        recommendations: atsScore.recommendations,
+        scoreError: null,
+        updatedAt: new Date(),
       })
       .where(eq(atsScores.id, atsScoreId));
 
@@ -133,15 +131,13 @@ export class AtsScoreProcessor {
   ): Promise<void> {
     if (!job) return;
     const { atsScoreId } = job.data;
-    this.logger.error(
-      `[job:${job.id}] Failed for ats_score=${atsScoreId}: ${error.message}`,
-    );
+    this.logger.error(`[job:${job.id}] Failed for ats_score=${atsScoreId}: ${error.message}`);
     await db
       .update(atsScores)
       .set({
         scoringStatus: 'failed',
-        scoreError:    error.message.slice(0, 2000),
-        updatedAt:     new Date(),
+        scoreError: error.message.slice(0, 2000),
+        updatedAt: new Date(),
       })
       .where(eq(atsScores.id, atsScoreId));
   }

@@ -6,7 +6,13 @@
 // D10 change: fillFields return type updated void → AutofillResult.
 // ---------------------------------------------------------------------------
 
-import type { AutofillResult, ExtractedJob, FormField, SiteAdapter, UserProfile } from '../../shared/types';
+import type {
+  AutofillResult,
+  ExtractedJob,
+  FormField,
+  SiteAdapter,
+  UserProfile,
+} from '../../shared/types';
 
 export const genericAdapter: SiteAdapter = {
   detectJD(): ExtractedJob | null {
