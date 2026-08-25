@@ -1,4 +1,5 @@
 # Session Handover — D'Vantage
+
 # Extension D6 COMPLETE · D7 Site Adapters — NEXT
 
 **Project:** D'Vantage — AI Resume Intelligence & Inbox-Aware Job Application Platform
@@ -22,9 +23,9 @@ This handover **supersedes** `SESSION_HANDOVER_EXT_D5_COMPLETE.md`. All strategi
 1. **Enterprise-grade only.** Build as a 0.001 percentile engineer would. No shortcuts.
 2. **Clarify before coding.** Every requirement must be understood before a single line is written.
 3. **Approval before code.** Always present a plan and obtain explicit user approval before implementation.
-3a. **Corrections require confirmation.** When making a correction, confirm understanding before coding.
+   3a. **Corrections require confirmation.** When making a correction, confirm understanding before coding.
 4. **Inspect existing files first.** Before writing or modifying, view existing files to understand structure and dependencies.
-4a. **Inspect new packages before using them.** After any `pnpm add`, before writing a single line: (1) `pnpm list <package>` to confirm version, (2) `node -e` smoke test.
+   4a. **Inspect new packages before using them.** After any `pnpm add`, before writing a single line: (1) `pnpm list <package>` to confirm version, (2) `node -e` smoke test.
 5. **Validate TypeScript before deployment.** Run `pnpm exec tsc --noEmit` in each affected app before every deploy. No exceptions.
 6. **File delivery via downloads + PowerShell.** User is on Windows with PowerShell. Never bash `mv`/`tar`. Never `Set-Content -Encoding UTF8` (adds BOM).
 7. **Modal-based decisions.** When asking the user to choose between options, present as a tappable modal. Always leave room for additional input.
@@ -37,27 +38,28 @@ This handover **supersedes** `SESSION_HANDOVER_EXT_D5_COMPLETE.md`. All strategi
 ### Phase 1 — Content script architecture (12 files)
 
 #### Extension — 12 files
-| File | Change |
-|---|---|
-| `content/index.ts` | REPLACED stub — full SPA-aware dispatcher |
-| `content/sites/linkedin.ts` | NEW — stub adapter |
-| `content/sites/indeed.ts` | NEW — stub adapter |
-| `content/sites/greenhouse.ts` | NEW — stub adapter |
-| `content/sites/lever.ts` | NEW — stub adapter |
-| `content/sites/ashby.ts` | NEW — stub adapter |
-| `content/sites/workday.ts` | NEW — stub adapter |
-| `content/sites/generic.ts` | NEW — stub adapter |
-| `background/message-router.ts` | NEW — routes JOB_DETECTED, REQUEST_SCORE, REQUEST_AUTOFILL |
-| `background/index.ts` | MODIFIED — router wired in as final delegate |
-| `sidepanel/components/ScorePanel.tsx` | NEW — job detection + scoring panel |
-| `sidepanel/App.tsx` | MODIFIED — ScorePanel added below ProfilePanel |
+
+| File                                  | Change                                                     |
+| ------------------------------------- | ---------------------------------------------------------- |
+| `content/index.ts`                    | REPLACED stub — full SPA-aware dispatcher                  |
+| `content/sites/linkedin.ts`           | NEW — stub adapter                                         |
+| `content/sites/indeed.ts`             | NEW — stub adapter                                         |
+| `content/sites/greenhouse.ts`         | NEW — stub adapter                                         |
+| `content/sites/lever.ts`              | NEW — stub adapter                                         |
+| `content/sites/ashby.ts`              | NEW — stub adapter                                         |
+| `content/sites/workday.ts`            | NEW — stub adapter                                         |
+| `content/sites/generic.ts`            | NEW — stub adapter                                         |
+| `background/message-router.ts`        | NEW — routes JOB_DETECTED, REQUEST_SCORE, REQUEST_AUTOFILL |
+| `background/index.ts`                 | MODIFIED — router wired in as final delegate               |
+| `sidepanel/components/ScorePanel.tsx` | NEW — job detection + scoring panel                        |
+| `sidepanel/App.tsx`                   | MODIFIED — ScorePanel added below ProfilePanel             |
 
 ### Phase 2 — Direction 2 "Warm Depth" UI reskin (3 files)
 
-| File | Change |
-|---|---|
-| `sidepanel/tokens.css` | MODIFIED — 5 semantic alias tokens + `.dvantage-btn-ghost` |
-| `sidepanel/ProfilePanel.tsx` | MODIFIED — inner card, rounded-square avatar, footer sign-out |
+| File                                  | Change                                                             |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `sidepanel/tokens.css`                | MODIFIED — 5 semantic alias tokens + `.dvantage-btn-ghost`         |
+| `sidepanel/ProfilePanel.tsx`          | MODIFIED — inner card, rounded-square avatar, footer sign-out      |
 | `sidepanel/components/ScorePanel.tsx` | MODIFIED — two-zone layout, brand icon wrap, persistent footer CTA |
 
 ---
@@ -83,6 +85,7 @@ Side panel (ScorePanel.tsx)
 ### SPA navigation handling
 
 LinkedIn, Indeed, Ashby, Workday are SPAs. `content/index.ts` intercepts:
+
 - `history.pushState` override
 - `history.replaceState` override
 - `window.addEventListener('popstate')`
@@ -94,12 +97,14 @@ All three trigger `scheduleDetection()` — a 1 000 ms debounced call to `runDet
 ## Direction 2 "Warm Depth" — Design decisions (locked)
 
 ### ProfilePanel
+
 - Avatar: **rounded square** (10px radius), `surface-3` bg, `brand-300` initials
 - Profile wrapped in **inner card**: `surface-1` bg, `border-2` border, `10px` radius
 - Sign out: inside card footer with `border-1` top divider, `text-5` colour (very muted)
 - Plan badge: Free = `text-5` on `surface-3`; Premium = `brand-300` on brand-alpha
 
 ### ScorePanel
+
 - **Two-zone layout**: content zone (variable) + persistent footer (always rendered)
 - Empty state icon: `44×44` rounded square, `8%` brand opacity bg, `20%` brand border
 - Footer button states:
@@ -109,15 +114,16 @@ All three trigger `scheduleDetection()` — a 1 000 ms debounced call to `runDet
   - Scored → quiet `rescoreBtn` text link
 
 ### Token corrections
+
 The following CSS variables were previously undefined (resolved to nothing). They are now aliased in `tokens.css`:
 
-| Alias | Resolves to |
-|---|---|
+| Alias                 | Resolves to                |
+| --------------------- | -------------------------- |
 | `--vt-surface-raised` | `--vt-surface-1` (#0A0A0A) |
-| `--vt-surface-border` | `--vt-border-2` (#2A2A2A) |
-| `--vt-text-primary` | `--vt-text-1` (#FFFFFF) |
-| `--vt-text-secondary` | `--vt-text-3` (#A1A1AA) |
-| `--vt-text-disabled` | `--vt-text-5` (#52525B) |
+| `--vt-surface-border` | `--vt-border-2` (#2A2A2A)  |
+| `--vt-text-primary`   | `--vt-text-1` (#FFFFFF)    |
+| `--vt-text-secondary` | `--vt-text-3` (#A1A1AA)    |
+| `--vt-text-disabled`  | `--vt-text-5` (#52525B)    |
 
 **Rule:** New components must use Atlas primitives directly (`--vt-surface-1`, `--vt-text-4`, etc.), not aliases. Aliases exist only for backward compatibility with existing files.
 
@@ -125,17 +131,17 @@ The following CSS variables were previously undefined (resolved to nothing). The
 
 ## D6 test results — all passed ✅
 
-| Test | Result |
-|---|---|
-| TS compile — `tsc --noEmit` | ✅ Zero errors |
-| Build — `vite build` (54 modules) | ✅ 3.15s |
-| Extension loads in Chrome (Remove + Load unpacked) | ✅ |
-| Side panel — Direction 2 profile card visible | ✅ Rounded-square avatar, inner card, footer sign-out |
-| Side panel — empty state on any page | ✅ Brand icon + ghost CTA button |
-| Content script console log on greenhouse.io | ✅ `[DVantage Content] Dispatcher ready | adapter: greenhouse` |
-| SPA nav debounce | ✅ Re-detection fires ~1s after navigation |
-| Auth (sign in / sign out / refresh) | ✅ D5 behaviour unchanged |
-| API fly logs — token mint/refresh/revoke | ✅ Clean |
+| Test                                               | Result                                                |
+| -------------------------------------------------- | ----------------------------------------------------- | -------------------- |
+| TS compile — `tsc --noEmit`                        | ✅ Zero errors                                        |
+| Build — `vite build` (54 modules)                  | ✅ 3.15s                                              |
+| Extension loads in Chrome (Remove + Load unpacked) | ✅                                                    |
+| Side panel — Direction 2 profile card visible      | ✅ Rounded-square avatar, inner card, footer sign-out |
+| Side panel — empty state on any page               | ✅ Brand icon + ghost CTA button                      |
+| Content script console log on greenhouse.io        | ✅ `[DVantage Content] Dispatcher ready               | adapter: greenhouse` |
+| SPA nav debounce                                   | ✅ Re-detection fires ~1s after navigation            |
+| Auth (sign in / sign out / refresh)                | ✅ D5 behaviour unchanged                             |
+| API fly logs — token mint/refresh/revoke           | ✅ Clean                                              |
 
 ---
 
@@ -152,32 +158,32 @@ Get-Content "apps\extension\src\shared\types.ts" -Raw
 
 ## Milestone status — UPDATED
 
-| # | Milestone | Status |
-|---|---|---|
-| M0–M5 | Phase 1 MVP | ✅ Complete |
-| M6 | UX Fix: ATS score timing | ✅ Complete |
-| M7 | UX Fix: Export source = optimizedData | ✅ Complete |
-| M8 | Stripe live webhook | 🔜 Open |
-| M9 | Extension D1: scaffold | ✅ Complete |
-| M10 | Extension D2: Auth shell | ✅ Complete |
-| M11 | Extension D3: Auth bridge (API + web) | ✅ Complete |
-| M12 | Extension D4: Auth bridge (delivery) | ✅ Complete |
-| M13 | Extension D5: Token expiry + refresh + profile display | ✅ Complete |
-| M14 | Extension D6: Content script architecture + Direction 2 UI | ✅ **Complete this session** |
-| **M15** | **Extension D7: Greenhouse + Lever real selectors** | 🔜 **NEXT** |
+| #       | Milestone                                                  | Status                       |
+| ------- | ---------------------------------------------------------- | ---------------------------- |
+| M0–M5   | Phase 1 MVP                                                | ✅ Complete                  |
+| M6      | UX Fix: ATS score timing                                   | ✅ Complete                  |
+| M7      | UX Fix: Export source = optimizedData                      | ✅ Complete                  |
+| M8      | Stripe live webhook                                        | 🔜 Open                      |
+| M9      | Extension D1: scaffold                                     | ✅ Complete                  |
+| M10     | Extension D2: Auth shell                                   | ✅ Complete                  |
+| M11     | Extension D3: Auth bridge (API + web)                      | ✅ Complete                  |
+| M12     | Extension D4: Auth bridge (delivery)                       | ✅ Complete                  |
+| M13     | Extension D5: Token expiry + refresh + profile display     | ✅ Complete                  |
+| M14     | Extension D6: Content script architecture + Direction 2 UI | ✅ **Complete this session** |
+| **M15** | **Extension D7: Greenhouse + Lever real selectors**        | 🔜 **NEXT**                  |
 
 ---
 
 ## Production infrastructure — current state
 
-| Service | URL | Status |
-|---|---|---|
-| API | `https://api.dvantage.ca` | ✅ Live — new machine (18:37 UTC) |
-| Web | `https://dvantage.ca` | ✅ Live — Vercel auto-deploy from main |
-| Database | Fly Postgres `dvantage-db` | ✅ Migrations 0000–0008 applied |
-| Redis | Upstash `winning-cat-124272.upstash.io` | ✅ Live |
-| Storage | Cloudflare R2 `dvantage-resumes-prod` | ✅ Live |
-| Extension | Chrome — unpacked dev build | ✅ Direction 2 UI verified |
+| Service   | URL                                     | Status                                 |
+| --------- | --------------------------------------- | -------------------------------------- |
+| API       | `https://api.dvantage.ca`               | ✅ Live — new machine (18:37 UTC)      |
+| Web       | `https://dvantage.ca`                   | ✅ Live — Vercel auto-deploy from main |
+| Database  | Fly Postgres `dvantage-db`              | ✅ Migrations 0000–0008 applied        |
+| Redis     | Upstash `winning-cat-124272.upstash.io` | ✅ Live                                |
+| Storage   | Cloudflare R2 `dvantage-resumes-prod`   | ✅ Live                                |
+| Extension | Chrome — unpacked dev build             | ✅ Direction 2 UI verified             |
 
 ---
 
@@ -210,14 +216,17 @@ Decisions 1–79 from previous sessions remain fully locked.
 Per the spec, D7 implements real DOM selectors for the two cleanest job boards:
 
 **Greenhouse** (`boards.greenhouse.io`, `job-boards.greenhouse.io`):
+
 - `detectJD()` — extract title, company, location, description from stable semantic selectors
 - Server-side HTML — no SPA concerns; single `runDetection()` on load is sufficient
 
 **Lever** (`jobs.lever.co`):
+
 - `detectJD()` — extract title, company, location, description
 - Server-side HTML — same as Greenhouse
 
 Both adapters must return a valid `ExtractedJob`. Once working, navigating to a Greenhouse or Lever job posting will:
+
 1. Fire `JOB_DETECTED` → write `ACTIVE_JOB`
 2. `ScorePanel` transitions from empty state → job header card
 3. "Score against my resume" button activates (primary style)
@@ -280,4 +289,4 @@ pnpm --filter @vantage/extension build   # Build extension (always use build, no
 
 ---
 
-*D6 complete. The content script architecture is wired end-to-end. The panel knows what to do when a job is detected — it just can't detect one yet. D7 changes that: real Greenhouse and Lever selectors, and the full score flow fires for the first time on a live job posting.*
+_D6 complete. The content script architecture is wired end-to-end. The panel knows what to do when a job is detected — it just can't detect one yet. D7 changes that: real Greenhouse and Lever selectors, and the full score flow fires for the first time on a live job posting._

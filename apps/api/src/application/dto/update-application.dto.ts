@@ -2,17 +2,9 @@ import { z } from 'zod';
 
 export const updateApplicationSchema = z
   .object({
-    company: z
-      .string()
-      .min(1, 'Company cannot be empty.')
-      .max(200)
-      .optional(),
+    company: z.string().min(1, 'Company cannot be empty.').max(200).optional(),
 
-    role: z
-      .string()
-      .min(1, 'Role cannot be empty.')
-      .max(200)
-      .optional(),
+    role: z.string().min(1, 'Role cannot be empty.').max(200).optional(),
 
     location: z.string().max(200).nullable().optional(),
 
@@ -30,9 +22,8 @@ export const updateApplicationSchema = z
     /** Pass null to unlink from a job description. */
     jobDescriptionId: z.string().nullable().optional(),
   })
-  .refine(
-    (data) => Object.keys(data).length > 0,
-    { message: 'At least one field must be provided.' },
-  );
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided.',
+  });
 
 export type UpdateApplicationDto = z.infer<typeof updateApplicationSchema>;

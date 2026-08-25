@@ -9,6 +9,7 @@ import {
   Req,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
+import { SkipThrottle } from '@nestjs/throttler';
 import Stripe from 'stripe';
 import { Public } from '../auth/decorators/public.decorator';
 import { SubscriptionService } from './subscription.service';
@@ -24,6 +25,19 @@ import { SubscriptionService } from './subscription.service';
  *
  * All event handlers are idempotent — upsert on stripe_subscription_id.
  */
+/**
+ * NEVER throttle the Stripe webhook.
+ *
+ * Stripe delivers retries in bursts and all of them arrive from a small set of
+ * source IPs, so a shared per-IP bucket is exactly the wrong shape here. A 429
+ * is not a retry signal Stripe backs off from gracefully — and combined with
+ * the handler already swallowing errors and returning 200, a throttled event is
+ * an event lost permanently, with no reconciliation job to catch it.
+ *
+ * Abuse protection on this route comes from signature verification, not rate
+ * limiting: an unsigned request is rejected before any work happens.
+ */
+@SkipThrottle()
 @Controller('stripe')
 export class StripeWebhookController {
   private readonly logger = new Logger(StripeWebhookController.name);
@@ -96,9 +110,7 @@ export class StripeWebhookController {
         case 'invoice.payment_failed':
           // Stripe automatically retries and will send subscription.updated
           // with status='past_due'. Log for visibility; no action needed here.
-          this.logger.warn(
-            `Payment failed — invoice=${(event.data.object as Stripe.Invoice).id}`,
-          );
+          this.logger.warn(`Payment failed — invoice=${(event.data.object as Stripe.Invoice).id}`);
           break;
 
         default:

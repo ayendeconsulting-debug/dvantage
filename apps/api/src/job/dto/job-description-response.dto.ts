@@ -3,10 +3,10 @@
 // ---------------------------------------------------------------------------
 
 export interface JobDescriptionListItemDto {
-  id:        string;
-  title:     string | null;
-  company:   string | null;
-  url:       string | null;
+  id: string;
+  title: string | null;
+  company: string | null;
+  url: string | null;
   /** Character count of the content — lets UI show "2 400 characters" without the payload. */
   contentLength: number;
   createdAt: string; // ISO 8601
@@ -18,10 +18,10 @@ export interface JobDescriptionListItemDto {
 // ---------------------------------------------------------------------------
 
 export interface JobDescriptionListResponseDto {
-  data:       JobDescriptionListItemDto[];
+  data: JobDescriptionListItemDto[];
   /** Opaque cursor for the next page. Null if this is the last page. */
   nextCursor: string | null;
-  total:      number;
+  total: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -29,11 +29,11 @@ export interface JobDescriptionListResponseDto {
 // ---------------------------------------------------------------------------
 
 export interface JobDescriptionDetailDto {
-  id:        string;
-  title:     string | null;
-  company:   string | null;
-  url:       string | null;
-  content:   string;
+  id: string;
+  title: string | null;
+  company: string | null;
+  url: string | null;
+  content: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,5 +44,5 @@ export interface JobDescriptionDetailDto {
 
 export interface DeleteJobDescriptionResponseDto {
   jobDescriptionId: string;
-  deleted:          true;
+  deleted: true;
 }

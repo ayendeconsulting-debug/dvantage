@@ -16,19 +16,17 @@
 //   background/message-router.ts. See that file for the full routing table.
 // ---------------------------------------------------------------------------
 
-import { STORAGE_KEYS, API_BASE }                                     from '../shared/constants';
+import { STORAGE_KEYS, API_BASE } from '../shared/constants';
 import type { ExternalToBackground, ExternalAck, ContentToBackground } from '../shared/messages';
-import { routeMessage }                                                from './message-router';
+import { routeMessage } from './message-router';
 
 // ---------------------------------------------------------------------------
 // Side panel — open on toolbar action click
 // ---------------------------------------------------------------------------
 
-chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((err: unknown) => {
-    console.error('[DVantage SW] sidePanel.setPanelBehavior failed:', err);
-  });
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((err: unknown) => {
+  console.error('[DVantage SW] sidePanel.setPanelBehavior failed:', err);
+});
 
 chrome.runtime.onInstalled.addListener((details) => {
   console.log(
@@ -43,28 +41,31 @@ chrome.runtime.onInstalled.addListener((details) => {
 // Shared constants
 // ---------------------------------------------------------------------------
 
-const ALLOWED_ORIGIN  = 'https://dvantage.ca' as const;
-const DONE_URL_SUFFIX = '/extension/done'      as const;
-const EXCHANGE_URL    = `${API_BASE}/v1/extension/auth/exchange` as const;
-const REFRESH_URL     = `${API_BASE}/v1/extension/auth/refresh`  as const;
+const ALLOWED_ORIGIN = 'https://dvantage.ca' as const;
+const DONE_URL_SUFFIX = '/extension/done' as const;
+const EXCHANGE_URL = `${API_BASE}/v1/extension/auth/exchange` as const;
+const REFRESH_URL = `${API_BASE}/v1/extension/auth/refresh` as const;
 
 // ---------------------------------------------------------------------------
 // Shared storage helpers
 // ---------------------------------------------------------------------------
 
 function storeExtensionToken(
-  token:        string,
-  expiresAt:    string,
+  token: string,
+  expiresAt: string,
   sendResponse: (response: ExternalAck) => void,
 ): void {
   chrome.storage.local.set(
     {
-      [STORAGE_KEYS.EXTENSION_TOKEN]:  token,
+      [STORAGE_KEYS.EXTENSION_TOKEN]: token,
       [STORAGE_KEYS.TOKEN_EXPIRES_AT]: expiresAt,
     },
     () => {
       if (chrome.runtime.lastError) {
-        console.error('[DVantage SW] Token storage write failed:', chrome.runtime.lastError.message);
+        console.error(
+          '[DVantage SW] Token storage write failed:',
+          chrome.runtime.lastError.message,
+        );
         sendResponse({ ok: false, error: 'storage_write_failed' });
         return;
       }
@@ -76,12 +77,9 @@ function storeExtensionToken(
 
 /** Clear both token keys — called on 401 from refresh or on explicit revoke. */
 function clearTokenStorage(reason: string): void {
-  chrome.storage.local.remove(
-    [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
-    () => {
-      console.log('[DVantage SW] Token storage cleared —', reason);
-    },
-  );
+  chrome.storage.local.remove([STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT], () => {
+    console.log('[DVantage SW] Token storage cleared —', reason);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -99,8 +97,12 @@ function isExtTokenMessage(msg: unknown): msg is ExternalToBackground {
   const payload = m['payload'];
   if (typeof payload !== 'object' || payload === null) return false;
   const p = payload as Record<string, unknown>;
-  return typeof p['token'] === 'string' && p['token'].length > 0 &&
-         typeof p['expiresAt'] === 'string' && p['expiresAt'].length > 0;
+  return (
+    typeof p['token'] === 'string' &&
+    p['token'].length > 0 &&
+    typeof p['expiresAt'] === 'string' &&
+    p['expiresAt'].length > 0
+  );
 }
 
 function isAuthBridgeMessage(
@@ -112,8 +114,12 @@ function isAuthBridgeMessage(
   const payload = m['payload'];
   if (typeof payload !== 'object' || payload === null) return false;
   const p = payload as Record<string, unknown>;
-  return typeof p['token'] === 'string' && p['token'].length > 0 &&
-         typeof p['expiresAt'] === 'string' && p['expiresAt'].length > 0;
+  return (
+    typeof p['token'] === 'string' &&
+    p['token'].length > 0 &&
+    typeof p['expiresAt'] === 'string' &&
+    p['expiresAt'].length > 0
+  );
 }
 
 function isRequestRefresh(msg: unknown): boolean {
@@ -139,10 +145,10 @@ chrome.tabs.onUpdated.addListener(
     void (async (): Promise<void> => {
       try {
         const response = await fetch(EXCHANGE_URL, {
-          method:      'POST',
+          method: 'POST',
           credentials: 'include',
-          headers:     { 'Content-Type': 'application/json' },
-          body:        '{}',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
         });
 
         if (!response.ok) {
@@ -150,11 +156,12 @@ chrome.tabs.onUpdated.addListener(
           return;
         }
 
-        const data = await response.json() as unknown;
+        const data = (await response.json()) as unknown;
 
         if (
-          typeof data !== 'object' || data === null ||
-          typeof (data as Record<string, unknown>)['token']     !== 'string' ||
+          typeof data !== 'object' ||
+          data === null ||
+          typeof (data as Record<string, unknown>)['token'] !== 'string' ||
           typeof (data as Record<string, unknown>)['expiresAt'] !== 'string'
         ) {
           console.error('[DVantage SW] Invalid exchange response shape:', data);
@@ -199,11 +206,10 @@ chrome.tabs.onUpdated.addListener(
 
 chrome.runtime.onMessage.addListener(
   (
-    message:      unknown,
-    sender:       chrome.runtime.MessageSender,
+    message: unknown,
+    sender: chrome.runtime.MessageSender,
     sendResponse: (response: unknown) => void,
   ): true | undefined => {
-
     // ── 1. AUTH_BRIDGE_TOKEN ───────────────────────────────────────────────
     if (isAuthBridgeMessage(message)) {
       // Auth bridge (inert under current architecture but kept).
@@ -240,11 +246,11 @@ chrome.runtime.onMessage.addListener(
 
         try {
           const response = await fetch(REFRESH_URL, {
-            method:  'POST',
+            method: 'POST',
             body: '{}',
             headers: {
-              'Content-Type':  'application/json',
-              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
             },
           });
 
@@ -261,10 +267,11 @@ chrome.runtime.onMessage.addListener(
             return;
           }
 
-          const data = await response.json() as unknown;
+          const data = (await response.json()) as unknown;
 
           if (
-            typeof data !== 'object' || data === null ||
+            typeof data !== 'object' ||
+            data === null ||
             typeof (data as Record<string, unknown>)['expiresAt'] !== 'string'
           ) {
             console.error('[DVantage SW] Invalid refresh response shape:', data);
@@ -275,18 +282,18 @@ chrome.runtime.onMessage.addListener(
           const { expiresAt } = data as { expiresAt: string };
 
           // Write new expiresAt — AuthGate.onChanged will re-evaluate.
-          chrome.storage.local.set(
-            { [STORAGE_KEYS.TOKEN_EXPIRES_AT]: expiresAt },
-            () => {
-              if (chrome.runtime.lastError) {
-                console.error('[DVantage SW] ExpiresAt write failed:', chrome.runtime.lastError.message);
-                sendResponse({ ok: false, error: 'storage_write_failed' });
-                return;
-              }
-              console.log('[DVantage SW] Token refreshed — new expiresAt:', expiresAt);
-              sendResponse({ ok: true, expiresAt });
-            },
-          );
+          chrome.storage.local.set({ [STORAGE_KEYS.TOKEN_EXPIRES_AT]: expiresAt }, () => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                '[DVantage SW] ExpiresAt write failed:',
+                chrome.runtime.lastError.message,
+              );
+              sendResponse({ ok: false, error: 'storage_write_failed' });
+              return;
+            }
+            console.log('[DVantage SW] Token refreshed — new expiresAt:', expiresAt);
+            sendResponse({ ok: true, expiresAt });
+          });
         } catch (err: unknown) {
           console.error('[DVantage SW] Refresh threw:', err);
           sendResponse({ ok: false, error: 'network_error' });
@@ -308,8 +315,8 @@ chrome.runtime.onMessage.addListener(
 
 chrome.runtime.onMessageExternal.addListener(
   (
-    message:      unknown,
-    sender:       chrome.runtime.MessageSender,
+    message: unknown,
+    sender: chrome.runtime.MessageSender,
     sendResponse: (response: ExternalAck) => void,
   ): true | undefined => {
     if (sender.origin !== ALLOWED_ORIGIN) {

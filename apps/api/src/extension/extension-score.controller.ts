@@ -19,13 +19,14 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ZodError } from 'zod';
 
-import { Public }                         from '../auth/decorators/public.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { ExtensionAuthGuard, CurrentExtensionToken } from './extension-auth.guard';
-import type { ExtensionToken }            from '@vantage/database';
-import { ExtensionScoreService }          from './extension-score.service';
-import { ExtensionScoreRequestSchema }    from './dto/extension-score-request.dto';
+import type { ExtensionToken } from '@vantage/database';
+import { ExtensionScoreService } from './extension-score.service';
+import { ExtensionScoreRequestSchema } from './dto/extension-score-request.dto';
 import type { ExtensionScoreResponseDto } from './dto/extension-score-response.dto';
 
 @Controller('extension')
@@ -55,6 +56,16 @@ export class ExtensionScoreController {
    *
    * No DB write — scores are ephemeral. D13 handles application capture.
    */
+  // Two synchronous Claude calls per request (AtsScorer runs extract-then-score).
+  // The global 10/s + 200/min buckets are far too generous for an endpoint that
+  // spends real money on every hit, so this route gets its own ceiling:
+  // 6 per minute is well above any human clicking "Score" and well below
+  // anything that could run up a bill.
+  //
+  // This is the request-rate ceiling. The monthly entitlement cap is enforced
+  // separately in ExtensionScoreService via assertCanScore/recordUsage —
+  // throttling limits burst, quota limits total. Both are needed.
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post('score')
   @HttpCode(HttpStatus.OK)
   async score(
@@ -66,9 +77,7 @@ export class ExtensionScoreController {
       dto = ExtensionScoreRequestSchema.parse(body);
     } catch (err) {
       if (err instanceof ZodError) {
-        throw new BadRequestException(
-          err.errors.map((e) => e.message).join('; '),
-        );
+        throw new BadRequestException(err.errors.map((e) => e.message).join('; '));
       }
       throw err;
     }

@@ -25,13 +25,9 @@
 // ---------------------------------------------------------------------------
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { uuidv7 }                      from 'uuidv7';
+import { uuidv7 } from 'uuidv7';
 
-import {
-  applications,
-  type DatabaseClient,
-  type ExtensionToken,
-} from '@vantage/database';
+import { applications, type DatabaseClient, type ExtensionToken } from '@vantage/database';
 
 import { DATABASE_CLIENT } from '../database/database.module';
 import type {
@@ -47,9 +43,7 @@ import type {
 export class ExtensionCaptureService {
   private readonly logger = new Logger(ExtensionCaptureService.name);
 
-  constructor(
-    @Inject(DATABASE_CLIENT) private readonly db: DatabaseClient,
-  ) {}
+  constructor(@Inject(DATABASE_CLIENT) private readonly db: DatabaseClient) {}
 
   /**
    * Insert an application capture row, skipping silently on duplicate.
@@ -66,16 +60,16 @@ export class ExtensionCaptureService {
    */
   async capture(
     token: ExtensionToken,
-    dto:   CaptureApplicationDto,
+    dto: CaptureApplicationDto,
   ): Promise<CaptureApplicationResponseDto> {
-    const userId  = token.userId;
-    const id      = uuidv7();
-    const now     = new Date();
+    const userId = token.userId;
+    const id = uuidv7();
+    const now = new Date();
 
     // Normalise nullable fields — fall back to placeholder strings so the
     // NOT NULL DB constraint is satisfied while keeping rows identifiable.
     const company = dto.company?.trim() || 'Unknown Company';
-    const role    = dto.role?.trim()    || 'Unknown Role';
+    const role = dto.role?.trim() || 'Unknown Role';
 
     // ISO date — YYYY-MM-DD in UTC. SQL date column stores date only.
     const appliedDate = now.toISOString().slice(0, 10);
@@ -91,23 +85,23 @@ export class ExtensionCaptureService {
       .values({
         id,
         userId,
-        jobDescriptionId: null,   // future: match sourceUrl → job_descriptions
+        jobDescriptionId: null, // future: match sourceUrl → job_descriptions
         company,
         role,
-        location:   null,
-        status:     'applied',
+        location: null,
+        status: 'applied',
         appliedDate,
-        sourceUrl:  dto.pageUrl,  // D13: dedup key + dashboard deep-link
+        sourceUrl: dto.pageUrl, // D13: dedup key + dashboard deep-link
         notes,
-        createdAt:  now,
-        updatedAt:  now,
+        createdAt: now,
+        updatedAt: now,
       })
       .onConflictDoNothing()
       .returning({
-        id:          applications.id,
-        company:     applications.company,
-        role:        applications.role,
-        status:      applications.status,
+        id: applications.id,
+        company: applications.company,
+        role: applications.role,
+        status: applications.status,
         appliedDate: applications.appliedDate,
       });
 
@@ -123,14 +117,14 @@ export class ExtensionCaptureService {
 
     this.logger.log(
       `Extension capture complete — user=${userId} id=${inserted.id} ` +
-      `company="${company}" role="${role}" date=${appliedDate}`,
+        `company="${company}" role="${role}" date=${appliedDate}`,
     );
 
     return {
-      id:          inserted.id,
-      company:     inserted.company,
-      role:        inserted.role,
-      status:      'applied',
+      id: inserted.id,
+      company: inserted.company,
+      role: inserted.role,
+      status: 'applied',
       appliedDate: inserted.appliedDate,
     };
   }
