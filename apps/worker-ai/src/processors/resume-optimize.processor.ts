@@ -141,7 +141,7 @@ export class ResumeOptimizeProcessor {
       .set({
         optimizationStatus: 'complete',
         optimizedStructuredData: optimizedData,
-        optimizationChangeLog: changeLog as unknown as OptimizationChange[],
+        optimizationChangeLog: changeLog,
         optimizationError: null,
         // Post-optimization re-score
         optimizedOverallScore: optimizedAtsScore.overall,

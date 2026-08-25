@@ -19,7 +19,7 @@ export class ParsingService {
     private readonly txtStrategy: TxtStrategy,
     private readonly virusScan: VirusScanService,
   ) {
-    this.blockOnUnknownScan = process.env['VIRUS_SCAN_BLOCK_UNKNOWN'] === 'true';
+    this.blockOnUnknownScan = process.env.VIRUS_SCAN_BLOCK_UNKNOWN === 'true';
   }
 
   async parse(buffer: Buffer, mimeType: string, fileName: string): Promise<ParseResult> {
