@@ -6,10 +6,7 @@ import './otel';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger, VersioningType } from '@nestjs/common';
-import {
-  FastifyAdapter,
-  type NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as Sentry from '@sentry/node';
@@ -35,24 +32,41 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      logger:     false,
-      trustProxy: true,
+      logger: false,
+      // trustProxy is a HOP COUNT, not a boolean.
+      //
+      // `true` trusts the entire X-Forwarded-For chain and takes the leftmost
+      // entry — which is whatever the client sent. That made request.ip fully
+      // attacker-controlled: sessions.ip_address (captured "for security
+      // audit") was fabricated, and ThrottlerGuard's default per-IP tracker
+      // would have been bypassable by rotating a header value.
+      //
+      // `1` trusts exactly one hop — the Fly proxy in front of us — so
+      // request.ip is the address Fly observed and nothing upstream of it.
+      // If another proxy is ever added in front of Fly, increment this.
+      trustProxy: 1,
+      // Cap the request body. Fastify's 1MB default applied to every JSON
+      // endpoint; combined with an uncapped jobDescription that was ~250k
+      // input tokens of Claude spend per request. Multipart uploads are
+      // bounded separately by @fastify/multipart below.
+      bodyLimit: 256 * 1024, // 256 KB — jobDescription caps at 50k chars
     }),
     { bufferLogs: true },
   );
 
   // -- CORS ------------------------------------------------------------------
-  const appUrl    = process.env['APP_URL'] ?? 'http://localhost:3000';
+  const appUrl = process.env['APP_URL'] ?? 'http://localhost:3000';
   const wwwAppUrl = appUrl.replace('https://', 'https://www.');
 
   const productionOrigins = Array.from(new Set([appUrl, wwwAppUrl]));
 
   app.enableCors({
-    origin: process.env['NODE_ENV'] === 'production'
-      ? productionOrigins
-      : [...productionOrigins, 'http://localhost:3000', 'http://localhost:3001'],
-    credentials:    true,
-    methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    origin:
+      process.env['NODE_ENV'] === 'production'
+        ? productionOrigins
+        : [...productionOrigins, 'http://localhost:3000', 'http://localhost:3001'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'Idempotency-Key'],
   });
 
@@ -115,7 +129,7 @@ async function bootstrap(): Promise<void> {
     {
       limits: {
         fileSize: 10 * 1024 * 1024, // 10 MB
-        files:    1,
+        files: 1,
       },
     },
   );

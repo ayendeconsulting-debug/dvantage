@@ -17,10 +17,26 @@ import { SubscriptionService } from './subscription.service';
 // Request schema
 // ---------------------------------------------------------------------------
 
+/**
+ * Checkout request.
+ *
+ * `priceId` is NOT accepted. It used to be — taken from the request body and
+ * passed straight into Stripe's line_items, while STRIPE_PRICE_ID_PREMIUM_*
+ * sat in config with zero call sites. Since handleCheckoutCompleted grants
+ * `plan: 'premium'` regardless of what was actually purchased, any
+ * authenticated user could post any recurring price ID from the Stripe account
+ * — a legacy rate, a partner discount, a $1 internal test price — and receive
+ * full Premium. Price IDs are not secret; they appear in checkout URLs and
+ * survive in old page sources.
+ *
+ * The client now names the BILLING INTERVAL it wants; the server decides what
+ * that costs.
+ */
 const checkoutBodySchema = z.object({
-  priceId: z.string().min(1, 'priceId is required'),
-  // interval is informational only — the actual price is defined in Stripe
-  interval: z.enum(['monthly', 'annual']).optional(),
+  interval: z.enum(['monthly', 'annual'], {
+    required_error: 'interval is required',
+    invalid_type_error: "interval must be 'monthly' or 'annual'",
+  }),
 });
 
 @Controller('subscription')
@@ -52,17 +68,14 @@ export class SubscriptionController {
    */
   @Post('checkout')
   @HttpCode(HttpStatus.CREATED)
-  async createCheckout(
-    @CurrentUser() user: AuthUser,
-    @Body() body: unknown,
-  ) {
+  async createCheckout(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const result = checkoutBodySchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException(
-        result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; '),
+        result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
       );
     }
-    return this.subscriptionService.createCheckoutSession(user, result.data.priceId);
+    return this.subscriptionService.createCheckoutSession(user, result.data.interval);
   }
 
   // ---------------------------------------------------------------------------

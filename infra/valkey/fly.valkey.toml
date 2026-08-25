@@ -1,0 +1,57 @@
+# =============================================================================
+# D'Vantage — Valkey (Redis-compatible) cache + BullMQ broker
+# infra/valkey/fly.valkey.toml
+#
+# Deploy:  fly deploy --config infra/valkey/fly.valkey.toml --app dvantage-valkey
+#
+# PRIVATE NETWORK ONLY. There is deliberately no public IP and no [[services]]
+# block. Consumers reach it over Fly 6PN at:
+#
+#     dvantage-valkey.internal:6379
+#
+# .internal resolves to the machine's private IPv6 directly, with no Fly Proxy
+# in the path. That is why no service definition is needed — a [[services]]
+# block would require a [[services.ports]] section and a processes reference,
+# and buys nothing for a single-node cache on a private network.
+#
+# Replaces the Upstash free-tier database archived after 30 days of inactivity
+# on 2026-08-24, which took the API down with it. See README.md.
+# =============================================================================
+
+app            = 'dvantage-valkey'
+primary_region = 'yyz'          # Toronto — must match dvantage-api (PIPEDA)
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+# Official upstream image — no Dockerfile to build or maintain.
+[build]
+  image = 'valkey/valkey:8-alpine'
+
+# ── Persistence ───────────────────────────────────────────────────────────────
+# AOF lives here. Without a volume, a machine restart drops every queued BullMQ
+# job and every active session.
+[[mounts]]
+  source      = 'valkey_data'
+  destination = '/data'
+
+# ── Process ───────────────────────────────────────────────────────────────────
+# Wrapped in `sh -c` on purpose: Fly execs the process command directly without
+# a shell, so a bare `--requirepass $VALKEY_PASSWORD` would pass the literal
+# string "$VALKEY_PASSWORD" as the password. The shell is what expands it.
+#
+# maxmemory-policy MUST be noeviction. Under allkeys-lru (the setting in
+# docker-compose.yml) Valkey silently evicts BullMQ job hashes and wait/active
+# lists under memory pressure — jobs vanish with no error, no failure event and
+# no DB status change. Audit finding REL-5.
+#
+# noeviction means a full Valkey REFUSES writes rather than evicting, so watch
+# headroom: `valkey-cli info memory`. Bump to a 512mb machine before used_memory
+# reaches ~80% of maxmemory.
+[processes]
+  app = "sh -c 'exec valkey-server --requirepass \"$VALKEY_PASSWORD\" --maxmemory 200mb --maxmemory-policy noeviction --appendonly yes --appendfsync everysec --dir /data'"
+
+# ── Machine sizing ────────────────────────────────────────────────────────────
+# 256MB shared-cpu-1x ≈ $2.02/mo + $0.15/mo for the 1GB volume.
+[[vm]]
+  cpu_kind = 'shared'
+  cpus     = 1
+  memory   = '256mb'
