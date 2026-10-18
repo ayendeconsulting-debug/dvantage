@@ -29,34 +29,32 @@
 // ---------------------------------------------------------------------------
 
 import { Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { useRouter, useSearchParams }                                  from 'next/navigation';
-import { useSession }                                                   from '@/lib/auth-client';
-import { exchangeExtensionToken }                                       from '@/lib/api/extension';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useSession } from '@/lib/auth-client';
+import { exchangeExtensionToken } from '@/lib/api/extension';
 
 // ---------------------------------------------------------------------------
 // Page state machine
 // ---------------------------------------------------------------------------
 
 type PageState =
-  | 'checking'    // Session still loading
+  | 'checking' // Session still loading
   | 'redirecting' // Not logged in — going to /auth/sign-in
-  | 'exchanging'  // Calling POST /v1/extension/auth/exchange
-  | 'sending'     // Setting handoff cookie
-  | 'success'     // Cookie set — BG SW will pick it up — closing tab
+  | 'exchanging' // Calling POST /v1/extension/auth/exchange
+  | 'sending' // Setting handoff cookie
+  | 'success' // Cookie set — BG SW will pick it up — closing tab
   | 'error';
 
 const STATUS_LABEL: Record<PageState, string> = {
-  checking:    'Loading\u2026',
+  checking: 'Loading\u2026',
   redirecting: 'Redirecting to sign in\u2026',
-  exchanging:  'Connecting your extension\u2026',
-  sending:     'Finalising connection\u2026',
-  success:     'Connected! Closing this tab\u2026',
-  error:       'Something went wrong',
+  exchanging: 'Connecting your extension\u2026',
+  sending: 'Finalising connection\u2026',
+  success: 'Connected! Closing this tab\u2026',
+  error: 'Something went wrong',
 };
 
-const LOADING_STATES = new Set<PageState>([
-  'checking', 'redirecting', 'exchanging', 'sending',
-]);
+const LOADING_STATES = new Set<PageState>(['checking', 'redirecting', 'exchanging', 'sending']);
 
 // ---------------------------------------------------------------------------
 // Shared mark
@@ -64,11 +62,22 @@ const LOADING_STATES = new Set<PageState>([
 
 function DVantageMark() {
   return (
-    <svg viewBox="0 0 32 24" width="40" height="30" fill="none"
-      xmlns="http://www.w3.org/2000/svg" aria-label="D\u2019Vantage"
-      style={{ marginBottom: '24px', flexShrink: 0 }}>
-      <path d="M 2 20 L 11 4 L 30 20" stroke="var(--vt-brand-500)"
-        strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter" />
+    <svg
+      viewBox="0 0 32 24"
+      width="40"
+      height="30"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label="D\u2019Vantage"
+      style={{ marginBottom: '24px', flexShrink: 0 }}
+    >
+      <path
+        d="M 2 20 L 11 4 L 30 20"
+        stroke="var(--vt-brand-500)"
+        strokeWidth="3"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+      />
     </svg>
   );
 }
@@ -89,12 +98,12 @@ function LoadingFallback() {
 // ---------------------------------------------------------------------------
 
 function ExtensionAuthContent() {
-  const router       = useRouter();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, isPending } = useSession();
 
   const [pageState, setPageState] = useState<PageState>('checking');
-  const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const initiated = useRef(false);
 
   const returnParam = searchParams.get('return') ?? '';
@@ -102,18 +111,20 @@ function ExtensionAuthContent() {
     try {
       const url = new URL(returnParam);
       if (url.protocol === 'chrome-extension:') return url.hostname;
-    } catch { /* malformed */ }
+    } catch {
+      /* malformed */
+    }
     return null;
   })();
 
   useEffect(() => {
-    if (isPending)         return;
+    if (isPending) return;
     if (initiated.current) return;
     initiated.current = true;
 
     if (!session) {
       setPageState('redirecting');
-      const nextPath   = `/extension/auth?return=${encodeURIComponent(returnParam)}`;
+      const nextPath = `/extension/auth?return=${encodeURIComponent(returnParam)}`;
       const signInPath = `/auth/sign-in?callbackURL=${encodeURIComponent(nextPath)}`;
       router.replace(signInPath);
       return;
@@ -121,12 +132,14 @@ function ExtensionAuthContent() {
 
     if (!extensionId) {
       setPageState('error');
-      setErrorMsg('Invalid extension URL. Please close this tab and try signing in from the D\u2019Vantage extension again.');
+      setErrorMsg(
+        'Invalid extension URL. Please close this tab and try signing in from the D\u2019Vantage extension again.',
+      );
       return;
     }
 
     void runBridge();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPending]);
 
   // ── Bridge: exchange → cookie handoff ────────────────────────────────────
@@ -141,18 +154,17 @@ function ExtensionAuthContent() {
     if (!extensionId) return;
     setPageState('exchanging');
 
-    let token:     string;
+    let token: string;
     let expiresAt: string;
 
     try {
       const result = await exchangeExtensionToken();
-      token     = result.token;
+      token = result.token;
       expiresAt = result.expiresAt;
     } catch (err) {
       setPageState('error');
       setErrorMsg(
-        (err as Error).message ??
-        'Couldn\u2019t connect to D\u2019Vantage. Please try again.',
+        (err as Error).message ?? 'Couldn\u2019t connect to D\u2019Vantage. Please try again.',
       );
       return;
     }
@@ -173,7 +185,9 @@ function ExtensionAuthContent() {
     setPageState('success');
     // chrome.cookies.onChanged in the BG SW fires synchronously with the
     // cookie set — storage write completes independently of this tab.
-    setTimeout(() => { window.close(); }, 1_500);
+    setTimeout(() => {
+      window.close();
+    }, 1_500);
   }
 
   function handleRetry(): void {
@@ -199,8 +213,13 @@ function ExtensionAuthContent() {
         <div style={{ marginBottom: '16px' }} aria-hidden="true">
           <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
             <circle cx="12" cy="12" r="11" stroke="var(--vt-status-success)" strokeWidth="1.5" />
-            <path d="M7.5 12l3 3 6-6.5" stroke="var(--vt-status-success)"
-              strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M7.5 12l3 3 6-6.5"
+              stroke="var(--vt-status-success)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </div>
       )}
@@ -209,17 +228,19 @@ function ExtensionAuthContent() {
         <div style={{ marginBottom: '16px' }} aria-hidden="true">
           <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
             <circle cx="12" cy="12" r="11" stroke="var(--vt-status-danger)" strokeWidth="1.5" />
-            <path d="M12 8v5M12 15.5h.01" stroke="var(--vt-status-danger)"
-              strokeWidth="1.5" strokeLinecap="round" />
+            <path
+              d="M12 8v5M12 15.5h.01"
+              stroke="var(--vt-status-danger)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
         </div>
       )}
 
       <p style={styles.statusLabel}>{STATUS_LABEL[pageState]}</p>
 
-      {pageState === 'error' && errorMsg !== null && (
-        <p style={styles.errorDetail}>{errorMsg}</p>
-      )}
+      {pageState === 'error' && errorMsg !== null && <p style={styles.errorDetail}>{errorMsg}</p>}
 
       {pageState === 'error' && extensionId !== null && (
         <button type="button" style={styles.retryButton} onClick={handleRetry}>
@@ -248,30 +269,52 @@ export default function ExtensionAuthPage() {
 
 const styles = {
   page: {
-    minHeight: '100vh', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center',
-    padding: '40px 24px', background: 'var(--vt-surface-0)',
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '40px 24px',
+    background: 'var(--vt-surface-0)',
   },
   spinner: {
-    width: '28px', height: '28px', borderRadius: '50%',
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
     border: '2.5px solid var(--vt-surface-border)',
     borderTopColor: 'var(--vt-brand-500)',
     animation: 'vt-ext-auth-spin 0.8s linear infinite',
-    marginBottom: '20px', flexShrink: 0,
+    marginBottom: '20px',
+    flexShrink: 0,
   },
   statusLabel: {
-    fontFamily: 'var(--vt-font-body)', fontSize: '14px', fontWeight: 500,
-    color: 'var(--vt-text-body)', margin: '0 0 8px', textAlign: 'center',
+    fontFamily: 'var(--vt-font-body)',
+    fontSize: '14px',
+    fontWeight: 500,
+    color: 'var(--vt-text-body)',
+    margin: '0 0 8px',
+    textAlign: 'center',
   },
   errorDetail: {
-    fontFamily: 'var(--vt-font-body)', fontSize: '13px',
-    color: 'var(--vt-text-muted)', margin: '0 0 24px',
-    textAlign: 'center', maxWidth: '360px', lineHeight: 1.55,
+    fontFamily: 'var(--vt-font-body)',
+    fontSize: '13px',
+    color: 'var(--vt-text-muted)',
+    margin: '0 0 24px',
+    textAlign: 'center',
+    maxWidth: '360px',
+    lineHeight: 1.55,
   },
   retryButton: {
-    display: 'inline-flex', alignItems: 'center', padding: '9px 22px',
-    background: 'var(--vt-brand-500)', border: 'none', borderRadius: '8px',
-    fontFamily: 'var(--vt-font-body)', fontSize: '13px', fontWeight: 500,
-    color: '#ffffff', cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '9px 22px',
+    background: 'var(--vt-brand-500)',
+    border: 'none',
+    borderRadius: '8px',
+    fontFamily: 'var(--vt-font-body)',
+    fontSize: '13px',
+    fontWeight: 500,
+    color: '#ffffff',
+    cursor: 'pointer',
   },
 } satisfies Record<string, CSSProperties>;

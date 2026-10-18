@@ -27,7 +27,7 @@
 // ---------------------------------------------------------------------------
 
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
-import { APP_BASE, STORAGE_KEYS }                                   from '../shared/constants';
+import { APP_BASE, STORAGE_KEYS } from '../shared/constants';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -55,7 +55,7 @@ interface AuthGateProps {
  * Returns the resolved auth state and whether a refresh should be triggered.
  */
 function evaluateToken(
-  token:     unknown,
+  token: unknown,
   expiresAt: unknown,
 ): { state: 'unauthenticated' | 'authenticated'; shouldRefresh: boolean } {
   // No token → unauthenticated immediately.
@@ -69,7 +69,7 @@ function evaluateToken(
     return { state: 'authenticated', shouldRefresh: true };
   }
 
-  const expiryMs   = Date.parse(expiresAt);
+  const expiryMs = Date.parse(expiresAt);
   const remainingMs = expiryMs - Date.now();
 
   // Expired → unauthenticated.
@@ -91,10 +91,7 @@ function evaluateToken(
  * Called when the token is expired or the BG SW receives a 401 on refresh.
  */
 function clearTokenStorage(): void {
-  chrome.storage.local.remove([
-    STORAGE_KEYS.EXTENSION_TOKEN,
-    STORAGE_KEYS.TOKEN_EXPIRES_AT,
-  ]);
+  chrome.storage.local.remove([STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT]);
 }
 
 /**
@@ -122,7 +119,7 @@ export default function AuthGate({ children }: AuthGateProps) {
     chrome.storage.local.get(
       [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
       (result) => {
-        const token     = result[STORAGE_KEYS.EXTENSION_TOKEN];
+        const token = result[STORAGE_KEYS.EXTENSION_TOKEN];
         const expiresAt = result[STORAGE_KEYS.TOKEN_EXPIRES_AT];
         const { state, shouldRefresh } = evaluateToken(token, expiresAt);
 
@@ -144,7 +141,7 @@ export default function AuthGate({ children }: AuthGateProps) {
     // Re-evaluates both keys on any EXTENSION_TOKEN change.
     function handleStorageChange(
       changes: Record<string, chrome.storage.StorageChange>,
-      area:    string,
+      area: string,
     ): void {
       if (area !== 'local') return;
       if (!(STORAGE_KEYS.EXTENSION_TOKEN in changes)) return;
@@ -161,7 +158,7 @@ export default function AuthGate({ children }: AuthGateProps) {
       chrome.storage.local.get(
         [STORAGE_KEYS.EXTENSION_TOKEN, STORAGE_KEYS.TOKEN_EXPIRES_AT],
         (result) => {
-          const token     = result[STORAGE_KEYS.EXTENSION_TOKEN];
+          const token = result[STORAGE_KEYS.EXTENSION_TOKEN];
           const expiresAt = result[STORAGE_KEYS.TOKEN_EXPIRES_AT];
           const { state, shouldRefresh } = evaluateToken(token, expiresAt);
           setAuthState(state);
@@ -171,10 +168,12 @@ export default function AuthGate({ children }: AuthGateProps) {
     }
 
     chrome.storage.onChanged.addListener(handleStorageChange);
-    return () => { chrome.storage.onChanged.removeListener(handleStorageChange); };
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
   }, []);
 
-  if (authState === 'checking')      return null;
+  if (authState === 'checking') return null;
   if (authState === 'authenticated') return <>{children}</>;
   return <SignInScreen />;
 }
@@ -186,7 +185,7 @@ export default function AuthGate({ children }: AuthGateProps) {
 function SignInScreen() {
   function handleSignIn(): void {
     const callbackUrl = '/extension/done';
-    const signInUrl   = `${APP_BASE}/auth/sign-in?callbackURL=${encodeURIComponent(callbackUrl)}`;
+    const signInUrl = `${APP_BASE}/auth/sign-in?callbackURL=${encodeURIComponent(callbackUrl)}`;
     chrome.tabs.create({ url: signInUrl });
   }
 
@@ -219,11 +218,7 @@ function SignInScreen() {
 
       <p style={styles.tagline}>From applied to interview.</p>
 
-      <button
-        type="button"
-        className="dvantage-btn-primary"
-        onClick={handleSignIn}
-      >
+      <button type="button" className="dvantage-btn-primary" onClick={handleSignIn}>
         Sign in to D&apos;Vantage
       </button>
     </div>
@@ -237,35 +232,35 @@ function SignInScreen() {
 const styles = {
   container: {
     backgroundColor: 'var(--vt-surface-0)',
-    minHeight:       '100vh',
-    display:         'flex',
-    flexDirection:   'column',
-    alignItems:      'center',
-    justifyContent:  'center',
-    padding:         '32px 24px',
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '32px 24px',
   },
   mark: {
     marginBottom: '20px',
-    flexShrink:   0,
+    flexShrink: 0,
   },
   wordmark: {
-    fontFamily:    "'Outfit', sans-serif",
-    fontSize:      '26px',
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: '26px',
     letterSpacing: '-0.03em',
-    lineHeight:    1,
-    marginBottom:  '12px',
-    userSelect:    'none',
+    lineHeight: 1,
+    marginBottom: '12px',
+    userSelect: 'none',
   },
-  wordmarkD:          { fontWeight: 900, color: 'var(--vt-brand-500)' },
-  wordmarkApostrophe: { fontWeight: 200, color: 'var(--vt-text-1)'    },
-  wordmarkVant:       { fontWeight: 900, color: 'var(--vt-text-1)'    },
-  wordmarkAge:        { fontWeight: 200, color: 'var(--vt-brand-400)' },
+  wordmarkD: { fontWeight: 900, color: 'var(--vt-brand-500)' },
+  wordmarkApostrophe: { fontWeight: 200, color: 'var(--vt-text-1)' },
+  wordmarkVant: { fontWeight: 900, color: 'var(--vt-text-1)' },
+  wordmarkAge: { fontWeight: 200, color: 'var(--vt-brand-400)' },
   tagline: {
-    fontFamily:    "'DM Sans', sans-serif",
-    fontSize:      '12px',
-    fontWeight:    400,
-    color:         'var(--vt-text-4)',
-    marginBottom:  '32px',
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '12px',
+    fontWeight: 400,
+    color: 'var(--vt-text-4)',
+    marginBottom: '32px',
     letterSpacing: '0.01em',
   },
 } satisfies Record<string, CSSProperties>;

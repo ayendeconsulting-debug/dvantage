@@ -1,6 +1,5 @@
 const API_BASE =
-  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
-  'http://localhost:3001';
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) || 'http://localhost:3001';
 
 // ---------------------------------------------------------------------------
 // Types — mirror of DashboardResponseDto on the API side

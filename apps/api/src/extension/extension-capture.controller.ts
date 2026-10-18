@@ -22,10 +22,10 @@ import {
 } from '@nestjs/common';
 import { ZodError } from 'zod';
 
-import { Public }                            from '../auth/decorators/public.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentExtensionToken, ExtensionAuthGuard } from './extension-auth.guard';
-import type { ExtensionToken }               from '@vantage/database';
-import { ExtensionCaptureService }           from './extension-capture.service';
+import type { ExtensionToken } from '@vantage/database';
+import { ExtensionCaptureService } from './extension-capture.service';
 import {
   CaptureApplicationSchema,
   type CaptureApplicationResponseDto,
@@ -61,9 +61,7 @@ export class ExtensionCaptureController {
       dto = CaptureApplicationSchema.parse(body);
     } catch (err) {
       if (err instanceof ZodError) {
-        throw new BadRequestException(
-          err.errors.map((e) => e.message).join('; '),
-        );
+        throw new BadRequestException(err.errors.map((e) => e.message).join('; '));
       }
       throw err;
     }

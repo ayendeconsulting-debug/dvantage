@@ -8,9 +8,7 @@ import { DATABASE_CLIENT } from '../../database/database.module';
 export class DatabaseHealthIndicator extends HealthIndicator {
   private readonly logger = new Logger(DatabaseHealthIndicator.name);
 
-  constructor(
-    @Inject(DATABASE_CLIENT) private readonly db: DatabaseClient,
-  ) {
+  constructor(@Inject(DATABASE_CLIENT) private readonly db: DatabaseClient) {
     super();
   }
 
@@ -25,10 +23,7 @@ export class DatabaseHealthIndicator extends HealthIndicator {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown database error';
       this.logger.error(`Database health check failed: ${message}`);
-      throw new HealthCheckError(
-        'Database check failed',
-        this.getStatus(key, false, { message }),
-      );
+      throw new HealthCheckError('Database check failed', this.getStatus(key, false, { message }));
     }
   }
 }

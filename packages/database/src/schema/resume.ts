@@ -1,12 +1,4 @@
-import {
-  integer,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-} from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './auth';
 
@@ -15,12 +7,12 @@ import { users } from './auth';
 // ---------------------------------------------------------------------------
 
 export const parseStatusEnum = pgEnum('parse_status', [
-  'pending',   // row created, presigned URL issued
+  'pending', // row created, presigned URL issued
   'uploading', // browser is uploading to storage (reserved for future progress tracking)
-  'uploaded',  // storage confirmed, job not yet queued
-  'parsing',   // worker-ai picked up the job
-  'complete',  // structured_data populated
-  'failed',    // parse_error populated
+  'uploaded', // storage confirmed, job not yet queued
+  'parsing', // worker-ai picked up the job
+  'complete', // structured_data populated
+  'failed', // parse_error populated
 ]);
 
 export type ParseStatus = (typeof parseStatusEnum.enumValues)[number];
@@ -80,13 +72,9 @@ export const resumeVersions = pgTable(
     /** Soft-delete. NULL = active. Non-null = logically deleted. */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
 
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     /**
@@ -104,5 +92,5 @@ export const resumeVersions = pgTable(
 // Inferred types — used across API and worker packages
 // ---------------------------------------------------------------------------
 
-export type ResumeVersion    = typeof resumeVersions.$inferSelect;
+export type ResumeVersion = typeof resumeVersions.$inferSelect;
 export type NewResumeVersion = typeof resumeVersions.$inferInsert;

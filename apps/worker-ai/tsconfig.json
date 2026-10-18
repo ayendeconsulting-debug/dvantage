@@ -8,13 +8,13 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "paths": {
-      "@vantage/config":     ["../../packages/config/src/index.ts"],
-      "@vantage/database":   ["../../packages/database/src/index.ts"],
-      "@vantage/queue":      ["../../packages/queue/src/index.ts"],
-      "@vantage/events":     ["../../packages/events/src/index.ts"],
+      "@vantage/config": ["../../packages/config/src/index.ts"],
+      "@vantage/database": ["../../packages/database/src/index.ts"],
+      "@vantage/queue": ["../../packages/queue/src/index.ts"],
+      "@vantage/events": ["../../packages/events/src/index.ts"],
       "@vantage/validation": ["../../packages/validation/src/index.ts"],
-      "@vantage/parsing":    ["../../packages/parsing/src/index.ts"],
-      "@vantage/ai":         ["../../packages/ai/src/index.ts"]
+      "@vantage/parsing": ["../../packages/parsing/src/index.ts"],
+      "@vantage/ai": ["../../packages/ai/src/index.ts"]
     }
   },
   "include": ["src/**/*"],

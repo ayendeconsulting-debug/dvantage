@@ -34,11 +34,11 @@
 
 /** A job posting extracted from a supported job board page. */
 export interface ExtractedJob {
-  title:       string | null;
-  company:     string | null;
-  location:    string | null;
+  title: string | null;
+  company: string | null;
+  location: string | null;
   description: string;
-  sourceUrl:   string;
+  sourceUrl: string;
   extractedAt: string; // ISO 8601
 }
 
@@ -47,19 +47,19 @@ export interface ExtractedJob {
  * selector is a CSS selector that uniquely targets the input element.
  */
 export interface FormField {
-  name:        string;
-  type:        'text' | 'email' | 'tel' | 'textarea' | 'select' | 'file' | 'unknown';
-  label:       string | null;
+  name: string;
+  type: 'text' | 'email' | 'tel' | 'textarea' | 'select' | 'file' | 'unknown';
+  label: string | null;
   placeholder: string | null;
-  required:    boolean;
-  selector:    string;
+  required: boolean;
+  selector: string;
 }
 
 /** ATS score result returned from POST /v1/extension/score. */
 export interface ScoreResult {
-  score:           number; // 0–100
-  keywordGaps:     string[];
-  semanticGaps:    string[];
+  score: number; // 0–100
+  keywordGaps: string[];
+  semanticGaps: string[];
   optimizationUrl: string;
 }
 
@@ -72,11 +72,11 @@ export interface ScoreResult {
  * Maps from ResumeData.experience[] in @vantage/validation.
  */
 export interface ProfileExperience {
-  company:    string;
-  title:      string;
-  startDate:  string;
-  endDate:    string | null;
-  current:    boolean;
+  company: string;
+  title: string;
+  startDate: string;
+  endDate: string | null;
+  current: boolean;
   highlights: string[];
 }
 
@@ -86,11 +86,11 @@ export interface ProfileExperience {
  */
 export interface ProfileEducation {
   institution: string;
-  degree:      string;
-  field:       string;
-  startDate:   string;
-  endDate:     string | null;
-  gpa:         string | null;
+  degree: string;
+  field: string;
+  startDate: string;
+  endDate: string | null;
+  gpa: string | null;
 }
 
 /**
@@ -98,9 +98,9 @@ export interface ProfileEducation {
  * Maps from ResumeData.skills[] in @vantage/validation.
  */
 export interface ProfileSkill {
-  name:     string;
+  name: string;
   category: string; // 'technical' | 'soft' | 'language' | 'tool'
-  level:    string | null; // 'beginner' | 'intermediate' | 'advanced' | 'expert'
+  level: string | null; // 'beginner' | 'intermediate' | 'advanced' | 'expert'
 }
 
 /**
@@ -108,9 +108,9 @@ export interface ProfileSkill {
  * Maps from ResumeData.certifications[] in @vantage/validation.
  */
 export interface ProfileCertification {
-  name:   string;
+  name: string;
   issuer: string;
-  date:   string | null;
+  date: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,40 +128,40 @@ export interface ProfileCertification {
  */
 export interface UserProfile {
   // ── Auth-sourced (users table) ──────────────────────────────────────────
-  firstName:        string;
-  lastName:         string;
-  email:            string;
+  firstName: string;
+  lastName: string;
+  email: string;
 
   // ── User-profile-sourced (user_profiles table) ──────────────────────────
-  phone:            string | null;
-  linkedinUrl:      string | null;
+  phone: string | null;
+  linkedinUrl: string | null;
 
   // ── Resume-sourced — contact section ────────────────────────────────────
   /** City/country/state as extracted from the resume contact section. */
-  location:         string | null;
+  location: string | null;
   /** GitHub or portfolio URL from the resume contact section. */
-  github:           string | null;
+  github: string | null;
 
   // ── Resume-sourced — derived convenience fields ──────────────────────────
   /** Professional summary or objective statement from the resume. */
-  summary:          string | null;
+  summary: string | null;
   /** Top 5 skills ordered by level: expert > advanced > intermediate > beginner. */
-  topSkills:        string[];
+  topSkills: string[];
   /** e.g. "Senior Backend Engineer @ Acme Corp" from the most-recent/current role. */
-  currentRole:      string | null;
+  currentRole: string | null;
 
   // ── Resume-sourced — full arrays ─────────────────────────────────────────
   /** Full work experience array, most-recent first (resume convention). */
-  experience:       ProfileExperience[];
+  experience: ProfileExperience[];
   /** Full education array, most-recent first. */
-  education:        ProfileEducation[];
+  education: ProfileEducation[];
   /** All certifications from the resume. */
-  certifications:   ProfileCertification[];
+  certifications: ProfileCertification[];
   /** Full skill list — all skills, not just top 5. */
-  allSkills:        ProfileSkill[];
+  allSkills: ProfileSkill[];
 
   // ── Resume asset ─────────────────────────────────────────────────────────
-  defaultResumeId:  string | null;
+  defaultResumeId: string | null;
   /** 1-hour presigned R2 URL — null when no complete resume exists. */
   defaultResumeUrl: string | null;
 }
@@ -207,10 +207,10 @@ export type AutofillFieldKey =
  */
 export interface AutofillPreviewField {
   /** Human-readable label shown in the AutofillPanel preview. */
-  label:      string;
+  label: string;
   /** Maps this field to the value source in UserProfile. */
   profileKey: AutofillFieldKey;
-  required:   boolean;
+  required: boolean;
 }
 
 /**
@@ -229,12 +229,12 @@ export interface AutofillPreviewField {
  */
 export interface SkippedField {
   /** Human-readable label — shown in panel + sent to AI as context. */
-  label:     string;
+  label: string;
   /** CSS selector to locate the input for DOM fill after AI answer. */
-  selector:  string;
+  selector: string;
   /** Input type — informs the AI whether to return a short answer or prose. */
   fieldType: 'text' | 'email' | 'tel' | 'textarea';
-  required:  boolean;
+  required: boolean;
 }
 
 /**
@@ -247,7 +247,7 @@ export interface SkippedField {
  */
 export interface AutofillResult {
   /** Number of fields successfully written to the DOM. */
-  filled:  number;
+  filled: number;
   /**
    * Fields that were detected but not filled because the profile value was
    * null/empty. Rendered as "⚠ N fields need review" in AutofillPanel.
@@ -265,11 +265,11 @@ export interface AutofillResult {
  *      manualFields added — file inputs that require manual user upload.
  */
 export interface ActiveForm {
-  fieldCount:        number;
+  fieldCount: number;
   unknownFieldCount: number;
-  pageUrl:           string;
-  fillableFields:    AutofillPreviewField[];
-  manualFields:      Array<{ label: string; required: boolean }>;
+  pageUrl: string;
+  fillableFields: AutofillPreviewField[];
+  manualFields: Array<{ label: string; required: boolean }>;
 }
 
 /**
@@ -277,7 +277,7 @@ export interface ActiveForm {
  * Background SW re-fetches GET /v1/extension/profile when age > 5 minutes.
  */
 export interface CachedProfile {
-  profile:  UserProfile;
+  profile: UserProfile;
   cachedAt: string; // ISO 8601
 }
 
@@ -286,7 +286,7 @@ export interface CachedProfile {
 // ---------------------------------------------------------------------------
 
 export interface StoredToken {
-  token:     string;
+  token: string;
   expiresAt: string; // ISO 8601
 }
 
@@ -295,8 +295,8 @@ export interface StoredToken {
 // ---------------------------------------------------------------------------
 
 export interface SiteAdapter {
-  detectJD:    () => ExtractedJob | null;
-  detectForm:  () => FormField[];
+  detectJD: () => ExtractedJob | null;
+  detectForm: () => FormField[];
   extractFields: () => Record<string, string>;
 
   /**
@@ -306,7 +306,7 @@ export interface SiteAdapter {
    * of string[]. Each SkippedField carries selector + fieldType for Tier B
    * AI fill — the content script uses these to write AI answers to the DOM.
    */
-  fillFields:  (profile: UserProfile) => AutofillResult;
+  fillFields: (profile: UserProfile) => AutofillResult;
 
   /**
    * Optional: install a persistent observer for form state changes that

@@ -6,33 +6,33 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 export interface ExperienceEntry {
-  company:    string;
-  title:      string;
-  startDate:  string;
-  endDate:    string | null;
-  current:    boolean;
+  company: string;
+  title: string;
+  startDate: string;
+  endDate: string | null;
+  current: boolean;
   highlights: string[];
 }
 
 export interface EducationEntry {
   institution: string;
-  degree:      string;
-  field:       string;
-  startDate:   string;
-  endDate:     string | null;
-  gpa:         string | null;
+  degree: string;
+  field: string;
+  startDate: string;
+  endDate: string | null;
+  gpa: string | null;
 }
 
 export interface SkillEntry {
-  name:     string;
+  name: string;
   category: string;
-  level:    string | null;
+  level: string | null;
 }
 
 export interface CertificationEntry {
-  name:   string;
+  name: string;
   issuer: string;
-  date:   string | null;
+  date: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,35 +56,35 @@ export interface CertificationEntry {
  */
 export interface ExtensionProfileResponseDto {
   // ── Auth-sourced ──────────────────────────────────────────────────────────
-  firstName:        string;
-  lastName:         string;
-  email:            string;
+  firstName: string;
+  lastName: string;
+  email: string;
 
   // ── User-profile-sourced ──────────────────────────────────────────────────
-  phone:            string | null;
-  linkedinUrl:      string | null;
+  phone: string | null;
+  linkedinUrl: string | null;
 
   // ── Resume-sourced: contact ───────────────────────────────────────────────
   /** Location as extracted from resume contact section (city, country, etc.). */
-  location:         string | null;
+  location: string | null;
   /** GitHub or portfolio URL from resume contact section. */
-  github:           string | null;
+  github: string | null;
 
   // ── Resume-sourced: derived convenience fields ────────────────────────────
-  summary:          string | null;
+  summary: string | null;
   /** Top 5 skills ordered by level (expert > advanced > intermediate > beginner). */
-  topSkills:        string[];        // D13: renamed from 'skills'
-  currentRole:      string | null;
+  topSkills: string[]; // D13: renamed from 'skills'
+  currentRole: string | null;
 
   // ── Resume-sourced: full arrays (D13 Tier A) ─────────────────────────────
-  experience:       ExperienceEntry[];
-  education:        EducationEntry[];
-  certifications:   CertificationEntry[];
+  experience: ExperienceEntry[];
+  education: EducationEntry[];
+  certifications: CertificationEntry[];
   /** All skills from the resume — not filtered to top 5. */
-  allSkills:        SkillEntry[];
+  allSkills: SkillEntry[];
 
   // ── Resume asset ──────────────────────────────────────────────────────────
-  defaultResumeId:  string | null;
+  defaultResumeId: string | null;
   /** 1-hour presigned R2 GET URL for the most-recent complete resume. */
   defaultResumeUrl: string | null;
 }
@@ -94,11 +94,7 @@ export interface ExtensionProfileResponseDto {
 // ---------------------------------------------------------------------------
 
 export const ExtensionProfileUpdateSchema = z.object({
-  phone: z
-    .string()
-    .max(50, 'Phone must be 50 characters or fewer')
-    .nullable()
-    .optional(),
+  phone: z.string().max(50, 'Phone must be 50 characters or fewer').nullable().optional(),
 
   linkedinUrl: z
     .string()

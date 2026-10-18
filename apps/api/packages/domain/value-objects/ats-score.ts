@@ -9,17 +9,17 @@
  */
 
 export interface ATSScoreBreakdown {
-  readonly keyword: number;   // Keyword match rate (0–100)
+  readonly keyword: number; // Keyword match rate (0–100)
   readonly structure: number; // Section presence + ordering (0–100)
-  readonly semantic: number;  // pgvector similarity (0–100)
+  readonly semantic: number; // pgvector similarity (0–100)
   readonly formatting: number; // ATS-parseable formatting (0–100)
 }
 
 const WEIGHTS: Record<keyof ATSScoreBreakdown, number> = {
-  keyword: 0.40,
+  keyword: 0.4,
   structure: 0.25,
   semantic: 0.25,
-  formatting: 0.10,
+  formatting: 0.1,
 };
 
 export class ATSScore {
@@ -31,9 +31,9 @@ export class ATSScore {
     this._breakdown = breakdown;
     this._composite = Math.round(
       breakdown.keyword * WEIGHTS.keyword +
-      breakdown.structure * WEIGHTS.structure +
-      breakdown.semantic * WEIGHTS.semantic +
-      breakdown.formatting * WEIGHTS.formatting,
+        breakdown.structure * WEIGHTS.structure +
+        breakdown.semantic * WEIGHTS.semantic +
+        breakdown.formatting * WEIGHTS.formatting,
     );
   }
 

@@ -67,7 +67,7 @@ function renderError(message: string): void {
 // ---------------------------------------------------------------------------
 
 interface CallbackParams {
-  token:     string;
+  token: string;
   expiresAt: string;
 }
 
@@ -75,13 +75,15 @@ function parseHashParams(): CallbackParams | null {
   const hash = window.location.hash.slice(1); // strip leading #
   if (!hash) return null;
 
-  const params    = new URLSearchParams(hash);
-  const token     = params.get('token');
+  const params = new URLSearchParams(hash);
+  const token = params.get('token');
   const expiresAt = params.get('expiresAt');
 
   if (
-    typeof token     !== 'string' || token.length     === 0 ||
-    typeof expiresAt !== 'string' || expiresAt.length === 0
+    typeof token !== 'string' ||
+    token.length === 0 ||
+    typeof expiresAt !== 'string' ||
+    expiresAt.length === 0
   ) {
     return null;
   }
@@ -101,7 +103,7 @@ if (!params) {
 } else {
   chrome.storage.local.set(
     {
-      [STORAGE_KEYS.EXTENSION_TOKEN]:  params.token,
+      [STORAGE_KEYS.EXTENSION_TOKEN]: params.token,
       [STORAGE_KEYS.TOKEN_EXPIRES_AT]: params.expiresAt,
     },
     () => {
@@ -118,7 +120,9 @@ if (!params) {
       renderSuccess();
 
       // Tab was opened by chrome.tabs.create — window.close() is permitted.
-      setTimeout(() => { window.close(); }, 1_500);
+      setTimeout(() => {
+        window.close();
+      }, 1_500);
     },
   );
 }

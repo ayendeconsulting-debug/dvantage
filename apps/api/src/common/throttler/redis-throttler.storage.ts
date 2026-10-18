@@ -6,9 +6,9 @@ import type { Redis } from 'ioredis';
  * internally expects from a storage provider.
  */
 interface ThrottlerStorageRecord {
-  totalHits:         number;
-  timeToExpire:      number;
-  isBlocked:         boolean;
+  totalHits: number;
+  timeToExpire: number;
+  isBlocked: boolean;
   timeToBlockExpire: number;
 }
 
@@ -28,14 +28,14 @@ export class RedisThrottlerStorageService {
   constructor(private readonly redis: Redis) {}
 
   async increment(
-    key:           string,
-    ttl:           number,
-    limit:         number,
+    key: string,
+    ttl: number,
+    limit: number,
     blockDuration: number,
     throttlerName: string,
   ): Promise<ThrottlerStorageRecord> {
     const blockKey = `throttle:block:${throttlerName}:${key}`;
-    const hitKey   = `throttle:hits:${throttlerName}:${key}`;
+    const hitKey = `throttle:hits:${throttlerName}:${key}`;
 
     // -- Check existing block ----------------------------------------------
     const blockPttl = await this.redis.pttl(blockKey);
@@ -48,10 +48,10 @@ export class RedisThrottlerStorageService {
     const pipeline = this.redis.pipeline();
     pipeline.incr(hitKey);
     pipeline.pexpire(hitKey, ttl);
-    const results  = await pipeline.exec();
+    const results = await pipeline.exec();
 
-    const totalHits    = (results?.[0]?.[1] as number | null) ?? 1;
-    const hitPttl      = await this.redis.pttl(hitKey);
+    const totalHits = (results?.[0]?.[1] as number | null) ?? 1;
+    const hitPttl = await this.redis.pttl(hitKey);
     const timeToExpire = Math.ceil(Math.max(hitPttl, 0) / 1000);
 
     // -- Block if over limit -----------------------------------------------
@@ -60,7 +60,7 @@ export class RedisThrottlerStorageService {
       return {
         totalHits,
         timeToExpire,
-        isBlocked:         true,
+        isBlocked: true,
         timeToBlockExpire: Math.ceil(blockDuration / 1000),
       };
     }

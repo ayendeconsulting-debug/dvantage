@@ -13,10 +13,7 @@ export const DATABASE_CLIENT = Symbol('DATABASE_CLIENT');
           throw new Error('DATABASE_URL environment variable is not set');
         }
 
-        const maxConnections = parseInt(
-          process.env['DATABASE_MAX_CONNECTIONS'] ?? '20',
-          10,
-        );
+        const maxConnections = parseInt(process.env['DATABASE_MAX_CONNECTIONS'] ?? '20', 10);
 
         const logger = new Logger('DatabaseModule');
         logger.log(`Connecting to PostgreSQL (max ${maxConnections} connections)`);

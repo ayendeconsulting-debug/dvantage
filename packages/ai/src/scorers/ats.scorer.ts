@@ -13,12 +13,19 @@ const EXTRACT_KEYWORDS_TOOL: Anthropic.Tool = {
     'Call this tool with every skill, technology, experience requirement, and domain keyword found.',
   input_schema: {
     type: 'object' as const,
-    required: ['required_skills', 'preferred_skills', 'experience_requirements', 'education_requirements', 'domain_keywords'],
+    required: [
+      'required_skills',
+      'preferred_skills',
+      'experience_requirements',
+      'education_requirements',
+      'domain_keywords',
+    ],
     properties: {
       required_skills: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Must-have technical skills, languages, frameworks, tools explicitly required.',
+        description:
+          'Must-have technical skills, languages, frameworks, tools explicitly required.',
       },
       preferred_skills: {
         type: 'array',
@@ -28,7 +35,8 @@ const EXTRACT_KEYWORDS_TOOL: Anthropic.Tool = {
       experience_requirements: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Experience-level phrases, e.g. "5+ years backend", "team leadership", "startup experience".',
+        description:
+          'Experience-level phrases, e.g. "5+ years backend", "team leadership", "startup experience".',
       },
       education_requirements: {
         type: 'array',
@@ -38,7 +46,8 @@ const EXTRACT_KEYWORDS_TOOL: Anthropic.Tool = {
       domain_keywords: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Domain and industry terms central to the role, e.g. "distributed systems", "fintech", "HIPAA compliance".',
+        description:
+          'Domain and industry terms central to the role, e.g. "distributed systems", "fintech", "HIPAA compliance".',
       },
     },
   },
@@ -52,7 +61,7 @@ const EXTRACT_KEYWORDS_TOOL: Anthropic.Tool = {
 const SCORE_RESUME_TOOL: Anthropic.Tool = {
   name: 'score_resume',
   description:
-    'Score a resume against a job description\'s extracted keyword requirements. ' +
+    "Score a resume against a job description's extracted keyword requirements. " +
     'Produce an overall score and per-section breakdown. Be calibrated and strict — ' +
     'a score of 100 means the resume is a near-perfect match, not that it is good.',
   input_schema: {
@@ -63,22 +72,24 @@ const SCORE_RESUME_TOOL: Anthropic.Tool = {
         type: 'integer',
         minimum: 0,
         maximum: 100,
-        description: 'Weighted aggregate score. skills 35%, experience 35%, keywords 20%, education 10%.',
+        description:
+          'Weighted aggregate score. skills 35%, experience 35%, keywords 20%, education 10%.',
       },
       sections: {
         type: 'object',
         required: ['skills', 'experience', 'education', 'keywords'],
         properties: {
-          skills:     { type: 'integer', minimum: 0, maximum: 100 },
+          skills: { type: 'integer', minimum: 0, maximum: 100 },
           experience: { type: 'integer', minimum: 0, maximum: 100 },
-          education:  { type: 'integer', minimum: 0, maximum: 100 },
-          keywords:   { type: 'integer', minimum: 0, maximum: 100 },
+          education: { type: 'integer', minimum: 0, maximum: 100 },
+          keywords: { type: 'integer', minimum: 0, maximum: 100 },
         },
       },
       keyword_gaps: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Required or domain keywords from the JD missing or weak in the resume. Ordered by importance.',
+        description:
+          'Required or domain keywords from the JD missing or weak in the resume. Ordered by importance.',
       },
       matched_keywords: {
         type: 'array',
@@ -88,7 +99,8 @@ const SCORE_RESUME_TOOL: Anthropic.Tool = {
       recommendations: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Up to 8 specific, actionable suggestions to improve the score. Not generic advice.',
+        description:
+          'Up to 8 specific, actionable suggestions to improve the score. Not generic advice.',
         maxItems: 8,
       },
     },
@@ -117,11 +129,11 @@ Always call the score_resume tool — never reply with plain text.`;
 // ---------------------------------------------------------------------------
 
 interface ExtractedKeywords {
-  required_skills:          string[];
-  preferred_skills:         string[];
-  experience_requirements:  string[];
-  education_requirements:   string[];
-  domain_keywords:          string[];
+  required_skills: string[];
+  preferred_skills: string[];
+  experience_requirements: string[];
+  education_requirements: string[];
+  domain_keywords: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -156,14 +168,14 @@ export class AtsScorer {
     // -- Step 1: Extract keywords ------------------------------------------
 
     const keywordsResponse = await this.client.messages.create({
-      model:       this.model,
-      max_tokens:  2048,
-      system:      KEYWORD_EXTRACTION_SYSTEM,
-      tools:       [EXTRACT_KEYWORDS_TOOL],
+      model: this.model,
+      max_tokens: 2048,
+      system: KEYWORD_EXTRACTION_SYSTEM,
+      tools: [EXTRACT_KEYWORDS_TOOL],
       tool_choice: { type: 'any' },
       messages: [
         {
-          role:    'user',
+          role: 'user',
           content: `Extract all requirements from this job description:\n\n${jdContent}`,
         },
       ],
@@ -207,14 +219,12 @@ export class AtsScorer {
     ].join('\n');
 
     const scoringResponse = await this.client.messages.create({
-      model:       this.model,
-      max_tokens:  2048,
-      system:      SCORING_SYSTEM,
-      tools:       [SCORE_RESUME_TOOL],
+      model: this.model,
+      max_tokens: 2048,
+      system: SCORING_SYSTEM,
+      tools: [SCORE_RESUME_TOOL],
       tool_choice: { type: 'any' },
-      messages: [
-        { role: 'user', content: scoringPrompt },
-      ],
+      messages: [{ role: 'user', content: scoringPrompt }],
     });
 
     const scoreToolBlock = scoringResponse.content.find(
@@ -233,7 +243,10 @@ export class AtsScorer {
       throw new Error(
         `AtsScorer: AI output failed Zod validation: ` +
           parseResult.error.issues
-            .map((i: { path: (string | number)[]; message: string }) => `${i.path.join('.')}: ${i.message}`)
+            .map(
+              (i: { path: (string | number)[]; message: string }) =>
+                `${i.path.join('.')}: ${i.message}`,
+            )
             .join(', '),
       );
     }

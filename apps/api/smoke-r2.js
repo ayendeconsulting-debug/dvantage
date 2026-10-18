@@ -12,8 +12,8 @@
 'use strict';
 
 const { S3Client, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
-const { SignatureV4 }  = require('@smithy/signature-v4');
-const { Sha256 }       = require('@aws-crypto/sha256-js');
+const { SignatureV4 } = require('@smithy/signature-v4');
+const { Sha256 } = require('@aws-crypto/sha256-js');
 
 // ── Same logic as storage.service.ts ────────────────────────────────────────
 
@@ -41,22 +41,26 @@ function stripIncompatibleHeaders(headers) {
 function buildR2Signer(credentials, region) {
   const base = new SignatureV4({ service: 's3', region, credentials, sha256: Sha256 });
   return {
-    sign:    async (req, opts) => base.sign(   { ...req, headers: stripIncompatibleHeaders(req.headers ?? {}) }, opts),
-    presign: async (req, opts) => base.presign({ ...req, headers: stripIncompatibleHeaders(req.headers ?? {}) }, opts),
+    sign: async (req, opts) =>
+      base.sign({ ...req, headers: stripIncompatibleHeaders(req.headers ?? {}) }, opts),
+    presign: async (req, opts) =>
+      base.presign({ ...req, headers: stripIncompatibleHeaders(req.headers ?? {}) }, opts),
   };
 }
 
 // ── Build client exactly as storage.service.ts will ─────────────────────────
 
-const endpoint        = process.env.R2_ENDPOINT;
-const accessKeyId     = process.env.R2_ACCESS_KEY_ID;
+const endpoint = process.env.R2_ENDPOINT;
+const accessKeyId = process.env.R2_ACCESS_KEY_ID;
 const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-const region          = process.env.R2_REGION || 'auto';
-const bucket          = process.env.R2_BUCKET_RESUMES;
-const forcePathStyle  = process.env.R2_FORCE_PATH_STYLE === 'true';
+const region = process.env.R2_REGION || 'auto';
+const bucket = process.env.R2_BUCKET_RESUMES;
+const forcePathStyle = process.env.R2_FORCE_PATH_STYLE === 'true';
 
 if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) {
-  console.error('Missing env vars: R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_RESUMES');
+  console.error(
+    'Missing env vars: R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_RESUMES',
+  );
   process.exit(1);
 }
 
@@ -78,14 +82,14 @@ const capturedHeaders = {};
 const origHandle = client.config.requestHandler.handle.bind(client.config.requestHandler);
 client.config.requestHandler.handle = async (req, opts) => {
   const auth = req.headers.authorization || '';
-  const m    = auth.match(/SignedHeaders=([^,]+)/);
+  const m = auth.match(/SignedHeaders=([^,]+)/);
   capturedHeaders.signedHeaders = m ? m[1] : '(none)';
   return origHandle(req, opts);
 };
 
 // ── Run the smoke test ───────────────────────────────────────────────────────
 
-const TEST_KEY  = 'smoke/r2-compatibility-test.txt';
+const TEST_KEY = 'smoke/r2-compatibility-test.txt';
 const TEST_BODY = Buffer.from(`smoke test ${Date.now()}`);
 
 async function run() {
@@ -98,18 +102,20 @@ async function run() {
 
   // PUT
   console.log('▶ PUT', TEST_KEY);
-  await client.send(new PutObjectCommand({
-    Bucket:        bucket,
-    Key:           TEST_KEY,
-    Body:          TEST_BODY,
-    ContentType:   'text/plain',
-    ContentLength: TEST_BODY.length,
-  }));
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: TEST_KEY,
+      Body: TEST_BODY,
+      ContentType: 'text/plain',
+      ContentLength: TEST_BODY.length,
+    }),
+  );
   console.log('  SignedHeaders:', capturedHeaders.signedHeaders);
 
-  const bad = (capturedHeaders.signedHeaders || '').split(';').filter(h =>
-    SDK_HEADERS_TO_EXCLUDE.has(h) || h.startsWith('x-amz-checksum')
-  );
+  const bad = (capturedHeaders.signedHeaders || '')
+    .split(';')
+    .filter((h) => SDK_HEADERS_TO_EXCLUDE.has(h) || h.startsWith('x-amz-checksum'));
   if (bad.length) {
     console.error('  ❌ Incompatible headers still in signature:', bad);
     process.exit(1);

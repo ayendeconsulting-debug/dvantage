@@ -19,17 +19,17 @@ import { resolveProfileValue } from '../../shared/profile-resolver';
 const ADAPTER_NAME = 'indeed';
 
 const HEADER = {
-  titleTestId:    'h1[data-testid="jobsearch-JobInfoHeader-title"]',
-  titleClass:     'h1.jobsearch-JobInfoHeader-title',
-  companyTestId:  '[data-testid="inlineHeader-companyName"] a',
-  companyAttr:    '[data-company-name]',
+  titleTestId: 'h1[data-testid="jobsearch-JobInfoHeader-title"]',
+  titleClass: 'h1.jobsearch-JobInfoHeader-title',
+  companyTestId: '[data-testid="inlineHeader-companyName"] a',
+  companyAttr: '[data-company-name]',
   locationTestId: '[data-testid="job-location"]',
-  locationAlt:    '[data-testid="inlineHeader-companyLocation"]',
+  locationAlt: '[data-testid="inlineHeader-companyLocation"]',
 } as const;
 
 const DESCRIPTION = {
   primary: '#jobDescriptionText',
-  broad:   '.jobsearch-JobComponent-description',
+  broad: '.jobsearch-JobComponent-description',
 } as const;
 
 const FALLBACK = { title: 'h1' } as const;
@@ -68,8 +68,14 @@ function firstMatch(...selectors: string[]): string | null {
   return null;
 }
 
-const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
-const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+const nativeInputSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLInputElement.prototype,
+  'value',
+)?.set;
+const nativeTextareaSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLTextAreaElement.prototype,
+  'value',
+)?.set;
 
 function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   if (el instanceof HTMLTextAreaElement) {
@@ -79,14 +85,14 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
     if (nativeInputSetter) nativeInputSetter.call(el, value);
     else el.value = value;
   }
-  el.dispatchEvent(new Event('input',  { bubbles: true }));
+  el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 function extractCompanyFromTitle(): string | null {
-  const title         = document.title;
+  const title = document.title;
   const withoutSuffix = title.replace(/\s*\|\s*Indeed\s*$/i, '').trim();
-  const parts         = withoutSuffix.split(/\s*-\s*/);
+  const parts = withoutSuffix.split(/\s*-\s*/);
   if (parts.length >= 2) {
     const candidate = cleanText(parts[1]);
     if (candidate) return candidate;
@@ -114,11 +120,11 @@ function detectIndeedApplyModal(): Element | null {
 // ---------------------------------------------------------------------------
 
 function probeModal(
-  container:  Element,
-  fields:     FormField[],
+  container: Element,
+  fields: FormField[],
   profileKey: string,
-  label:      string,
-  required:   boolean,
+  label: string,
+  required: boolean,
   ...selectors: string[]
 ): boolean {
   for (const sel of selectors) {
@@ -126,16 +132,21 @@ function probeModal(
     if (el) {
       const tag = el.tagName.toLowerCase();
       fields.push({
-        name:        profileKey,
-        type:        tag === 'textarea'                          ? 'textarea'
-                   : (el as HTMLInputElement).type === 'email'  ? 'email'
-                   : (el as HTMLInputElement).type === 'tel'    ? 'tel'
-                   : (el as HTMLInputElement).type === 'file'   ? 'file'
-                   : 'text',
+        name: profileKey,
+        type:
+          tag === 'textarea'
+            ? 'textarea'
+            : (el as HTMLInputElement).type === 'email'
+              ? 'email'
+              : (el as HTMLInputElement).type === 'tel'
+                ? 'tel'
+                : (el as HTMLInputElement).type === 'file'
+                  ? 'file'
+                  : 'text',
         label,
         placeholder: (el as HTMLInputElement).placeholder || null,
         required,
-        selector:    sel,
+        selector: sel,
       });
       return true;
     }
@@ -159,20 +170,35 @@ function detectIndeedForm(): FormField[] {
   );
 
   if (hasCombinedName) {
-    probeModal(modal, fields, 'fullName', 'Full name', true,
+    probeModal(
+      modal,
+      fields,
+      'fullName',
+      'Full name',
+      true,
       'input[name="applicant.name"]',
       'input[data-testid="applicant-name-input"]',
       'input[placeholder*="Full name" i]',
       'input[placeholder*="full name" i]',
     );
   } else {
-    probeModal(modal, fields, 'firstName', 'First name', true,
+    probeModal(
+      modal,
+      fields,
+      'firstName',
+      'First name',
+      true,
       'input[name="applicant.firstName"]',
       'input[data-testid="applicant-first-name-input"]',
       'input[id*="first-name" i]',
       'input[placeholder*="First name" i]',
     );
-    probeModal(modal, fields, 'lastName', 'Last name', true,
+    probeModal(
+      modal,
+      fields,
+      'lastName',
+      'Last name',
+      true,
       'input[name="applicant.lastName"]',
       'input[data-testid="applicant-last-name-input"]',
       'input[id*="last-name" i]',
@@ -180,14 +206,24 @@ function detectIndeedForm(): FormField[] {
     );
   }
 
-  probeModal(modal, fields, 'email', 'Email', true,
+  probeModal(
+    modal,
+    fields,
+    'email',
+    'Email',
+    true,
     'input[name="applicant.email"]',
     'input[data-testid="applicant-email-input"]',
     'input[type="email"]',
     'input[id*="email" i]',
   );
 
-  probeModal(modal, fields, 'phone', 'Phone', false,
+  probeModal(
+    modal,
+    fields,
+    'phone',
+    'Phone',
+    false,
     'input[name="applicant.phoneNumber"]',
     'input[data-testid="applicant-phone-input"]',
     'input[type="tel"]',
@@ -195,7 +231,12 @@ function detectIndeedForm(): FormField[] {
     'input[name*="phone" i]',
   );
 
-  probeModal(modal, fields, 'resume', 'Resume', false,
+  probeModal(
+    modal,
+    fields,
+    'resume',
+    'Resume',
+    false,
     'input[type="file"]',
     'input[name*="resume" i]',
     'input[accept*="pdf" i]',
@@ -203,14 +244,14 @@ function detectIndeedForm(): FormField[] {
 
   console.debug(
     `[DVantage][${ADAPTER_NAME}] detectForm — fields found: ${fields.length}`,
-    fields.map(f => `${f.name}(${f.type})`).join(', '),
+    fields.map((f) => `${f.name}(${f.type})`).join(', '),
   );
 
   return fields;
 }
 
 function findInputInModal(
-  modal:       Element,
+  modal: Element,
   ...selectors: string[]
 ): HTMLInputElement | HTMLTextAreaElement | null {
   for (const sel of selectors) {
@@ -227,7 +268,9 @@ function findInputInModal(
 export const indeedAdapter: SiteAdapter = {
   detectJD(): ExtractedJob | null {
     if (!isJobPostingPage()) {
-      console.debug(`[DVantage][${ADAPTER_NAME}] not a job posting path (${window.location.pathname}); skipping`);
+      console.debug(
+        `[DVantage][${ADAPTER_NAME}] not a job posting path (${window.location.pathname}); skipping`,
+      );
       return null;
     }
 
@@ -238,20 +281,22 @@ export const indeedAdapter: SiteAdapter = {
     }
 
     const company =
-      firstMatch(HEADER.companyTestId, HEADER.companyAttr) ??
-      extractCompanyFromTitle();
+      firstMatch(HEADER.companyTestId, HEADER.companyAttr) ?? extractCompanyFromTitle();
 
     const job: ExtractedJob = {
       title,
       company,
-      location:    firstMatch(HEADER.locationTestId, HEADER.locationAlt),
+      location: firstMatch(HEADER.locationTestId, HEADER.locationAlt),
       description: firstMatch(DESCRIPTION.primary, DESCRIPTION.broad) ?? '',
-      sourceUrl:   window.location.href,
+      sourceUrl: window.location.href,
       extractedAt: new Date().toISOString(),
     };
 
     console.debug(`[DVantage][${ADAPTER_NAME}] detected job:`, {
-      title: job.title, company: job.company, location: job.location, descLength: job.description.length,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      descLength: job.description.length,
     });
 
     return job;
@@ -281,10 +326,10 @@ export const indeedAdapter: SiteAdapter = {
 
       if (field.type === 'unknown') {
         skipped.push({
-          label:     field.label ?? field.name,
-          selector:  field.selector,
+          label: field.label ?? field.name,
+          selector: field.selector,
           fieldType: 'text',
-          required:  field.required,
+          required: field.required,
         });
         continue;
       }
@@ -292,10 +337,10 @@ export const indeedAdapter: SiteAdapter = {
       const el = findInputInModal(modal, field.selector);
       if (!el) {
         skipped.push({
-          label:     field.label ?? field.name,
-          selector:  field.selector,
+          label: field.label ?? field.name,
+          selector: field.selector,
           fieldType: field.type as SkippedField['fieldType'],
-          required:  field.required,
+          required: field.required,
         });
         continue;
       }
@@ -314,10 +359,10 @@ export const indeedAdapter: SiteAdapter = {
 
       if (!value) {
         skipped.push({
-          label:     field.label ?? field.name,
-          selector:  field.selector,
+          label: field.label ?? field.name,
+          selector: field.selector,
           fieldType: field.type as SkippedField['fieldType'],
-          required:  field.required,
+          required: field.required,
         });
         continue;
       }
@@ -327,7 +372,7 @@ export const indeedAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:${skipped.map(s => s.label).join(', ')}`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:${skipped.map((s) => s.label).join(', ')}`,
     );
 
     return { filled, skipped };

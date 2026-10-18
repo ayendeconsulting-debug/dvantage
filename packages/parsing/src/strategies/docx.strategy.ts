@@ -10,9 +10,7 @@ export class DocxStrategy {
     const result = await mammoth.extractRawText({ buffer });
 
     if (result.messages.length > 0) {
-      this.logger.debug(
-        `DOCX parse warnings: ${result.messages.map((m) => m.message).join('; ')}`,
-      );
+      this.logger.debug(`DOCX parse warnings: ${result.messages.map((m) => m.message).join('; ')}`);
     }
 
     const rawText = this.normalise(result.value);

@@ -33,9 +33,9 @@ export function VantageLogo({
   markOnly = false,
   color = 'var(--vt-brand-500)',
 }: VantageLogoProps) {
-  const markWidth  = markOnly ? width : Math.round(width * 0.22);
+  const markWidth = markOnly ? width : Math.round(width * 0.22);
   const markHeight = Math.round(markWidth * (24 / 32));
-  const fontSize   = Math.round(width * 0.28);
+  const fontSize = Math.round(width * 0.28);
 
   if (markOnly) {
     return (
@@ -62,9 +62,9 @@ export function VantageLogo({
   return (
     <div
       style={{
-        display:    'flex',
+        display: 'flex',
         alignItems: 'center',
-        gap:        `${Math.round(markWidth * 0.45)}px`,
+        gap: `${Math.round(markWidth * 0.45)}px`,
         userSelect: 'none',
       }}
       aria-label="Vantage"
@@ -92,11 +92,11 @@ export function VantageLogo({
       {/* Wordmark */}
       <span
         style={{
-          fontFamily:    'var(--vt-font-display)',
-          fontSize:      `${fontSize}px`,
-          lineHeight:    1,
+          fontFamily: 'var(--vt-font-display)',
+          fontSize: `${fontSize}px`,
+          lineHeight: 1,
           letterSpacing: '-0.03em',
-          color:         'var(--vt-text-primary)',
+          color: 'var(--vt-text-primary)',
         }}
       >
         <span style={{ fontWeight: 900 }}>vant</span>

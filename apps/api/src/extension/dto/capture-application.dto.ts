@@ -16,16 +16,10 @@ import { z } from 'zod';
  */
 export const CaptureApplicationSchema = z.object({
   /** Company name as detected from the job page. Nullable. */
-  company: z
-    .string()
-    .max(500, 'Company name must be 500 characters or fewer')
-    .nullable(),
+  company: z.string().max(500, 'Company name must be 500 characters or fewer').nullable(),
 
   /** Job title as detected from the job page. Nullable. */
-  role: z
-    .string()
-    .max(500, 'Role title must be 500 characters or fewer')
-    .nullable(),
+  role: z.string().max(500, 'Role title must be 500 characters or fewer').nullable(),
 
   /** URL of the application form page at the time of autofill. */
   pageUrl: z
@@ -41,9 +35,9 @@ export type CaptureApplicationDto = z.infer<typeof CaptureApplicationSchema>;
 // ---------------------------------------------------------------------------
 
 export interface CaptureApplicationResponseDto {
-  id:          string;
-  company:     string;
-  role:        string;
-  status:      'applied';
+  id: string;
+  company: string;
+  role: string;
+  status: 'applied';
   appliedDate: string; // ISO date string YYYY-MM-DD
 }

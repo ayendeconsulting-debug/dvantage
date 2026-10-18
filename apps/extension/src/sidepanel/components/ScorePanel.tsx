@@ -28,16 +28,11 @@
 // Imports: ../../shared/* (ScorePanel lives in sidepanel/components/)
 // ---------------------------------------------------------------------------
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
-import type { ExtractedJob, ScoreResult }  from '../../shared/types';
-import type { SidepanelToBackground }      from '../../shared/messages';
-import { STORAGE_KEYS }                    from '../../shared/constants';
+import type { ExtractedJob, ScoreResult } from '../../shared/types';
+import type { SidepanelToBackground } from '../../shared/messages';
+import { STORAGE_KEYS } from '../../shared/constants';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,19 +41,16 @@ import { STORAGE_KEYS }                    from '../../shared/constants';
 function isValidJob(value: unknown): value is ExtractedJob {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return (
-    typeof v['description'] === 'string' &&
-    typeof v['sourceUrl']   === 'string'
-  );
+  return typeof v['description'] === 'string' && typeof v['sourceUrl'] === 'string';
 }
 
 function isValidScoreResult(value: unknown): value is ScoreResult {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   return (
-    typeof v['score']           === 'number'  &&
-    Array.isArray(v['keywordGaps'])            &&
-    Array.isArray(v['semanticGaps'])           &&
+    typeof v['score'] === 'number' &&
+    Array.isArray(v['keywordGaps']) &&
+    Array.isArray(v['semanticGaps']) &&
     typeof v['optimizationUrl'] === 'string'
   );
 }
@@ -76,25 +68,32 @@ function sourceLabel(url: string): string {
 // ---------------------------------------------------------------------------
 
 function ScoreRing({ score }: { score: number }) {
-  const r            = 28;
-  const stroke       = 5;
-  const cx           = 36;
-  const cy           = 36;
+  const r = 28;
+  const stroke = 5;
+  const cx = 36;
+  const cy = 36;
   const circumference = 2 * Math.PI * r;
-  const dashOffset    = circumference * (1 - score / 100);
+  const dashOffset = circumference * (1 - score / 100);
 
   // RAG scale: Green = Excellent (75–100), Amber = Good (50–74), Red = Poor (0–49)
   const color =
-    score >= 75 ? 'var(--vt-success)' :
-    score >= 50 ? 'var(--vt-warning)' :
-                  'var(--vt-danger)';
+    score >= 75 ? 'var(--vt-success)' : score >= 50 ? 'var(--vt-warning)' : 'var(--vt-danger)';
 
   return (
     <div style={ringStyles.wrapper} aria-label={`ATS score: ${score} out of 100`}>
       <svg width={cx * 2} height={cy * 2} viewBox={`0 0 ${cx * 2} ${cy * 2}`}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--vt-surface-3)" strokeWidth={stroke} />
         <circle
-          cx={cx} cy={cy} r={r}
+          cx={cx}
+          cy={cy}
+          r={r}
+          fill="none"
+          stroke="var(--vt-surface-3)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r}
           fill="none"
           stroke={color}
           strokeWidth={stroke}
@@ -114,10 +113,32 @@ function ScoreRing({ score }: { score: number }) {
 }
 
 const ringStyles = {
-  wrapper: { position: 'relative' as const, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
-  label:   { position: 'absolute' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', lineHeight: 1 },
-  score:   { fontFamily: "'Outfit', sans-serif", fontSize: '18px', fontWeight: 700, letterSpacing: '-0.03em' },
-  outOf:   { fontFamily: "'DM Sans', sans-serif", fontSize: '9px', fontWeight: 400, color: 'var(--vt-text-5)', marginTop: '2px' },
+  wrapper: {
+    position: 'relative' as const,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: {
+    position: 'absolute' as const,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    lineHeight: 1,
+  },
+  score: {
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: '18px',
+    fontWeight: 700,
+    letterSpacing: '-0.03em',
+  },
+  outOf: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '9px',
+    fontWeight: 400,
+    color: 'var(--vt-text-5)',
+    marginTop: '2px',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -129,9 +150,16 @@ function EmptyContent() {
     <div style={styles.emptyContent}>
       {/* Branded icon wrap */}
       <div style={styles.emptyIconWrap} aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke="var(--vt-brand-400)" strokeWidth="1.5"
-          strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--vt-brand-400)"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
           <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
         </svg>
@@ -148,8 +176,16 @@ function JobHeader({ job }: { job: ExtractedJob }) {
   return (
     <div style={styles.jobCard}>
       <span style={styles.sourceChip} aria-label="Source">
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="9"
+          height="9"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <circle cx="12" cy="12" r="10" />
           <line x1="2" y1="12" x2="22" y2="12" />
           <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
@@ -158,15 +194,15 @@ function JobHeader({ job }: { job: ExtractedJob }) {
       </span>
 
       {job.title ? (
-        <h2 style={styles.jobTitle} title={job.title}>{job.title}</h2>
+        <h2 style={styles.jobTitle} title={job.title}>
+          {job.title}
+        </h2>
       ) : (
         <h2 style={{ ...styles.jobTitle, color: 'var(--vt-text-5)' }}>Untitled role</h2>
       )}
 
       {(job.company ?? job.location) && (
-        <p style={styles.jobMeta}>
-          {[job.company, job.location].filter(Boolean).join(' · ')}
-        </p>
+        <p style={styles.jobMeta}>{[job.company, job.location].filter(Boolean).join(' · ')}</p>
       )}
     </div>
   );
@@ -179,7 +215,9 @@ function GapList({ label, items, accent }: { label: string; items: string[]; acc
       <span style={{ ...styles.gapLabel, color: accent }}>{label}</span>
       <div style={styles.gapPills}>
         {items.map((item) => (
-          <span key={item} style={styles.gapPill}>{item}</span>
+          <span key={item} style={styles.gapPill}>
+            {item}
+          </span>
         ))}
       </div>
     </div>
@@ -194,9 +232,11 @@ function ScoreResultCard({ result }: { result: ScoreResult }) {
         <div style={styles.resultMeta}>
           <span style={styles.atsLabel}>ATS match score</span>
           <span style={styles.atsHint}>
-            {result.score >= 75 ? 'Excellent match — ready to apply.' :
-             result.score >= 50 ? 'Good match — a few gaps to close.' :
-                                  'Poor match — optimise your resume first.'}
+            {result.score >= 75
+              ? 'Excellent match — ready to apply.'
+              : result.score >= 50
+                ? 'Good match — a few gaps to close.'
+                : 'Poor match — optimise your resume first.'}
           </span>
           <a
             href={result.optimizationUrl}
@@ -207,16 +247,25 @@ function ScoreResultCard({ result }: { result: ScoreResult }) {
             }}
           >
             Optimise in D&apos;Vantage
-            <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="9"
+              height="9"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
             </svg>
           </a>
         </div>
       </div>
-      <GapList label="Keyword gaps"    items={result.keywordGaps}  accent="var(--vt-warning)" />
-      <GapList label="Experience gaps" items={result.semanticGaps} accent="var(--vt-danger)"  />
+      <GapList label="Keyword gaps" items={result.keywordGaps} accent="var(--vt-warning)" />
+      <GapList label="Experience gaps" items={result.semanticGaps} accent="var(--vt-danger)" />
     </div>
   );
 }
@@ -226,11 +275,11 @@ function ScoreResultCard({ result }: { result: ScoreResult }) {
 // ---------------------------------------------------------------------------
 
 export default function ScorePanel() {
-  const [activeJob,   setActiveJob]   = useState<ExtractedJob | null>(null);
+  const [activeJob, setActiveJob] = useState<ExtractedJob | null>(null);
   const [scoreResult, setScoreResult] = useState<ScoreResult | null>(null);
-  const [scoring,     setScoring]     = useState(false);
-  const [scoreError,  setScoreError]  = useState<string | null>(null);
-  const mountedRef    = useRef(true);
+  const [scoring, setScoring] = useState(false);
+  const [scoreError, setScoreError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
   /**
    * Tracks the sourceUrl of the currently displayed job.
    * Used inside handleStorageChange to distinguish between:
@@ -239,7 +288,7 @@ export default function ScorePanel() {
    * A ref is required because the closure over `activeJob` state would
    * capture a stale value from the time the effect ran.
    */
-  const activeUrlRef  = useRef<string | null>(null);
+  const activeUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -247,39 +296,37 @@ export default function ScorePanel() {
     // Read ACTIVE_JOB and CACHED_SCORE in a single storage call.
     // If the cached score belongs to the current job (sourceUrl match),
     // restore it immediately — no API call, no token consumption.
-    chrome.storage.local.get(
-      [STORAGE_KEYS.ACTIVE_JOB, STORAGE_KEYS.CACHED_SCORE],
-      (stored) => {
-        if (!mountedRef.current) return;
+    chrome.storage.local.get([STORAGE_KEYS.ACTIVE_JOB, STORAGE_KEYS.CACHED_SCORE], (stored) => {
+      if (!mountedRef.current) return;
 
-        const job    = stored[STORAGE_KEYS.ACTIVE_JOB];
-        const cached = stored[STORAGE_KEYS.CACHED_SCORE];
+      const job = stored[STORAGE_KEYS.ACTIVE_JOB];
+      const cached = stored[STORAGE_KEYS.CACHED_SCORE];
 
-        if (!isValidJob(job)) return;
+      if (!isValidJob(job)) return;
 
-        activeUrlRef.current = job.sourceUrl;
-        setActiveJob(job);
+      activeUrlRef.current = job.sourceUrl;
+      setActiveJob(job);
 
-        // Cache hit: restore score instantly without an API call.
-        if (
-          typeof cached === 'object' && cached !== null &&
-          (cached as Record<string, unknown>)['sourceUrl'] === job.sourceUrl
-        ) {
-          const cachedResult = (cached as Record<string, unknown>)['result'];
-          if (isValidScoreResult(cachedResult)) {
-            setScoreResult(cachedResult);
-          }
+      // Cache hit: restore score instantly without an API call.
+      if (
+        typeof cached === 'object' &&
+        cached !== null &&
+        (cached as Record<string, unknown>)['sourceUrl'] === job.sourceUrl
+      ) {
+        const cachedResult = (cached as Record<string, unknown>)['result'];
+        if (isValidScoreResult(cachedResult)) {
+          setScoreResult(cachedResult);
         }
-      },
-    );
+      }
+    });
 
     function handleStorageChange(
       changes: Record<string, chrome.storage.StorageChange>,
-      area:    string,
+      area: string,
     ): void {
-      if (area !== 'local')                       return;
+      if (area !== 'local') return;
       if (!(STORAGE_KEYS.ACTIVE_JOB in changes)) return;
-      if (!mountedRef.current)                    return;
+      if (!mountedRef.current) return;
 
       const newJob = changes[STORAGE_KEYS.ACTIVE_JOB]?.newValue;
       if (isValidJob(newJob)) {
@@ -316,7 +363,7 @@ export default function ScorePanel() {
     setScoreError(null);
 
     const message: SidepanelToBackground = {
-      type:    'REQUEST_SCORE',
+      type: 'REQUEST_SCORE',
       payload: { jobDescription: activeJob.description, resumeId: null },
     };
 
@@ -330,7 +377,8 @@ export default function ScorePanel() {
       }
 
       if (
-        typeof response === 'object' && response !== null &&
+        typeof response === 'object' &&
+        response !== null &&
         (response as Record<string, unknown>)['ok'] === true
       ) {
         const result = (response as Record<string, unknown>)['result'];
@@ -346,17 +394,23 @@ export default function ScorePanel() {
 
   // —— Spinner SVG ———————————————————————————————————————————————————————————
   const spinner = (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
       aria-hidden="true"
-      style={{ animation: 'dvantage-spin 700ms linear infinite', flexShrink: 0 }}>
+      style={{ animation: 'dvantage-spin 700ms linear infinite', flexShrink: 0 }}
+    >
       <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
     </svg>
   );
 
   return (
     <div style={styles.container}>
-
       {/* —— Content zone ————————————————————————————————————————————————————— */}
       {!activeJob ? (
         <EmptyContent />
@@ -365,7 +419,9 @@ export default function ScorePanel() {
           <JobHeader job={activeJob} />
           {scoreResult && <ScoreResultCard result={scoreResult} />}
           {scoreError && (
-            <p style={styles.errorBanner} role="alert">{scoreError}</p>
+            <p style={styles.errorBanner} role="alert">
+              {scoreError}
+            </p>
           )}
         </div>
       )}
@@ -374,12 +430,7 @@ export default function ScorePanel() {
       <div style={styles.footer}>
         {scoreResult ? (
           /* Scored — rescore as a quiet text link */
-          <button
-            type="button"
-            style={styles.rescoreBtn}
-            onClick={handleScore}
-            disabled={scoring}
-          >
+          <button type="button" style={styles.rescoreBtn} onClick={handleScore} disabled={scoring}>
             {scoring ? 'Rescoring…' : 'Rescore'}
           </button>
         ) : activeJob ? (
@@ -417,184 +468,184 @@ export default function ScorePanel() {
 
 const styles = {
   container: {
-    display:       'flex',
+    display: 'flex',
     flexDirection: 'column' as const,
   },
 
   /* —— Empty state ———————————————————————————————————————————————————————————*/
   emptyContent: {
-    display:        'flex',
-    flexDirection:  'column' as const,
-    alignItems:     'center',
-    padding:        '28px 20px 16px',
-    textAlign:      'center' as const,
-    gap:            '8px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    padding: '28px 20px 16px',
+    textAlign: 'center' as const,
+    gap: '8px',
   },
   emptyIconWrap: {
-    width:           '44px',
-    height:          '44px',
-    borderRadius:    '10px',
+    width: '44px',
+    height: '44px',
+    borderRadius: '10px',
     backgroundColor: 'color-mix(in srgb, var(--vt-brand-500) 8%, transparent)',
-    border:          '0.5px solid color-mix(in srgb, var(--vt-brand-500) 20%, transparent)',
-    display:         'flex',
-    alignItems:      'center',
-    justifyContent:  'center',
-    marginBottom:    '4px',
-    flexShrink:      0,
+    border: '0.5px solid color-mix(in srgb, var(--vt-brand-500) 20%, transparent)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '4px',
+    flexShrink: 0,
   },
   emptyTitle: {
-    fontFamily:    "'Outfit', sans-serif",
-    fontSize:      '13px',
-    fontWeight:    600,
-    color:         'var(--vt-text-2)',
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: '13px',
+    fontWeight: 600,
+    color: 'var(--vt-text-2)',
     letterSpacing: '-0.01em',
   },
   emptyBody: {
     fontFamily: "'DM Sans', sans-serif",
-    fontSize:   '11.5px',
+    fontSize: '11.5px',
     fontWeight: 400,
-    color:      'var(--vt-text-5)',
+    color: 'var(--vt-text-5)',
     lineHeight: 1.6,
-    maxWidth:   '200px',
+    maxWidth: '200px',
   },
 
   /* —— Job zone ——————————————————————————————————————————————————————————————*/
   jobZone: {
-    display:       'flex',
+    display: 'flex',
     flexDirection: 'column' as const,
-    gap:           '8px',
-    padding:       '12px 14px 4px',
+    gap: '8px',
+    padding: '12px 14px 4px',
   },
 
   /* Job header card */
   jobCard: {
     backgroundColor: 'var(--vt-surface-1)',
-    border:          '0.5px solid var(--vt-border-2)',
-    borderRadius:    '10px',
-    padding:         '11px 12px',
-    display:         'flex',
-    flexDirection:   'column' as const,
-    gap:             '3px',
+    border: '0.5px solid var(--vt-border-2)',
+    borderRadius: '10px',
+    padding: '11px 12px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '3px',
   },
   sourceChip: {
-    display:      'inline-flex',
-    alignItems:   'center',
-    gap:          '4px',
-    fontFamily:   "'DM Sans', sans-serif",
-    fontSize:     '10px',
-    fontWeight:   500,
-    color:        'var(--vt-text-5)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '10px',
+    fontWeight: 500,
+    color: 'var(--vt-text-5)',
     marginBottom: '3px',
   },
   jobTitle: {
-    fontFamily:    "'Outfit', sans-serif",
-    fontSize:      '14px',
-    fontWeight:    700,
-    color:         'var(--vt-text-1)',
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: '14px',
+    fontWeight: 700,
+    color: 'var(--vt-text-1)',
     letterSpacing: '-0.02em',
-    lineHeight:    1.2,
-    margin:        '0',
-    overflow:      'hidden',
-    textOverflow:  'ellipsis',
-    whiteSpace:    'nowrap' as const,
+    lineHeight: 1.2,
+    margin: '0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
   },
   jobMeta: {
-    fontFamily:   "'DM Sans', sans-serif",
-    fontSize:     '11.5px',
-    fontWeight:   400,
-    color:        'var(--vt-text-4)',
-    margin:       '0',
-    overflow:     'hidden',
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '11.5px',
+    fontWeight: 400,
+    color: 'var(--vt-text-4)',
+    margin: '0',
+    overflow: 'hidden',
     textOverflow: 'ellipsis',
-    whiteSpace:   'nowrap' as const,
+    whiteSpace: 'nowrap' as const,
   },
 
   /* —— Score result card ——————————————————————————————————————————————————— */
   resultCard: {
     backgroundColor: 'var(--vt-surface-1)',
-    border:          '0.5px solid var(--vt-border-2)',
-    borderRadius:    '10px',
-    padding:         '12px',
-    display:         'flex',
-    flexDirection:   'column' as const,
-    gap:             '12px',
+    border: '0.5px solid var(--vt-border-2)',
+    borderRadius: '10px',
+    padding: '12px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '12px',
   },
   resultRow: {
-    display:    'flex',
+    display: 'flex',
     alignItems: 'center',
-    gap:        '14px',
+    gap: '14px',
   },
   resultMeta: {
-    display:       'flex',
+    display: 'flex',
     flexDirection: 'column' as const,
-    gap:           '3px',
-    flex:          1,
-    minWidth:      0,
+    gap: '3px',
+    flex: 1,
+    minWidth: 0,
   },
   atsLabel: {
-    fontFamily:    "'Outfit', sans-serif",
-    fontSize:      '12px',
-    fontWeight:    600,
-    color:         'var(--vt-text-2)',
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: '12px',
+    fontWeight: 600,
+    color: 'var(--vt-text-2)',
     letterSpacing: '-0.01em',
   },
   atsHint: {
     fontFamily: "'DM Sans', sans-serif",
-    fontSize:   '11px',
+    fontSize: '11px',
     fontWeight: 400,
-    color:      'var(--vt-text-4)',
+    color: 'var(--vt-text-4)',
     lineHeight: 1.45,
   },
   optimiseLink: {
-    display:        'inline-flex',
-    alignItems:     'center',
-    gap:            '4px',
-    fontFamily:     "'DM Sans', sans-serif",
-    fontSize:       '11px',
-    fontWeight:     500,
-    color:          'var(--vt-brand-400)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '11px',
+    fontWeight: 500,
+    color: 'var(--vt-brand-400)',
     textDecoration: 'none',
-    marginTop:      '3px',
+    marginTop: '3px',
   },
 
   /* Gap lists */
   gapBlock: {
-    display:       'flex',
+    display: 'flex',
     flexDirection: 'column' as const,
-    gap:           '6px',
+    gap: '6px',
   },
   gapLabel: {
-    fontFamily:    "'DM Sans', sans-serif",
-    fontSize:      '10px',
-    fontWeight:    500,
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '10px',
+    fontWeight: 500,
     letterSpacing: '0.04em',
     textTransform: 'uppercase' as const,
   },
   gapPills: {
-    display:  'flex',
+    display: 'flex',
     flexWrap: 'wrap' as const,
-    gap:      '4px',
+    gap: '4px',
   },
   gapPill: {
-    fontFamily:      "'DM Sans', sans-serif",
-    fontSize:        '10.5px',
-    fontWeight:      400,
-    color:           'var(--vt-text-3)',
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '10.5px',
+    fontWeight: 400,
+    color: 'var(--vt-text-3)',
     backgroundColor: 'var(--vt-surface-3)',
-    padding:         '2px 8px',
-    borderRadius:    '4px',
+    padding: '2px 8px',
+    borderRadius: '4px',
   },
 
   /* —— Error ————————————————————————————————————————————————————————————————*/
   errorBanner: {
-    fontFamily:      "'DM Sans', sans-serif",
-    fontSize:        '11.5px',
-    fontWeight:      400,
-    color:           'var(--vt-danger)',
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: '11.5px',
+    fontWeight: 400,
+    color: 'var(--vt-danger)',
     backgroundColor: 'color-mix(in srgb, var(--vt-danger) 10%, transparent)',
-    padding:         '8px 10px',
-    borderRadius:    '6px',
-    margin:          '0',
+    padding: '8px 10px',
+    borderRadius: '6px',
+    margin: '0',
   },
 
   /* —— Persistent footer ———————————————————————————————————————————————————*/
@@ -602,14 +653,14 @@ const styles = {
     padding: '10px 14px 14px',
   },
   rescoreBtn: {
-    display:    'inline-flex',
-    padding:    '0',
-    border:     'none',
+    display: 'inline-flex',
+    padding: '0',
+    border: 'none',
     background: 'transparent',
     fontFamily: "'DM Sans', sans-serif",
-    fontSize:   '11px',
+    fontSize: '11px',
     fontWeight: 400,
-    color:      'var(--vt-text-5)',
-    cursor:     'pointer',
+    color: 'var(--vt-text-5)',
+    cursor: 'pointer',
   },
 } satisfies Record<string, CSSProperties>;

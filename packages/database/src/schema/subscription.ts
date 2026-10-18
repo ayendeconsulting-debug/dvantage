@@ -1,10 +1,4 @@
-import {
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  boolean,
-} from 'drizzle-orm/pg-core';
+import { pgEnum, pgTable, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { users } from './auth';
 
 // ---------------------------------------------------------------------------
@@ -81,7 +75,7 @@ export const subscriptions = pgTable('subscriptions', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export type Subscription    = typeof subscriptions.$inferSelect;
+export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
 
 // ---------------------------------------------------------------------------
@@ -107,5 +101,5 @@ export const usageEvents = pgTable('usage_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export type UsageEvent    = typeof usageEvents.$inferSelect;
+export type UsageEvent = typeof usageEvents.$inferSelect;
 export type NewUsageEvent = typeof usageEvents.$inferInsert;
