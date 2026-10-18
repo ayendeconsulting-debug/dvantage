@@ -7,15 +7,8 @@ import { DatabaseModule } from '../database/database.module';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
-  imports: [
-    TerminusModule,
-    DatabaseModule,
-    RedisModule,
-  ],
+  imports: [TerminusModule, DatabaseModule, RedisModule],
   controllers: [HealthController],
-  providers: [
-    DatabaseHealthIndicator,
-    RedisHealthIndicator,
-  ],
+  providers: [DatabaseHealthIndicator, RedisHealthIndicator],
 })
 export class HealthModule {}

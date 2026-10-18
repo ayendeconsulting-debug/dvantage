@@ -1,10 +1,4 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 
@@ -35,23 +29,20 @@ export class JobService {
   // POST /v1/jobs
   // ---------------------------------------------------------------------------
 
-  async createJob(
-    user: AuthUser,
-    dto: CreateJobDescriptionDto,
-  ): Promise<JobDescriptionDetailDto> {
+  async createJob(user: AuthUser, dto: CreateJobDescriptionDto): Promise<JobDescriptionDetailDto> {
     // Entitlement check — throws 402 if free tier limit reached
     await this.subscriptionService.assertCanCreateJob(user.id);
 
-    const id  = uuidv7();
+    const id = uuidv7();
     const now = new Date();
 
     await this.db.insert(jobDescriptions).values({
       id,
-      userId:    user.id,
-      title:     dto.title   ?? null,
-      company:   dto.company ?? null,
-      content:   dto.content,
-      url:       dto.url     ?? null,
+      userId: user.id,
+      title: dto.title ?? null,
+      company: dto.company ?? null,
+      content: dto.content,
+      url: dto.url ?? null,
       createdAt: now,
       updatedAt: now,
     });
@@ -63,10 +54,10 @@ export class JobService {
 
     return {
       id,
-      title:     dto.title   ?? null,
-      company:   dto.company ?? null,
-      url:       dto.url     ?? null,
-      content:   dto.content,
+      title: dto.title ?? null,
+      company: dto.company ?? null,
+      url: dto.url ?? null,
+      content: dto.content,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -76,19 +67,16 @@ export class JobService {
   // GET /v1/jobs
   // ---------------------------------------------------------------------------
 
-  async listJobs(
-    user: AuthUser,
-    cursor?: string,
-  ): Promise<JobDescriptionListResponseDto> {
+  async listJobs(user: AuthUser, cursor?: string): Promise<JobDescriptionListResponseDto> {
     const cursorDate = cursor ? new Date(cursor) : undefined;
 
     const rows = await this.db
       .select({
-        id:        jobDescriptions.id,
-        title:     jobDescriptions.title,
-        company:   jobDescriptions.company,
-        url:       jobDescriptions.url,
-        content:   jobDescriptions.content,
+        id: jobDescriptions.id,
+        title: jobDescriptions.title,
+        company: jobDescriptions.company,
+        url: jobDescriptions.url,
+        content: jobDescriptions.content,
         createdAt: jobDescriptions.createdAt,
         updatedAt: jobDescriptions.updatedAt,
       })
@@ -113,19 +101,19 @@ export class JobService {
     const total = countRows[0]?.count ?? 0;
 
     const items: JobDescriptionListItemDto[] = data.map((r) => ({
-      id:            r.id,
-      title:         r.title,
-      company:       r.company,
-      url:           r.url,
+      id: r.id,
+      title: r.title,
+      company: r.company,
+      url: r.url,
       contentLength: r.content.length,
-      createdAt:     r.createdAt.toISOString(),
-      updatedAt:     r.updatedAt.toISOString(),
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
     }));
 
     const lastItem = data[data.length - 1];
 
     return {
-      data:       items,
+      data: items,
       nextCursor: hasNextPage && lastItem ? lastItem.createdAt.toISOString() : null,
       total,
     };
@@ -135,18 +123,15 @@ export class JobService {
   // GET /v1/jobs/:id
   // ---------------------------------------------------------------------------
 
-  async getJob(
-    user: AuthUser,
-    jobId: string,
-  ): Promise<JobDescriptionDetailDto> {
+  async getJob(user: AuthUser, jobId: string): Promise<JobDescriptionDetailDto> {
     const job = await this.findOwnedJob(user.id, jobId);
 
     return {
-      id:        job.id,
-      title:     job.title,
-      company:   job.company,
-      url:       job.url,
-      content:   job.content,
+      id: job.id,
+      title: job.title,
+      company: job.company,
+      url: job.url,
+      content: job.content,
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
     };
@@ -168,9 +153,9 @@ export class JobService {
     await this.db
       .update(jobDescriptions)
       .set({
-        ...(dto.title   !== undefined ? { title:   dto.title   } : {}),
+        ...(dto.title !== undefined ? { title: dto.title } : {}),
         ...(dto.company !== undefined ? { company: dto.company } : {}),
-        ...(dto.url     !== undefined ? { url:     dto.url     } : {}),
+        ...(dto.url !== undefined ? { url: dto.url } : {}),
         updatedAt,
       })
       .where(eq(jobDescriptions.id, jobId));
@@ -178,11 +163,11 @@ export class JobService {
     this.logger.log(`Job description updated — id=${jobId} user=${user.id}`);
 
     return {
-      id:        job.id,
-      title:     dto.title   !== undefined ? dto.title   : job.title,
-      company:   dto.company !== undefined ? dto.company : job.company,
-      url:       dto.url     !== undefined ? dto.url     : job.url,
-      content:   job.content,
+      id: job.id,
+      title: dto.title !== undefined ? dto.title : job.title,
+      company: dto.company !== undefined ? dto.company : job.company,
+      url: dto.url !== undefined ? dto.url : job.url,
+      content: job.content,
       createdAt: job.createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),
     };
@@ -192,15 +177,10 @@ export class JobService {
   // DELETE /v1/jobs/:id
   // ---------------------------------------------------------------------------
 
-  async deleteJob(
-    user: AuthUser,
-    jobId: string,
-  ): Promise<DeleteJobDescriptionResponseDto> {
+  async deleteJob(user: AuthUser, jobId: string): Promise<DeleteJobDescriptionResponseDto> {
     await this.findOwnedJob(user.id, jobId);
 
-    await this.db
-      .delete(jobDescriptions)
-      .where(eq(jobDescriptions.id, jobId));
+    await this.db.delete(jobDescriptions).where(eq(jobDescriptions.id, jobId));
 
     this.logger.log(`Job description deleted — id=${jobId} user=${user.id}`);
 
@@ -223,9 +203,7 @@ export class JobService {
     }
 
     if (job.userId !== userId) {
-      throw new ForbiddenException(
-        'You do not have access to this job description.',
-      );
+      throw new ForbiddenException('You do not have access to this job description.');
     }
 
     return job;

@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Sidebar }       from './sidebar';
-import { TopBar }        from './topbar';
-import { MobileDrawer }  from './mobile-drawer';
+import { Sidebar } from './sidebar';
+import { TopBar } from './topbar';
+import { MobileDrawer } from './mobile-drawer';
 
 interface DashboardShellProps {
   children: React.ReactNode;
@@ -18,7 +18,7 @@ interface DashboardShellProps {
 export function DashboardShell({ children }: DashboardShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const openDrawer  = useCallback(() => setDrawerOpen(true),  []);
+  const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   return (
@@ -34,11 +34,13 @@ export function DashboardShell({ children }: DashboardShellProps) {
         }
       `}</style>
 
-      <div style={{
-        display:         'flex',
-        minHeight:       '100vh',
-        backgroundColor: 'var(--vt-surface-base)',
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          minHeight: '100vh',
+          backgroundColor: 'var(--vt-surface-base)',
+        }}
+      >
         {/* Desktop sidebar — hidden on mobile via .vt-sidebar class */}
         <div className="vt-sidebar">
           <Sidebar />
@@ -48,17 +50,16 @@ export function DashboardShell({ children }: DashboardShellProps) {
         <MobileDrawer open={drawerOpen} onClose={closeDrawer} />
 
         {/* Main content area */}
-        <div style={{
-          flex:          1,
-          display:       'flex',
-          flexDirection: 'column',
-          minWidth:      0,
-        }}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+          }}
+        >
           <TopBar onBurgerClick={openDrawer} />
-          <div
-            className="vt-page-content"
-            style={{ flex: 1, padding: '32px 32px' }}
-          >
+          <div className="vt-page-content" style={{ flex: 1, padding: '32px 32px' }}>
             {children}
           </div>
         </div>

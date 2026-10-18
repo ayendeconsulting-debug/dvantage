@@ -19,12 +19,9 @@ import react from '@vitejs/plugin-react';
 import manifest from './src/manifest';
 
 export default defineConfig({
-  plugins: [
-    react(),
-    crx({ manifest }),
-  ],
+  plugins: [react(), crx({ manifest })],
   build: {
-    outDir:     'dist',
+    outDir: 'dist',
     emptyOutDir: true,
   },
 });

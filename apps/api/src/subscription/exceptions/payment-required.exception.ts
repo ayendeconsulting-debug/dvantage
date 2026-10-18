@@ -9,14 +9,11 @@ import { ErrorCode } from '@vantage/contracts';
  * and includes it in the Problem Details response.
  */
 export class PaymentRequiredException extends HttpException {
-  constructor(
-    message: string,
-    upgradeUrl = 'http://localhost:3000/dashboard/settings/billing',
-  ) {
+  constructor(message: string, upgradeUrl = 'http://localhost:3000/dashboard/settings/billing') {
     super(
       {
         message,
-        code:       ErrorCode.USAGE_QUOTA_EXCEEDED,
+        code: ErrorCode.USAGE_QUOTA_EXCEEDED,
         upgradeUrl,
       },
       402,

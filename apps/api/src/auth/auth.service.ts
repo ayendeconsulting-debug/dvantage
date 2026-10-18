@@ -4,9 +4,9 @@ import { AUTH_INSTANCE, type AuthInstance } from './auth.config';
 
 /** Shape of the session object returned by better-auth. */
 export interface AuthSession {
-  id:        string;
-  token:     string;
-  userId:    string;
+  id: string;
+  token: string;
+  userId: string;
   expiresAt: Date;
   ipAddress: string | null | undefined;
   userAgent: string | null | undefined;
@@ -16,19 +16,19 @@ export interface AuthSession {
 
 /** Shape of the user object returned by better-auth. */
 export interface AuthUser {
-  id:               string;
-  name:             string;
-  email:            string;
-  emailVerified:    boolean;
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
   twoFactorEnabled: boolean;
-  image:            string | null | undefined;
-  createdAt:        Date;
-  updatedAt:        Date;
+  image: string | null | undefined;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface SessionResult {
   session: AuthSession;
-  user:    AuthUser;
+  user: AuthUser;
 }
 
 @Injectable()

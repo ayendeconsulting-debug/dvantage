@@ -20,14 +20,14 @@ import { resolveProfileValue } from '../../shared/profile-resolver';
 const ADAPTER_NAME = 'lever';
 
 const SELECTORS = {
-  title:       '.posting-headline h2',
-  titleAlt:    'h2',
-  company:     '.main-header-logo img',
-  location:    '.posting-categories .location',
+  title: '.posting-headline h2',
+  titleAlt: 'h2',
+  company: '.main-header-logo img',
+  location: '.posting-categories .location',
   locationAlt: '.location',
   description: '.section-wrapper.page-full-width',
-  sections:    '.section',
-  descAlt:     '.posting-content',
+  sections: '.section',
+  descAlt: '.posting-content',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -57,8 +57,14 @@ function firstMatch(...selectors: string[]): string | null {
   return null;
 }
 
-const nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value')?.set;
-const nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+const nativeInputSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLInputElement.prototype,
+  'value',
+)?.set;
+const nativeTextareaSetter = Object.getOwnPropertyDescriptor(
+  window.HTMLTextAreaElement.prototype,
+  'value',
+)?.set;
 
 function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   if (el instanceof HTMLTextAreaElement) {
@@ -68,7 +74,7 @@ function fillInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
     if (nativeInputSetter) nativeInputSetter.call(el, value);
     else el.value = value;
   }
-  el.dispatchEvent(new Event('input',  { bubbles: true }));
+  el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
@@ -92,14 +98,14 @@ function extractCompany(): string | null {
 
   const title = document.title;
   const atPattern = /\bat\s+(.+?)(?:\s*[|·—\-]|\s*$)/i;
-  const atMatch   = title.match(atPattern);
+  const atMatch = title.match(atPattern);
   if (atMatch?.[1]) {
     const candidate = cleanText(atMatch[1]);
     if (candidate) return candidate;
   }
 
   const dashPattern = /^(.+?)\s*[—\-·]\s*.+$/;
-  const dashMatch   = title.match(dashPattern);
+  const dashMatch = title.match(dashPattern);
   if (dashMatch?.[1]) {
     const candidate = cleanText(dashMatch[1]);
     if (candidate) return candidate;
@@ -139,30 +145,32 @@ function detectLeverForm(): FormField[] {
   const { pathname } = window.location;
   if (!pathname.endsWith('/apply')) return [];
 
-  const hasForm = !!document.querySelector('form.application-form, form[enctype="multipart/form-data"]');
+  const hasForm = !!document.querySelector(
+    'form.application-form, form[enctype="multipart/form-data"]',
+  );
   if (!hasForm) return [];
 
   const fields: FormField[] = [];
 
   function probe(
     profileKey: string,
-    label:      string,
-    required:   boolean,
-    selector:   string,
-    type:       FormField['type'],
+    label: string,
+    required: boolean,
+    selector: string,
+    type: FormField['type'],
   ): void {
     if (document.querySelector(selector)) {
       fields.push({ name: profileKey, type, label, placeholder: null, required, selector });
     }
   }
 
-  probe('fullName',    'Full name',     true,  'input[name="name"]',              'text');
-  probe('email',       'Email',         true,  'input[name="email"]',             'email');
-  probe('phone',       'Phone',         false, 'input[name="phone"]',             'tel');
-  probe('linkedinUrl', 'LinkedIn URL',  false, 'input[name="urls[LinkedIn]"]',    'text');
-  probe('github',      'GitHub',        false, 'input[name="urls[GitHub]"]',      'text');
-  probe('location',    'Location',      false, 'input[name="location"]',          'text');
-  probe('summary',     'Cover letter',  false, 'textarea[name="comments"]',       'textarea');
+  probe('fullName', 'Full name', true, 'input[name="name"]', 'text');
+  probe('email', 'Email', true, 'input[name="email"]', 'email');
+  probe('phone', 'Phone', false, 'input[name="phone"]', 'tel');
+  probe('linkedinUrl', 'LinkedIn URL', false, 'input[name="urls[LinkedIn]"]', 'text');
+  probe('github', 'GitHub', false, 'input[name="urls[GitHub]"]', 'text');
+  probe('location', 'Location', false, 'input[name="location"]', 'text');
+  probe('summary', 'Cover letter', false, 'textarea[name="comments"]', 'textarea');
 
   return fields;
 }
@@ -194,15 +202,18 @@ export const leverAdapter: SiteAdapter = {
 
     const job: ExtractedJob = {
       title,
-      company:     extractCompany(),
-      location:    firstMatch(SELECTORS.location, SELECTORS.locationAlt),
+      company: extractCompany(),
+      location: firstMatch(SELECTORS.location, SELECTORS.locationAlt),
       description: extractDescription(),
-      sourceUrl:   window.location.href,
+      sourceUrl: window.location.href,
       extractedAt: new Date().toISOString(),
     };
 
     console.debug(`[DVantage][${ADAPTER_NAME}] detected job:`, {
-      title: job.title, company: job.company, location: job.location, descLength: job.description.length,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      descLength: job.description.length,
     });
 
     return job;
@@ -231,10 +242,10 @@ export const leverAdapter: SiteAdapter = {
 
       if (!value) {
         skipped.push({
-          label:     field.label ?? field.name,
-          selector:  field.selector,
+          label: field.label ?? field.name,
+          selector: field.selector,
           fieldType: field.type as SkippedField['fieldType'],
-          required:  field.required,
+          required: field.required,
         });
         continue;
       }
@@ -242,10 +253,10 @@ export const leverAdapter: SiteAdapter = {
       const el = findInput(field.selector);
       if (!el) {
         skipped.push({
-          label:     field.label ?? field.name,
-          selector:  field.selector,
+          label: field.label ?? field.name,
+          selector: field.selector,
           fieldType: field.type as SkippedField['fieldType'],
-          required:  field.required,
+          required: field.required,
         });
         continue;
       }
@@ -255,7 +266,7 @@ export const leverAdapter: SiteAdapter = {
     }
 
     console.debug(
-      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map(s => s.label).join(', ')}]`,
+      `[DVantage][${ADAPTER_NAME}] fillFields complete — filled:${filled} skipped:[${skipped.map((s) => s.label).join(', ')}]`,
     );
 
     return { filled, skipped };

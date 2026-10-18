@@ -20,12 +20,12 @@ const EXTRACT_RESUME_TOOL: Anthropic.Tool = {
         type: 'object',
         required: ['name', 'email'],
         properties: {
-          name:     { type: 'string' },
-          email:    { type: 'string' },
-          phone:    { type: 'string' },
+          name: { type: 'string' },
+          email: { type: 'string' },
+          phone: { type: 'string' },
           location: { type: 'string' },
           linkedin: { type: 'string' },
-          github:   { type: 'string' },
+          github: { type: 'string' },
         },
       },
       summary: { type: 'string', description: 'Professional summary or objective statement.' },
@@ -35,11 +35,11 @@ const EXTRACT_RESUME_TOOL: Anthropic.Tool = {
           type: 'object',
           required: ['company', 'title', 'startDate', 'current', 'description', 'highlights'],
           properties: {
-            company:    { type: 'string' },
-            title:      { type: 'string' },
-            startDate:  { type: 'string' },
-            endDate:    { type: 'string' },
-            current:    { type: 'boolean' },
+            company: { type: 'string' },
+            title: { type: 'string' },
+            startDate: { type: 'string' },
+            endDate: { type: 'string' },
+            current: { type: 'boolean' },
             description: { type: 'string' },
             highlights: { type: 'array', items: { type: 'string' } },
           },
@@ -52,11 +52,11 @@ const EXTRACT_RESUME_TOOL: Anthropic.Tool = {
           required: ['institution', 'degree', 'field', 'startDate'],
           properties: {
             institution: { type: 'string' },
-            degree:      { type: 'string' },
-            field:       { type: 'string' },
-            startDate:   { type: 'string' },
-            endDate:     { type: 'string' },
-            gpa:         { type: 'string' },
+            degree: { type: 'string' },
+            field: { type: 'string' },
+            startDate: { type: 'string' },
+            endDate: { type: 'string' },
+            gpa: { type: 'string' },
           },
         },
       },
@@ -66,9 +66,9 @@ const EXTRACT_RESUME_TOOL: Anthropic.Tool = {
           type: 'object',
           required: ['name', 'category'],
           properties: {
-            name:     { type: 'string' },
+            name: { type: 'string' },
             category: { type: 'string', enum: ['technical', 'soft', 'language', 'tool'] },
-            level:    { type: 'string', enum: ['beginner', 'intermediate', 'advanced', 'expert'] },
+            level: { type: 'string', enum: ['beginner', 'intermediate', 'advanced', 'expert'] },
           },
         },
       },
@@ -78,11 +78,11 @@ const EXTRACT_RESUME_TOOL: Anthropic.Tool = {
           type: 'object',
           required: ['name', 'issuer'],
           properties: {
-            name:       { type: 'string' },
-            issuer:     { type: 'string' },
-            date:       { type: 'string' },
+            name: { type: 'string' },
+            issuer: { type: 'string' },
+            date: { type: 'string' },
             expiryDate: { type: 'string' },
-            url:        { type: 'string' },
+            url: { type: 'string' },
           },
         },
       },
@@ -163,7 +163,10 @@ export class ResumeExtractor {
       throw new Error(
         `ResumeExtractor: AI output failed Zod validation: ` +
           parseResult.error.issues
-            .map((i: { path: (string | number)[]; message: string }) => `${i.path.join('.')}: ${i.message}`)
+            .map(
+              (i: { path: (string | number)[]; message: string }) =>
+                `${i.path.join('.')}: ${i.message}`,
+            )
             .join(', '),
       );
     }

@@ -10,8 +10,7 @@
  */
 
 const API_BASE =
-  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
-  'http://localhost:3001';
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) || 'http://localhost:3001';
 
 // ---------------------------------------------------------------------------
 // Response type — mirrors ExchangeResponseDto on the API
@@ -19,7 +18,7 @@ const API_BASE =
 
 export interface ExchangeResponse {
   /** Raw 64-char hex bearer token. Store as-is in chrome.storage.local. */
-  token:     string;
+  token: string;
   /** ISO 8601 timestamp — 30-day sliding window from time of exchange. */
   expiresAt: string;
 }
@@ -37,18 +36,20 @@ export interface ExchangeResponse {
  */
 export async function exchangeExtensionToken(): Promise<ExchangeResponse> {
   const res = await fetch(`${API_BASE}/v1/extension/auth/exchange`, {
-    method:      'POST',
+    method: 'POST',
     credentials: 'include',
-    headers:     { 'Content-Type': 'application/json' },
-    body:        '{}',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
   });
 
   if (!res.ok) {
     let message = `Extension token exchange failed (HTTP ${res.status})`;
     try {
-      const body = await res.json() as { detail?: string; message?: string };
+      const body = (await res.json()) as { detail?: string; message?: string };
       message = body.detail ?? body.message ?? message;
-    } catch { /* ignore JSON parse errors — use the fallback message */ }
+    } catch {
+      /* ignore JSON parse errors — use the fallback message */
+    }
     throw new Error(message);
   }
 

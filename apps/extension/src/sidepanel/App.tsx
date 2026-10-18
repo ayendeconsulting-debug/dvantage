@@ -27,12 +27,12 @@
 // D11: Settings view + SettingsPanel added. ProfilePanel receives onOpenSettings prop.
 // ---------------------------------------------------------------------------
 
-import { useState }          from 'react';
-import AuthGate              from './AuthGate';
-import ProfilePanel          from './ProfilePanel';
-import ScorePanel            from './components/ScorePanel';
-import AutofillPanel         from './components/AutofillPanel';
-import SettingsPanel         from './components/SettingsPanel';
+import { useState } from 'react';
+import AuthGate from './AuthGate';
+import ProfilePanel from './ProfilePanel';
+import ScorePanel from './components/ScorePanel';
+import AutofillPanel from './components/AutofillPanel';
+import SettingsPanel from './components/SettingsPanel';
 
 type View = 'main' | 'settings';
 

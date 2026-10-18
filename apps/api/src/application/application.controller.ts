@@ -30,16 +30,11 @@ export class ApplicationController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(
-    @CurrentUser() user: AuthUser,
-    @Body() body: unknown,
-  ) {
+  async create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const result = createApplicationSchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException(
-        result.error.issues
-          .map((i) => `${i.path.join('.')}: ${i.message}`)
-          .join('; '),
+        result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
       );
     }
     return this.applicationService.create(user, result.data);
@@ -69,10 +64,7 @@ export class ApplicationController {
   // ---------------------------------------------------------------------------
 
   @Get(':id')
-  async get(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.applicationService.get(user, id);
   }
 
@@ -82,17 +74,11 @@ export class ApplicationController {
 
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  async update(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-    @Body() body: unknown,
-  ) {
+  async update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: unknown) {
     const result = updateApplicationSchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException(
-        result.error.issues
-          .map((i) => `${i.path.join('.')}: ${i.message}`)
-          .join('; '),
+        result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
       );
     }
     return this.applicationService.update(user, id, result.data);
@@ -104,10 +90,7 @@ export class ApplicationController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  async remove(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  async remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.applicationService.remove(user, id);
   }
 }

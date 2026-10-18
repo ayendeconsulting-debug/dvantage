@@ -6,19 +6,19 @@ import type { ResumeData } from '@vantage/validation';
 // Design tokens — classic professional theme
 // ---------------------------------------------------------------------------
 
-const BLUE      = '#2563EB'; // section headings + bullet dots
-const DARK      = '#111827'; // name + role headings
-const BODY      = '#374151'; // body text
-const MUTED     = '#6B7280'; // dates, contact, secondary
-const RULE_CLR  = '#D1D5DB'; // horizontal rules
+const BLUE = '#2563EB'; // section headings + bullet dots
+const DARK = '#111827'; // name + role headings
+const BODY = '#374151'; // body text
+const MUTED = '#6B7280'; // dates, contact, secondary
+const RULE_CLR = '#D1D5DB'; // horizontal rules
 
-const MARGIN    = 54;        // points (≈ 19mm)
-const PAGE_W    = 595.28;    // A4 width in points
+const MARGIN = 54; // points (≈ 19mm)
+const PAGE_W = 595.28; // A4 width in points
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const BULLET_X  = MARGIN + 10;
-const TEXT_X    = MARGIN + 22;
-const TEXT_W    = CONTENT_W - 22;
-const LABEL_W   = 84;        // skills category label width
+const BULLET_X = MARGIN + 10;
+const TEXT_X = MARGIN + 22;
+const TEXT_W = CONTENT_W - 22;
+const LABEL_W = 84; // skills category label width
 
 // ---------------------------------------------------------------------------
 // Sanitise AI-extracted values
@@ -50,25 +50,25 @@ export class ResumePdfService {
   async generate(data: ResumeData, _originalFileName: string): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
-        size:   'A4',
+        size: 'A4',
         margin: MARGIN,
         info: {
-          Title:   `${data.contact.name} \u2014 Resume`,
-          Author:  data.contact.name,
+          Title: `${data.contact.name} \u2014 Resume`,
+          Author: data.contact.name,
           Creator: "D'Vantage",
         },
       });
 
       const chunks: Buffer[] = [];
-      doc.on('data',  (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end',   ()             => resolve(Buffer.concat(chunks)));
-      doc.on('error', (err: Error)   => reject(err));
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', (err: Error) => reject(err));
 
       this.header(doc, data);
-      if (data.summary)              this.summary(doc, data.summary);
-      if (data.experience.length)    this.experience(doc, data.experience);
-      if (data.education.length)     this.education(doc, data.education);
-      if (data.skills.length)        this.skills(doc, data.skills);
+      if (data.summary) this.summary(doc, data.summary);
+      if (data.experience.length) this.experience(doc, data.experience);
+      if (data.education.length) this.education(doc, data.education);
+      if (data.skills.length) this.skills(doc, data.skills);
       if (data.certifications.length) this.certifications(doc, data.certifications);
 
       doc.end();
@@ -81,11 +81,7 @@ export class ResumePdfService {
 
   private header(doc: InstanceType<typeof PDFDocument>, data: ResumeData): void {
     // Name
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(26)
-      .fillColor(DARK)
-      .text(data.contact.name, MARGIN, doc.y);
+    doc.font('Helvetica-Bold').fontSize(26).fillColor(DARK).text(data.contact.name, MARGIN, doc.y);
 
     doc.moveDown(0.2);
 
@@ -96,7 +92,9 @@ export class ResumePdfService {
       data.contact.location,
       data.contact.linkedin,
       data.contact.github,
-    ].map(clean).filter(Boolean);
+    ]
+      .map(clean)
+      .filter(Boolean);
 
     if (parts.length) {
       doc
@@ -113,8 +111,12 @@ export class ResumePdfService {
 
     // Blue rule — thicker than section rules to anchor the header
     const hy = doc.y;
-    doc.moveTo(MARGIN, hy).lineTo(MARGIN + CONTENT_W, hy)
-      .strokeColor(BLUE).lineWidth(1.5).stroke();
+    doc
+      .moveTo(MARGIN, hy)
+      .lineTo(MARGIN + CONTENT_W, hy)
+      .strokeColor(BLUE)
+      .lineWidth(1.5)
+      .stroke();
 
     doc.moveDown(0.85);
   }
@@ -163,8 +165,8 @@ export class ResumePdfService {
         .fontSize(9)
         .fillColor(MUTED)
         .text(dateRange, MARGIN + CONTENT_W * 0.68, rowY, {
-          width:     CONTENT_W * 0.32,
-          align:     'right',
+          width: CONTENT_W * 0.32,
+          align: 'right',
           lineBreak: false,
         });
 
@@ -216,14 +218,14 @@ export class ResumePdfService {
 
     for (const edu of education) {
       const dateStr = cleanDate(edu.startDate, edu.endDate);
-      const rowY    = doc.y;
+      const rowY = doc.y;
 
       doc
         .font('Helvetica-Bold')
         .fontSize(10)
         .fillColor(DARK)
         .text(`${clean(edu.degree)} in ${clean(edu.field)}`, MARGIN, rowY, {
-          width:     CONTENT_W * 0.68,
+          width: CONTENT_W * 0.68,
           lineBreak: false,
         });
 
@@ -233,8 +235,8 @@ export class ResumePdfService {
           .fontSize(9)
           .fillColor(MUTED)
           .text(dateStr, MARGIN + CONTENT_W * 0.68, rowY, {
-            width:     CONTENT_W * 0.32,
-            align:     'right',
+            width: CONTENT_W * 0.32,
+            align: 'right',
             lineBreak: false,
           });
       }
@@ -255,10 +257,7 @@ export class ResumePdfService {
   // Skills
   // ---------------------------------------------------------------------------
 
-  private skills(
-    doc: InstanceType<typeof PDFDocument>,
-    skills: ResumeData['skills'],
-  ): void {
+  private skills(doc: InstanceType<typeof PDFDocument>, skills: ResumeData['skills']): void {
     this.sectionHeading(doc, 'Skills');
 
     const byCategory: Record<string, string[]> = {};
@@ -268,7 +267,7 @@ export class ResumePdfService {
 
     for (const [cat, names] of Object.entries(byCategory) as [string, string[]][]) {
       const label = cat.charAt(0).toUpperCase() + cat.slice(1);
-      const rowY  = doc.y;
+      const rowY = doc.y;
 
       doc
         .font('Helvetica-Bold')
@@ -281,7 +280,7 @@ export class ResumePdfService {
         .fontSize(9.5)
         .fillColor(BODY)
         .text(names.join(', '), MARGIN + LABEL_W, rowY, {
-          width:   CONTENT_W - LABEL_W,
+          width: CONTENT_W - LABEL_W,
           lineGap: 2,
         });
 
@@ -302,18 +301,18 @@ export class ResumePdfService {
     this.sectionHeading(doc, 'Certifications');
 
     for (const cert of certifications) {
-      const rowY       = doc.y;
-      const certExt    = cert as ResumeData['certifications'][number] & { date?: string };
-      const issuerStr  = clean(cert.issuer);
-      const dateStr2   = clean(certExt.date);
-      const right      = issuerStr + (dateStr2 ? `  (${dateStr2})` : '');
+      const rowY = doc.y;
+      const certExt = cert as ResumeData['certifications'][number] & { date?: string };
+      const issuerStr = clean(cert.issuer);
+      const dateStr2 = clean(certExt.date);
+      const right = issuerStr + (dateStr2 ? `  (${dateStr2})` : '');
 
       doc
         .font('Helvetica-Bold')
         .fontSize(9.5)
         .fillColor(DARK)
         .text(clean(cert.name), MARGIN, rowY, {
-          width:     CONTENT_W * 0.62,
+          width: CONTENT_W * 0.62,
           lineBreak: false,
         });
       doc
@@ -321,8 +320,8 @@ export class ResumePdfService {
         .fontSize(9)
         .fillColor(MUTED)
         .text(right, MARGIN + CONTENT_W * 0.62, rowY, {
-          width:     CONTENT_W * 0.38,
-          align:     'right',
+          width: CONTENT_W * 0.38,
+          align: 'right',
           lineBreak: false,
         });
 
@@ -334,10 +333,7 @@ export class ResumePdfService {
   // Section heading — blue uppercase label + thin grey rule
   // ---------------------------------------------------------------------------
 
-  private sectionHeading(
-    doc: InstanceType<typeof PDFDocument>,
-    title: string,
-  ): void {
+  private sectionHeading(doc: InstanceType<typeof PDFDocument>, title: string): void {
     doc.moveDown(0.15);
 
     doc
@@ -346,8 +342,8 @@ export class ResumePdfService {
       .fillColor(BLUE)
       .text(title.toUpperCase(), MARGIN, doc.y, {
         characterSpacing: 1.5,
-        lineBreak:        false,
-        width:            CONTENT_W,
+        lineBreak: false,
+        width: CONTENT_W,
       });
 
     const ruleY = doc.y + doc.currentLineHeight(true) + 3;

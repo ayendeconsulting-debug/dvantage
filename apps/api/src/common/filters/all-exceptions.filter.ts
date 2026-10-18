@@ -33,18 +33,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost): void {
-    const ctx     = host.switchToHttp();
+    const ctx = host.switchToHttp();
     const request = ctx.getRequest<FastifyRequest>();
-    const reply   = ctx.getResponse<FastifyReply>();
+    const reply = ctx.getResponse<FastifyReply>();
 
-    const requestId = (request.headers['x-request-id'] as string | undefined) ?? crypto.randomUUID();
-    const path      = request.url;
-    const method    = request.method;
+    const requestId =
+      (request.headers['x-request-id'] as string | undefined) ?? crypto.randomUUID();
+    const path = request.url;
+    const method = request.method;
 
-    let status      = HttpStatus.INTERNAL_SERVER_ERROR;
-    let title       = 'Internal Server Error';
+    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let title = 'Internal Server Error';
     let detail: string | undefined;
-    let code: string        = ErrorCode.INTERNAL_ERROR;
+    let code: string = ErrorCode.INTERNAL_ERROR;
     let errors: unknown[] | undefined;
     let upgradeUrl: string | undefined;
 
@@ -56,9 +57,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         detail = response;
       } else if (typeof response === 'object' && response !== null) {
         const r = response as Record<string, unknown>;
-        detail     = typeof r['message']    === 'string' ? r['message']    : JSON.stringify(r['message']);
-        code       = typeof r['code']       === 'string' ? r['code']       : httpStatusToCode(status);
-        errors     = Array.isArray(r['errors']) ? r['errors'] : undefined;
+        detail = typeof r['message'] === 'string' ? r['message'] : JSON.stringify(r['message']);
+        code = typeof r['code'] === 'string' ? r['code'] : httpStatusToCode(status);
+        errors = Array.isArray(r['errors']) ? r['errors'] : undefined;
         upgradeUrl = typeof r['upgradeUrl'] === 'string' ? r['upgradeUrl'] : undefined;
       }
 
@@ -80,17 +81,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.warn(`[${requestId}] ${method} ${path} → ${status} ${code}`);
     }
 
-    void reply.status(status).header('Content-Type', 'application/problem+json').send({
-      type:      `https://docs.vantage.app/errors/${code.toLowerCase().replace(/_/g, '-')}`,
-      title,
-      status,
-      detail,
-      code,
-      requestId,
-      instance: path,
-      ...(upgradeUrl !== undefined && { upgradeUrl }),
-      ...(errors    !== undefined && { errors }),
-    });
+    void reply
+      .status(status)
+      .header('Content-Type', 'application/problem+json')
+      .send({
+        type: `https://docs.vantage.app/errors/${code.toLowerCase().replace(/_/g, '-')}`,
+        title,
+        status,
+        detail,
+        code,
+        requestId,
+        instance: path,
+        ...(upgradeUrl !== undefined && { upgradeUrl }),
+        ...(errors !== undefined && { errors }),
+      });
   }
 }
 

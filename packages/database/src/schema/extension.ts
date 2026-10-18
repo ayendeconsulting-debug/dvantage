@@ -74,5 +74,5 @@ export const extensionTokens = pgTable(
 // Inferred types
 // ---------------------------------------------------------------------------
 
-export type ExtensionToken    = typeof extensionTokens.$inferSelect;
+export type ExtensionToken = typeof extensionTokens.$inferSelect;
 export type NewExtensionToken = typeof extensionTokens.$inferInsert;

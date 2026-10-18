@@ -15,20 +15,12 @@
 // the session check; ExtensionAuthGuard then validates the Bearer token.
 // ---------------------------------------------------------------------------
 
-import {
-  Controller,
-  Get,
-  Headers,
-  HttpCode,
-  HttpStatus,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
-import { Public }                    from '../auth/decorators/public.decorator';
-import { CurrentUser }               from '../auth/decorators/current-user.decorator';
-import type { AuthUser }             from '../auth/auth.service';
-import type { ExtensionToken }       from '@vantage/database';
-import { ExtensionAuthService }      from './extension-auth.service';
+import { Controller, Get, Headers, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthUser } from '../auth/auth.service';
+import type { ExtensionToken } from '@vantage/database';
+import { ExtensionAuthService } from './extension-auth.service';
 import { ExtensionAuthGuard, CurrentExtensionToken } from './extension-auth.guard';
 import type {
   ExchangeResponseDto,
@@ -74,9 +66,7 @@ export class ExtensionAuthController {
   @HttpCode(HttpStatus.OK)
   @Public()
   @UseGuards(ExtensionAuthGuard)
-  async refresh(
-    @CurrentExtensionToken() token: ExtensionToken,
-  ): Promise<RefreshResponseDto> {
+  async refresh(@CurrentExtensionToken() token: ExtensionToken): Promise<RefreshResponseDto> {
     return this.extensionAuthService.refresh(token);
   }
 
@@ -92,9 +82,7 @@ export class ExtensionAuthController {
   @HttpCode(HttpStatus.OK)
   @Public()
   @UseGuards(ExtensionAuthGuard)
-  async revoke(
-    @CurrentExtensionToken() token: ExtensionToken,
-  ): Promise<ExtensionAuthAckDto> {
+  async revoke(@CurrentExtensionToken() token: ExtensionToken): Promise<ExtensionAuthAckDto> {
     await this.extensionAuthService.revoke(token);
     return { ok: true };
   }
@@ -122,9 +110,7 @@ export class ExtensionAuthController {
 
   @Post('revoke-session')
   @HttpCode(HttpStatus.OK)
-  async revokeSession(
-    @CurrentUser() user: AuthUser,
-  ): Promise<ExtensionAuthAckDto> {
+  async revokeSession(@CurrentUser() user: AuthUser): Promise<ExtensionAuthAckDto> {
     await this.extensionAuthService.revokeAllForUser(user.id);
     return { ok: true };
   }
@@ -144,9 +130,7 @@ export class ExtensionAuthController {
   @HttpCode(HttpStatus.OK)
   @Public()
   @UseGuards(ExtensionAuthGuard)
-  async getProfile(
-    @CurrentExtensionToken() token: ExtensionToken,
-  ): Promise<UserProfileDto> {
+  async getProfile(@CurrentExtensionToken() token: ExtensionToken): Promise<UserProfileDto> {
     return this.extensionAuthService.getProfile(token);
   }
 }

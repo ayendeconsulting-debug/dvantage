@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 export const createJobDescriptionSchema = z.object({
   /** Optional label for the role, e.g. "Senior Backend Engineer". */
-  title:   z.string().min(1).max(255).optional(),
+  title: z.string().min(1).max(255).optional(),
 
   /** Optional company name, e.g. "Stripe". */
   company: z.string().min(1).max(255).optional(),
@@ -30,13 +30,14 @@ export type CreateJobDescriptionDto = z.infer<typeof createJobDescriptionSchema>
 // UX is to delete and recreate rather than silently patch.
 // ---------------------------------------------------------------------------
 
-export const updateJobDescriptionSchema = z.object({
-  title:   z.string().min(1).max(255).optional(),
-  company: z.string().min(1).max(255).optional(),
-  url:     z.string().url('Must be a valid URL.').optional(),
-}).refine(
-  (data) => Object.keys(data).length > 0,
-  { message: 'At least one field must be provided for update.' },
-);
+export const updateJobDescriptionSchema = z
+  .object({
+    title: z.string().min(1).max(255).optional(),
+    company: z.string().min(1).max(255).optional(),
+    url: z.string().url('Must be a valid URL.').optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field must be provided for update.',
+  });
 
 export type UpdateJobDescriptionDto = z.infer<typeof updateJobDescriptionSchema>;

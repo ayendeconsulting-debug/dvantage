@@ -12,12 +12,12 @@
 
 export const radius = {
   none: '0',
-  1:    '2px',
-  2:    '4px',
-  3:    '8px',    // buttons, inputs
-  4:    '12px',   // cards
-  5:    '16px',   // modals
-  full: '999px',  // pills
+  1: '2px',
+  2: '4px',
+  3: '8px', // buttons, inputs
+  4: '12px', // cards
+  5: '16px', // modals
+  full: '999px', // pills
 } as const;
 
 export type Radius = typeof radius;

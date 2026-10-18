@@ -147,12 +147,8 @@
           "name": "accounts_user_id_users_id_fk",
           "tableFrom": "accounts",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -270,12 +266,8 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -351,12 +343,8 @@
           "name": "two_factor_user_id_users_id_fk",
           "tableFrom": "two_factor",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -657,12 +645,8 @@
           "name": "resume_versions_user_id_users_id_fk",
           "tableFrom": "resume_versions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -678,14 +662,7 @@
     "public.parse_status": {
       "name": "parse_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "uploading",
-        "uploaded",
-        "parsing",
-        "complete",
-        "failed"
-      ]
+      "values": ["pending", "uploading", "uploaded", "parsing", "complete", "failed"]
     }
   },
   "schemas": {},

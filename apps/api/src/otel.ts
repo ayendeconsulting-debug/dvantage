@@ -23,7 +23,7 @@ if (endpoint) {
     instrumentations: [
       getNodeAutoInstrumentations({
         // Disable noisy instrumentations that add little signal in dev
-        '@opentelemetry/instrumentation-fs':  { enabled: false },
+        '@opentelemetry/instrumentation-fs': { enabled: false },
         '@opentelemetry/instrumentation-dns': { enabled: false },
       }),
     ],

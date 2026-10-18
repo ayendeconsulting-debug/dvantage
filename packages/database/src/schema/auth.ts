@@ -38,11 +38,11 @@ import { relations } from 'drizzle-orm';
 export const users = pgTable(
   'users',
   {
-    id:    text('id').primaryKey(),
-    name:  varchar('name', { length: 255 }).notNull(),
+    id: text('id').primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
     email: varchar('email', { length: 255 }).notNull(),
 
-    emailVerified:    boolean('email_verified').notNull().default(false),
+    emailVerified: boolean('email_verified').notNull().default(false),
     twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
 
     // OAuth avatar URL — populated by Google / Microsoft on first sign-in
@@ -60,10 +60,10 @@ export const users = pgTable(
 );
 
 export const usersRelations = relations(users, ({ many }) => ({
-  sessions:           many(sessions),
-  accounts:           many(accounts),
+  sessions: many(sessions),
+  accounts: many(accounts),
   verificationTokens: many(verificationTokens),
-  twoFactor:          many(twoFactor),
+  twoFactor: many(twoFactor),
 }));
 
 // ---------------------------------------------------------------------------
@@ -78,10 +78,10 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const sessions = pgTable(
   'sessions',
   {
-    id:        text('id').primaryKey(),
-    token:     text('token').notNull(),
+    id: text('id').primaryKey(),
+    token: text('token').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    userId:    text('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
 
@@ -93,8 +93,8 @@ export const sessions = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    tokenIdx:   uniqueIndex('sessions_token_idx').on(t.token),
-    userIdx:    index('sessions_user_id_idx').on(t.userId),
+    tokenIdx: uniqueIndex('sessions_token_idx').on(t.token),
+    userIdx: index('sessions_user_id_idx').on(t.userId),
     expiresIdx: index('sessions_expires_at_idx').on(t.expiresAt),
   }),
 );
@@ -117,20 +117,20 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
 export const accounts = pgTable(
   'accounts',
   {
-    id:         text('id').primaryKey(),
-    accountId:  text('account_id').notNull(),              // provider's external user ID
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(), // provider's external user ID
     providerId: varchar('provider_id', { length: 64 }).notNull(),
-    userId:     text('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
 
     // KMS-encrypted (M1-C) — null for email/password accounts
-    accessToken:           text('access_token'),
-    refreshToken:          text('refresh_token'),
-    idToken:               text('id_token'),
-    accessTokenExpiresAt:  timestamp('access_token_expires_at', { withTimezone: true }),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
     refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
-    scope:                 text('scope'),
+    scope: text('scope'),
 
     // bcrypt hash — null for OAuth accounts
     password: text('password'),
@@ -139,8 +139,8 @@ export const accounts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    userIdx:        index('accounts_user_id_idx').on(t.userId),
-    providerIdx:    index('accounts_provider_id_idx').on(t.providerId),
+    userIdx: index('accounts_user_id_idx').on(t.userId),
+    providerIdx: index('accounts_provider_id_idx').on(t.providerId),
     // One account per provider per external ID — prevents duplicate OAuth links
     providerUserIdx: uniqueIndex('accounts_provider_user_idx').on(t.providerId, t.accountId),
   }),
@@ -162,16 +162,16 @@ export const accountsRelations = relations(accounts, ({ one }) => ({
 export const verificationTokens = pgTable(
   'verification_tokens',
   {
-    id:         text('id').primaryKey(),
+    id: text('id').primaryKey(),
     identifier: varchar('identifier', { length: 255 }).notNull(), // email
-    value:      text('value').notNull(),                          // hashed token
-    expiresAt:  timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:  timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    value: text('value').notNull(), // hashed token
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     identifierIdx: index('verification_tokens_identifier_idx').on(t.identifier),
-    expiresIdx:    index('verification_tokens_expires_at_idx').on(t.expiresAt),
+    expiresIdx: index('verification_tokens_expires_at_idx').on(t.expiresAt),
   }),
 );
 
@@ -187,14 +187,14 @@ export const verificationTokens = pgTable(
 export const twoFactor = pgTable(
   'two_factor',
   {
-    id:          text('id').primaryKey(),
-    userId:      text('user_id')
+    id: text('id').primaryKey(),
+    userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    secret:      text('secret').notNull(),       // KMS-encrypted TOTP secret
+    secret: text('secret').notNull(), // KMS-encrypted TOTP secret
     backupCodes: text('backup_codes').notNull(), // JSON array of hashed backup codes
-    createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     // One TOTP config per user

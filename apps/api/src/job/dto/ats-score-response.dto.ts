@@ -6,13 +6,13 @@ import type { ATSSectionScores } from '@vantage/validation';
 // ---------------------------------------------------------------------------
 
 export interface AtsScoreListItemDto {
-  id:               string;
-  resumeVersionId:  string;
+  id: string;
+  resumeVersionId: string;
   jobDescriptionId: string;
-  scoringStatus:    ScoringStatus;
-  overallScore:     number | null;
-  createdAt:        string; // ISO 8601
-  updatedAt:        string;
+  scoringStatus: ScoringStatus;
+  overallScore: number | null;
+  createdAt: string; // ISO 8601
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ export interface AtsScoreListItemDto {
 // ---------------------------------------------------------------------------
 
 export interface AtsScoreListResponseDto {
-  data:  AtsScoreListItemDto[];
+  data: AtsScoreListItemDto[];
   total: number;
 }
 
@@ -30,26 +30,26 @@ export interface AtsScoreListResponseDto {
 // ---------------------------------------------------------------------------
 
 export interface AtsScoreDetailDto {
-  id:               string;
-  resumeVersionId:  string;
+  id: string;
+  resumeVersionId: string;
   jobDescriptionId: string;
 
   // Scoring — original resume
-  scoringStatus:    ScoringStatus;
-  overallScore:     number | null;
-  sectionScores:    ATSSectionScores | null;
-  keywordGaps:      string[] | null;
-  matchedKeywords:  string[] | null;
-  recommendations:  string[] | null;
-  scoreError:       string | null;
+  scoringStatus: ScoringStatus;
+  overallScore: number | null;
+  sectionScores: ATSSectionScores | null;
+  keywordGaps: string[] | null;
+  matchedKeywords: string[] | null;
+  recommendations: string[] | null;
+  scoreError: string | null;
 
   // Optimization
   optimizationStatus: OptimizationStatus;
 
   // Post-optimization re-score — null until optimization is complete.
   // Used by the frontend to render the before/after delta (overallScore → optimizedOverallScore).
-  optimizedOverallScore:   number | null;
-  optimizedSectionScores:  ATSSectionScores | null;
+  optimizedOverallScore: number | null;
+  optimizedSectionScores: ATSSectionScores | null;
 
   createdAt: string;
   updatedAt: string;
@@ -60,7 +60,7 @@ export interface AtsScoreDetailDto {
 // ---------------------------------------------------------------------------
 
 export interface CreateAtsScoreResponseDto {
-  atsScoreId:    string;
+  atsScoreId: string;
   scoringStatus: ScoringStatus;
-  message:       string;
+  message: string;
 }

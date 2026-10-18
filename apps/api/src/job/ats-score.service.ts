@@ -11,12 +11,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 
 import { QUEUE_NAMES, createQueueConnection } from '@vantage/queue';
-import {
-  atsScores,
-  resumeVersions,
-  jobDescriptions,
-  type DatabaseClient,
-} from '@vantage/database';
+import { atsScores, resumeVersions, jobDescriptions, type DatabaseClient } from '@vantage/database';
 import type { ATSSectionScores } from '@vantage/validation';
 import type { AuthUser } from '../auth/auth.service';
 import { DATABASE_CLIENT } from '../database/database.module';
@@ -60,7 +55,11 @@ export class AtsScoreService {
 
     // Verify the resume version belongs to this user and is fully parsed
     const [resumeRow] = await this.db
-      .select({ id: resumeVersions.id, parseStatus: resumeVersions.parseStatus, userId: resumeVersions.userId })
+      .select({
+        id: resumeVersions.id,
+        parseStatus: resumeVersions.parseStatus,
+        userId: resumeVersions.userId,
+      })
       .from(resumeVersions)
       .where(eq(resumeVersions.id, resumeVersionId))
       .limit(1);
@@ -84,12 +83,12 @@ export class AtsScoreService {
     const now = new Date();
 
     await this.db.insert(atsScores).values({
-      id:               atsScoreId,
+      id: atsScoreId,
       resumeVersionId,
       jobDescriptionId: jobId,
-      scoringStatus:    'pending',
-      createdAt:        now,
-      updatedAt:        now,
+      scoringStatus: 'pending',
+      createdAt: now,
+      updatedAt: now,
     });
 
     // Record usage after successful insert — quota is consumed on request, not completion
@@ -100,10 +99,10 @@ export class AtsScoreService {
       'score',
       { atsScoreId },
       {
-        attempts:         3,
-        backoff:          { type: 'exponential', delay: 5_000 },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5_000 },
         removeOnComplete: 100,
-        removeOnFail:     100,
+        removeOnFail: 100,
       },
     );
 
@@ -114,7 +113,8 @@ export class AtsScoreService {
     return {
       atsScoreId,
       scoringStatus: 'pending',
-      message:       'Scoring has started. Poll GET /v1/jobs/:id/scores/:scoreId until status is complete.',
+      message:
+        'Scoring has started. Poll GET /v1/jobs/:id/scores/:scoreId until status is complete.',
     };
   }
 
@@ -122,21 +122,18 @@ export class AtsScoreService {
   // GET /v1/jobs/:id/scores
   // ---------------------------------------------------------------------------
 
-  async listScores(
-    user: AuthUser,
-    jobId: string,
-  ): Promise<AtsScoreListResponseDto> {
+  async listScores(user: AuthUser, jobId: string): Promise<AtsScoreListResponseDto> {
     await this.findOwnedJob(user.id, jobId);
 
     const rows = await this.db
       .select({
-        id:               atsScores.id,
-        resumeVersionId:  atsScores.resumeVersionId,
+        id: atsScores.id,
+        resumeVersionId: atsScores.resumeVersionId,
         jobDescriptionId: atsScores.jobDescriptionId,
-        scoringStatus:    atsScores.scoringStatus,
-        overallScore:     atsScores.overallScore,
-        createdAt:        atsScores.createdAt,
-        updatedAt:        atsScores.updatedAt,
+        scoringStatus: atsScores.scoringStatus,
+        overallScore: atsScores.overallScore,
+        createdAt: atsScores.createdAt,
+        updatedAt: atsScores.updatedAt,
       })
       .from(atsScores)
       .where(eq(atsScores.jobDescriptionId, jobId))
@@ -150,13 +147,13 @@ export class AtsScoreService {
     const total = countRows[0]?.count ?? 0;
 
     const data: AtsScoreListItemDto[] = rows.map((r) => ({
-      id:               r.id,
-      resumeVersionId:  r.resumeVersionId,
+      id: r.id,
+      resumeVersionId: r.resumeVersionId,
       jobDescriptionId: r.jobDescriptionId,
-      scoringStatus:    r.scoringStatus,
-      overallScore:     r.overallScore,
-      createdAt:        r.createdAt.toISOString(),
-      updatedAt:        r.updatedAt.toISOString(),
+      scoringStatus: r.scoringStatus,
+      overallScore: r.overallScore,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
     }));
 
     return { data, total };
@@ -166,22 +163,13 @@ export class AtsScoreService {
   // GET /v1/jobs/:id/scores/:scoreId
   // ---------------------------------------------------------------------------
 
-  async getScore(
-    user: AuthUser,
-    jobId: string,
-    scoreId: string,
-  ): Promise<AtsScoreDetailDto> {
+  async getScore(user: AuthUser, jobId: string, scoreId: string): Promise<AtsScoreDetailDto> {
     await this.findOwnedJob(user.id, jobId);
 
     const [row] = await this.db
       .select()
       .from(atsScores)
-      .where(
-        and(
-          eq(atsScores.id, scoreId),
-          eq(atsScores.jobDescriptionId, jobId),
-        ),
-      )
+      .where(and(eq(atsScores.id, scoreId), eq(atsScores.jobDescriptionId, jobId)))
       .limit(1);
 
     if (!row) {
@@ -189,24 +177,24 @@ export class AtsScoreService {
     }
 
     return {
-      id:               row.id,
-      resumeVersionId:  row.resumeVersionId,
+      id: row.id,
+      resumeVersionId: row.resumeVersionId,
       jobDescriptionId: row.jobDescriptionId,
 
       // Original scoring
-      scoringStatus:   row.scoringStatus,
-      overallScore:    row.overallScore,
-      sectionScores:   row.sectionScores as ATSSectionScores | null,
-      keywordGaps:     row.keywordGaps as string[] | null,
+      scoringStatus: row.scoringStatus,
+      overallScore: row.overallScore,
+      sectionScores: row.sectionScores as ATSSectionScores | null,
+      keywordGaps: row.keywordGaps as string[] | null,
       matchedKeywords: row.matchedKeywords as string[] | null,
       recommendations: row.recommendations as string[] | null,
-      scoreError:      row.scoreError,
+      scoreError: row.scoreError,
 
       // Optimization
       optimizationStatus: row.optimizationStatus,
 
       // Post-optimization re-score
-      optimizedOverallScore:  row.optimizedOverallScore,
+      optimizedOverallScore: row.optimizedOverallScore,
       optimizedSectionScores: row.optimizedSectionScores as ATSSectionScores | null,
 
       createdAt: row.createdAt.toISOString(),

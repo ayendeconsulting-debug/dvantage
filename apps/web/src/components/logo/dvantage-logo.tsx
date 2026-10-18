@@ -26,10 +26,10 @@ interface DVantageLogoProps {
 }
 
 export function DVantageLogo({ width = 160, markOnly = false }: DVantageLogoProps) {
-  const markWidth  = markOnly ? width : Math.round(width * 0.22);
+  const markWidth = markOnly ? width : Math.round(width * 0.22);
   const markHeight = Math.round(markWidth * (24 / 32));
-  const fontSize   = Math.round(width * 0.28);
-  const gap        = Math.round(markWidth * 0.45);
+  const fontSize = Math.round(width * 0.28);
+  const gap = Math.round(markWidth * 0.45);
 
   if (markOnly) {
     return (
@@ -56,9 +56,9 @@ export function DVantageLogo({ width = 160, markOnly = false }: DVantageLogoProp
   return (
     <div
       style={{
-        display:    'flex',
+        display: 'flex',
         alignItems: 'center',
-        gap:        `${gap}px`,
+        gap: `${gap}px`,
         userSelect: 'none',
       }}
       aria-label="D'Vantage"
@@ -87,11 +87,11 @@ export function DVantageLogo({ width = 160, markOnly = false }: DVantageLogoProp
       <span
         aria-hidden="true"
         style={{
-          fontFamily:    'var(--vt-font-display)',
-          fontSize:      `${fontSize}px`,
-          lineHeight:    1,
+          fontFamily: 'var(--vt-font-display)',
+          fontSize: `${fontSize}px`,
+          lineHeight: 1,
           letterSpacing: '-0.03em',
-          display:       'inline-block',
+          display: 'inline-block',
         }}
       >
         <span style={{ fontWeight: 900, color: 'var(--vt-brand-500)' }}>D</span>

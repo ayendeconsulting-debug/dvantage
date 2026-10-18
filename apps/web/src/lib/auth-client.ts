@@ -1,5 +1,5 @@
 import { createAuthClient } from 'better-auth/react';
-import { twoFactorClient }  from 'better-auth/client/plugins';
+import { twoFactorClient } from 'better-auth/client/plugins';
 
 /**
  * better-auth browser client.
@@ -16,9 +16,9 @@ export const authClient = createAuthClient({
 }) as any; // TS2742 workaround
 
 export const { signIn, signUp, signOut, useSession, getSession } = authClient as {
-  signIn:     any;
-  signUp:     any;
-  signOut:    any;
+  signIn: any;
+  signUp: any;
+  signOut: any;
   useSession: any;
   getSession: any;
 };

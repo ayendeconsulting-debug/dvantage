@@ -22,9 +22,9 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
         });
 
         client.on('connect', () => logger.log('Redis connected'));
-        client.on('ready',   () => logger.log('Redis ready'));
-        client.on('error',   (err: Error) => logger.error(`Redis error: ${err.message}`));
-        client.on('close',   () => logger.warn('Redis connection closed'));
+        client.on('ready', () => logger.log('Redis ready'));
+        client.on('error', (err: Error) => logger.error(`Redis error: ${err.message}`));
+        client.on('close', () => logger.warn('Redis connection closed'));
         client.on('reconnecting', () => logger.warn('Redis reconnecting...'));
 
         return client;

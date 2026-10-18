@@ -9,7 +9,7 @@ const apiEnvSchema = sharedEnvSchema.extend({
   DATABASE_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(100).default(20),
 
   // Object storage
-  R2_REGION:           z.string().min(1).default('auto'),
+  R2_REGION: z.string().min(1).default('auto'),
   R2_FORCE_PATH_STYLE: z.string().default('false'),
   R2_BUCKET_RESUMES: z.string().min(1),
   R2_BUCKET_EXPORTS: z.string().min(1),

@@ -40,10 +40,7 @@ import type { AutofillFieldKey, UserProfile } from './types';
  *   degree         → "${degree} in ${field}" or just degree if no field
  *   graduationYear → year extracted from profile.education[0].endDate
  */
-export function resolveProfileValue(
-  key:     AutofillFieldKey,
-  profile: UserProfile,
-): string | null {
+export function resolveProfileValue(key: AutofillFieldKey, profile: UserProfile): string | null {
   switch (key) {
     case 'fullName':
       return `${profile.firstName} ${profile.lastName}`.trim() || null;
@@ -90,7 +87,7 @@ export function resolveProfileValue(
     case 'degree': {
       const edu = profile.education[0];
       if (!edu) return null;
-      const deg   = edu.degree?.trim();
+      const deg = edu.degree?.trim();
       const field = edu.field?.trim();
       if (!deg) return null;
       return field ? `${deg} in ${field}` : deg;
